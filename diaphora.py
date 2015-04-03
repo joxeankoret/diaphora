@@ -63,7 +63,7 @@ from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0"
+VERSION_VALUE = "1.0.1"
 COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -304,13 +304,10 @@ class CBinDiffExporterSetup(Form):
   Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
-  
-  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}>
-  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}>
 
-  Export filter limits:
-  <#Minimum address to find functions to export#From address:{iMinEA}>
-  <#Maximum address to find functions to export#To address  :{iMaxEA}>
+  SQLite databases:                                                                                                                    Export filter limits:  
+  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
+  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
   <Use the decompiler if available:{rUseDecompiler}>
   <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
@@ -320,13 +317,13 @@ class CBinDiffExporterSetup(Form):
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
   <Use experimental heuristics:{rExperimental}>{cGroup1}>
 
-  NOTE: Don't select IDA database files (.IDB) as only SQLite databases are considered.
+  NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
     def_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
-    args = {'iFileSave': Form.FileInput(save=True, value=def_db),
-            'iFileOpen': Form.FileInput(open=True),
-            'iMinEA': Form.NumericInput(tp=Form.FT_ADDR),
-            'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR),
+    args = {'iFileSave': Form.FileInput(save=True, swidth=40, value=def_db),
+            'iFileOpen': Form.FileInput(open=True, swidth=40),
+            'iMinEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=20),
+            'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=20),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
                                                "rUnreliable",
                                                "rNonIdaSubs",
@@ -808,15 +805,22 @@ class CBinDiff:
         pseudo_hash3 = None
       pseudocode_primes = str(self.pseudo_hash[f])
 
+    # Not yet used; in the near future we will use RVA instead of full
+    # addresses
+    address = f - self.get_base_address()
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, basic_blocks_data, bb_relations)
 
+  def get_base_address(self):
+    # idaapi.get_imagebase() sometimes, for libraries, returns 0x0 :/
+    return MinEA()
+
   def get_instruction_id(self, addr):
     cur = self.db_cursor()
     sql = "select id from instructions where address = ?"
-    cur.execute(sql, (addr,))
+    cur.execute(sql, (str(addr),))
     row = cur.fetchone()
     rowid = None
     if row is not None:
@@ -827,7 +831,7 @@ class CBinDiff:
   def get_bb_id(self, addr):
     cur = self.db_cursor()
     sql = "select id from basic_blocks where address = ?"
-    cur.execute(sql, (addr,))
+    cur.execute(sql, (str(addr),))
     row = cur.fetchone()
     rowid = None
     if row is not None:
@@ -870,9 +874,9 @@ class CBinDiff:
       for key in bb_data:
         for insn in bb_data[key]:
           addr, mnem, disasm, cmt1, cmt2 = insn
-          db_id = self_get_instruction_id(int(addr))
+          db_id = self_get_instruction_id(str(addr))
           if db_id is None:
-            cur_execute(sql, (addr, mnem, disasm, cmt1, cmt2))
+            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2))
             db_id = cur.lastrowid
           instructions_ids[addr] = db_id
 
@@ -880,12 +884,12 @@ class CBinDiff:
       bb_ids = {}
       sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
       sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
-      
+
       self_get_bb_id = self.get_bb_id
       for key in bb_data:
         # Insert each basic block
         num += 1
-        ins_ea = key
+        ins_ea = str(key)
         last_bb_id = self_get_bb_id(ins_ea)
         if last_bb_id is None:
           cur_execute(sql1, (num, ins_ea))
@@ -901,6 +905,8 @@ class CBinDiff:
       sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
       for key in bb_relations:
         for bb in bb_relations[key]:
+          bb = str(bb)
+          key = str(key)
           cur_execute(sql, (bb_ids[key], bb_ids[bb]))
 
       # And finally insert the functions to basic blocks relations
@@ -1046,11 +1052,11 @@ class CBinDiff:
       self.import_definitions()
 
     # Import just the selected item
-    ea1 = int(item[1], 16)
-    ea2 = int(item[3], 16)
+    ea1 = str(int(item[1], 16))
+    ea2 = str(int(item[3], 16))
     self.do_import_one(ea1, ea2, True)
 
-    new_func = self.read_function(int(ea1))
+    new_func = self.read_function(str(ea1))
     self.delete_function(ea1)
     self.save_function(new_func)
 
@@ -1078,8 +1084,8 @@ class CBinDiff:
               where address = ?
                 and assembly is not null)
               order by 4 asc"""
-    ea1 = int(item[1], 16)
-    ea2 = int(item[3], 16)
+    ea1 = str(int(item[1], 16))
+    ea2 = str(int(item[3], 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
     if len(rows) != 2:
@@ -1107,7 +1113,7 @@ class CBinDiff:
       db = "main"
     else:
       db = "diff"
-    ea = int(item[1], 16)
+    ea = str(int(item[1], 16))
     sql = "select prototype, assembly, name from %s.functions where address = ?"
     sql = sql % db
     cur.execute(sql, (ea, ))
@@ -1209,8 +1215,8 @@ class CBinDiff:
     return colours1, colours2
 
   def graph_diff(self, ea1, name1, ea2, name2):
-    g1 = self.get_graph(ea1, True)
-    g2 = self.get_graph(ea2)
+    g1 = self.get_graph(str(ea1), True)
+    g2 = self.get_graph(str(ea2))
 
     if g1 == ({}, {}) or g2 == ({}, {}):
       Warning("Sorry, graph information is not available for one of the databases.")
@@ -1251,8 +1257,8 @@ class CBinDiff:
     cur.execute(sql, (ea1,))
     bb_blocks = {}
     for row in cur.fetchall():
-      bb_ea = int(row[0])
-      ins_ea = int(row[1])
+      bb_ea = str(int(row[0]))
+      ins_ea = str(int(row[1]))
       mnem = row[2]
       dis = row[3]
 
@@ -1285,8 +1291,8 @@ class CBinDiff:
 
     bb_relations = {}
     for row in rows:
-      bb_ea1 = int(row[0])
-      bb_ea2 = int(row[1])
+      bb_ea1 = str(row[0])
+      bb_ea2 = str(row[1])
       try:
         bb_relations[bb_ea1].add(bb_ea2)
       except KeyError:
@@ -1301,7 +1307,7 @@ class CBinDiff:
       db = "main"
     else:
       db = "diff"
-    ea = int(item[1], 16)
+    ea = str(int(item[1], 16))
     sql = "select prototype, pseudocode, name from %s.functions where address = ?"
     sql = sql % db
     cur.execute(sql, (str(ea), ))
@@ -1332,8 +1338,8 @@ class CBinDiff:
               where address = ?
                 and pseudocode is not null)
               order by 4 asc"""
-    ea1 = int(item[1], 16)
-    ea2 = int(item[3], 16)
+    ea1 = str(int(item[1], 16))
+    ea2 = str(int(item[3], 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
     if len(rows) != 2:
@@ -1390,8 +1396,8 @@ class CBinDiff:
     to_import = set()
     # Import all the function names and comments
     for item in items:
-      ea1 = int(item[1], 16)
-      ea2 = int(item[3], 16)
+      ea1 = str(int(item[1], 16))
+      ea2 = str(int(item[3], 16))
       self.do_import_one(ea1, ea2)
       to_import.add(ea1)
 
@@ -1654,7 +1660,7 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = int(row[0])
+      ea = str(row[0])
       name1 = row[1]
       ea2 = row[2]
       name2 = row[3]
@@ -1699,7 +1705,7 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = int(row[0])
+      ea = str(row[0])
       name1 = row[1]
       ea2 = row[2]
       name2 = row[3]
@@ -1739,7 +1745,7 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = int(row[0])
+      ea = str(row[0])
       name1 = row[1]
       ea2 = row[2]
       name2 = row[3]
@@ -1769,7 +1775,7 @@ class CBinDiff:
     cur.execute(sql)
     rows = cur.fetchall()
     for row in rows:
-      ea = int(row[0])
+      ea = str(row[0])
       name1 = row[1]
       name2 = row[2]
 
@@ -2276,7 +2282,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     if row[0] != VERSION_VALUE:
       Warning("The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
-      return False
+      #return False
 
     # Create the choosers
     self.create_choosers()
@@ -2361,11 +2367,11 @@ def diff_or_export():
   if file_out == file_in:
     Warning("Both databases are the same file!")
     return
-  elif file_out == "":
-    Warning("No output database selected. Please select a database file.")
+  elif file_out == "" or len(file_out) < 5:
+    Warning("No output database selected or invalid filename. Please select a database file.")
     return
-  elif file_out.lower().endswith(".idb") or file_in.lower().endswith(".idb"):
-    Warning("One of the selected databases is an IDA database (IDB), not a SQLite database!")
+  elif file_out[len(file_out)-4:].lower() in [".idb", ".i64"] or file_in[len(file_in)-4:].lower() in [".idb", ".i64"]:
+    Warning("One of the selected databases is an IDA database (IDB or I64), not a SQLite database!")
     return
   elif file_out.lower().endswith(".til") or file_in.lower().endswith(".id0") or file_in.lower().endswith(".id1") or file_in.lower().endswith(".nam"):
     Warning("One of the selected databases is an IDA temporary file, not a SQLite database!")
@@ -2419,6 +2425,10 @@ if __name__ == "__main__":
       use_decompiler = False
     bd = CBinDiff(file_out)
     bd.use_decompiler_always = use_decompiler
+    if os.path.exists(file_out):
+      os.remove(file_out)
+      log("Database %s removed" % repr(file_out))
+
     bd.export()
   else:
     diff_or_export()
