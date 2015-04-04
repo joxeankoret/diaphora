@@ -2069,7 +2069,7 @@ class CBinDiff:
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
     if self.slow_heuristics:
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Similar pseudo-code' description,
+      sql = """select distinct f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.pseudocode, df.pseudocode,
                       f.pseudocode_primes, df.pseudocode_primes
@@ -2082,7 +2082,7 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.49)
 
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy AST hash' description,
+      sql = """select distinct f.address, f.name, df.address, df.name, 'Small pseudo-code fuzzy AST hash' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
                       f.pseudocode_primes, df.pseudocode_primes
@@ -2093,7 +2093,7 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Small pseudo-code fuzzy AST hash'")
       self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
-      sql = """select f.address, f.name, df.address, df.name, 'Similar pseudo-code' description,
+      sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
                       f.pseudocode_primes, df.pseudocode_primes
@@ -2106,14 +2106,17 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description
+    sql = """select f.address, f.name, df.address, df.name, 'Equal small pseudo-code' description,
+                    f.pseudocode, df.pseudocode,
+                    f.assembly, df.assembly,
+                    f.pseudocode_primes, df.pseudocode_primes
                from functions f,
                     diff.functions df
               where f.pseudocode = df.pseudocode
                 and df.pseudocode is not null
                 and f.pseudocode_lines < 5"""
     log_refresh("Finding with heuristic 'Equal small pseudo-code'")
-    self.add_matches_from_query(sql, choose)
+    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
@@ -2127,9 +2130,9 @@ class CBinDiff:
                   and f.prototype2 = df.prototype2
                   and df.names != '[]'"""
     log_refresh("Finding with heuristic 'Same low complexity, prototype and names'")
-    self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity and names' description,
+    sql = """  select f.address, f.name, df.address, df.name, 'Same low complexity and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
                       f.pseudocode_primes, df.pseudocode_primes
@@ -2140,7 +2143,7 @@ class CBinDiff:
                   and f.cyclomatic_complexity < 15
                   and df.names != '[]'"""
     log_refresh("Finding with heuristic 'Same low complexity and names'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
   def find_unreliable_matches(self):
     choose = self.unreliable_chooser
