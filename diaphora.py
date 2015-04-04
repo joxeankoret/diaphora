@@ -64,7 +64,7 @@ PRTYPE_SEMI=0x0008
 
 #-----------------------------------------------------------------------
 def log(msg):
-  print("[%s] %s" % (time.asctime(), msg))
+  Message("[%s] %s\n" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
 def log_refresh(msg, show=False):
@@ -981,8 +981,16 @@ class CBinDiff:
     i = 0
     callgraph_primes = 1
     callgraph_all_primes = {}
-    for func in list(Functions(self.min_ea, self.max_ea)):
+    func_list = list(Functions(self.min_ea, self.max_ea))
+    total_funcs = len(func_list)
+    t = time.time()
+    for func in func_list:
       i += 1
+      if i % 100 == 0 or i == 1:
+        line = "Exported %d function(s) out of %d total.\nElapsed %d second(s), remaining ~%d second(s)"
+        elapsed = time.time() - t
+        remaining = (elapsed / i) * (total_funcs - i)
+        replace_wait_box(line % (i, total_funcs, int(elapsed), int(remaining)))
       props = self.read_function(func)
       if props == False:
         continue
@@ -1001,7 +1009,12 @@ class CBinDiff:
     self.export_til()
 
   def export(self):
-    self.do_export()
+    try:
+      show_wait_box("Exporting database")
+      self.do_export()
+    finally:
+      hide_wait_box()
+
     self.db.commit()
 
     cur = self.db_cursor()
@@ -2040,9 +2053,10 @@ class CBinDiff:
                  from functions f,
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
-                  and df.strongly_connected > 1"""
+                  and df.strongly_connected > 1
+                  and f.nodes > 3 and df.nodes > 3"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.54)
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
     else:
       sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
                     f.pseudocode, df.pseudocode,
@@ -2051,20 +2065,37 @@ class CBinDiff:
                from functions f,
                     diff.functions df
               where f.strongly_connected = df.strongly_connected
-                and df.strongly_connected > 3"""
+                and df.strongly_connected > 3
+                and f.nodes > 3 and df.nodes > 3"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.54)
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
-                f.pseudocode, df.pseudocode,
-                f.assembly, df.assembly,
-                f.pseudocode_primes, df.pseudocode_primes
-           from functions f,
-                diff.functions df
-          where f.loops = df.loops
-            and df.loops > 1"""
-    log_refresh("Finding with heuristic 'Loop count'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
+    if self.slow_heuristics:
+      sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
+                  f.pseudocode, df.pseudocode,
+                  f.assembly, df.assembly,
+                  f.pseudocode_primes, df.pseudocode_primes
+             from functions f,
+                  diff.functions df
+            where f.loops = df.loops
+              and df.loops > 1
+              and f.nodes > 3 and df.nodes > 3"""
+      log_refresh("Finding with heuristic 'Loop count'")
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
+
+    sql = """select f.address, f.name, df.address, df.name,
+                    'Same nodes, edges and strongly connected components' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes
+               from functions f,
+                    diff.functions df
+              where f.nodes = df.nodes
+                and f.edges = df.edges
+                and f.strongly_connected = df.strongly_connected
+                and df.nodes > 4"""
+    log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
@@ -2148,29 +2179,29 @@ class CBinDiff:
   def find_unreliable_matches(self):
     choose = self.unreliable_chooser
 
-    sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
-               from functions f,
-                    diff.functions df
-              where f.strongly_connected = df.strongly_connected
-                and df.strongly_connected > 2"""
-    log_refresh("Finding with heuristic 'Strongly connected components'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.54)
-
-    sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
-                f.pseudocode, df.pseudocode,
-                f.assembly, df.assembly,
-                f.pseudocode_primes, df.pseudocode_primes
-           from functions f,
-                diff.functions df
-          where f.loops = df.loops
-            and df.loops > 1"""
-    log_refresh("Finding with heuristic 'Loop count'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
-
     if self.slow_heuristics:
+      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes
+                 from functions f,
+                      diff.functions df
+                where f.strongly_connected = df.strongly_connected
+                  and df.strongly_connected > 2"""
+      log_refresh("Finding with heuristic 'Strongly connected components'")
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.54)
+
+      sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
+                  f.pseudocode, df.pseudocode,
+                  f.assembly, df.assembly,
+                  f.pseudocode_primes, df.pseudocode_primes
+             from functions f,
+                  diff.functions df
+            where f.loops = df.loops
+              and df.loops > 1"""
+      log_refresh("Finding with heuristic 'Loop count'")
+      self.add_matches_from_query_ratio(sql, choose, choose)
+
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Bytes hash' description,
                        f.pseudocode, df.pseudocode,
