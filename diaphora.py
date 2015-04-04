@@ -27,14 +27,6 @@ TODO (for future versions):
 
 [ ] Instruction-level comment porting.
 
-Changes on RC3:
-
-  - Added options to filter the minimum and maximum address to export,
-    an option to export only non sub_* or library functions and 1 option
-    to export only function summaries instead of all the basic blocks
-    and instructions of the database. It helps a lot when dealing with
-    medium, big and huge databases.
-
 """
 
 import os
@@ -58,6 +50,7 @@ from idautils import *
 
 from PySide import QtGui, QtCore
 
+from others.tarjan_sort import strongly_connected_components
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
@@ -322,8 +315,8 @@ class CBinDiffExporterSetup(Form):
     def_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
     args = {'iFileSave': Form.FileInput(save=True, swidth=40, value=def_db),
             'iFileOpen': Form.FileInput(open=True, swidth=40),
-            'iMinEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=20),
-            'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=20),
+            'iMinEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
+            'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
                                                "rUnreliable",
                                                "rNonIdaSubs",
@@ -496,7 +489,7 @@ class CBinDiff:
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
     # value.
-    self.max_processed_rows = 500000
+    self.max_processed_rows = 1000000
     # Limits to filter the functions to export
     self.min_ea = MinEA()
     self.max_ea = MaxEA()
@@ -552,7 +545,9 @@ class CBinDiff:
                         assembly text,
                         prototype2 text,
                         pseudocode_hash2 text,
-                        pseudocode_hash3 text) """
+                        pseudocode_hash3 text,
+                        strongly_connected integer,
+                        loops integer) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -678,6 +673,12 @@ class CBinDiff:
     sql = "create index if not exists idx_pseudocode_hash on functions(pseudocode_hash1, pseudocode_hash2, pseudocode_hash3)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_strongly_connected on functions(strongly_connected)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_loops on functions(loops)"
+    cur.execute(sql)
+
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -773,6 +774,15 @@ class CBinDiff:
         if not dones.has_key(succ_block.id):
           dones[succ_block] = 1
 
+    strongly_connected = strongly_connected_components(bb_relations)
+    loops = 0
+    for sc in strongly_connected:
+      if len(sc) > 1:
+        loops += 1
+      else:
+        if sc in bb_relations and sc in bb_relations[sc]:
+          loops += 1
+
     keys = assembly.keys()
     keys.sort()
     asm = []
@@ -811,7 +821,8 @@ class CBinDiff:
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
-             pseudo_hash2, pseudo_hash3, basic_blocks_data, bb_relations)
+             pseudo_hash2, pseudo_hash3, len(strongly_connected), loops,
+             basic_blocks_data, bb_relations)
 
   def get_base_address(self):
     # idaapi.get_imagebase() sometimes, for libraries, returns 0x0 :/
@@ -858,9 +869,9 @@ class CBinDiff:
                                     comment, mangled_function, bytes_hash, pseudocode,
                                     pseudocode_lines, pseudocode_hash1, pseudocode_primes,
                                     function_flags, assembly, prototype2, pseudocode_hash2,
-                                    pseudocode_hash3)
+                                    pseudocode_hash3, strongly_connected, loops)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -1561,7 +1572,7 @@ class CBinDiff:
                 and f.edges = df.edges
                 and f.mnemonics = df.mnemonics"""
     log_refresh("Finding with heuristic 'Same address, nodes, edges and mnemonics'")
-    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
+    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, None)
 
     cur.close()
 
@@ -1678,13 +1689,13 @@ class CBinDiff:
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
       if r == 1:
         best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
-      elif r > 0.0 or unreliable is None:
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif r > 0.0 and unreliable is None:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
-      elif r == 0.0 and unreliable is not None:
-        unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
 
-      self.matched1.add(name1)
-      self.matched2.add(name2)
     cur.close()
 
   def add_matches_from_query_ratio_max(self, sql, best, partial, val):
@@ -1723,12 +1734,14 @@ class CBinDiff:
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
 
       if r > val:
-        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, val))
-      else:
+        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif partial is not None:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
 
-      self.matched1.add(name1)
-      self.matched2.add(name2)
     cur.close()
 
   def add_matches_from_query(self, sql, choose):
@@ -2019,6 +2032,40 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same high complexity and names'")
     self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
 
+    if self.slow_heuristics:
+      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes
+                 from functions f,
+                      diff.functions df
+                where f.strongly_connected = df.strongly_connected
+                  and df.strongly_connected > 1"""
+      log_refresh("Finding with heuristic 'Strongly connected components'")
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.54)
+    else:
+      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
+                    f.pseudocode, df.pseudocode,
+                    f.assembly, df.assembly,
+                    f.pseudocode_primes, df.pseudocode_primes
+               from functions f,
+                    diff.functions df
+              where f.strongly_connected = df.strongly_connected
+                and df.strongly_connected > 3"""
+      log_refresh("Finding with heuristic 'Strongly connected components'")
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.54)
+
+    sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
+                f.pseudocode, df.pseudocode,
+                f.assembly, df.assembly,
+                f.pseudocode_primes, df.pseudocode_primes
+           from functions f,
+                diff.functions df
+          where f.loops = df.loops
+            and df.loops > 1"""
+    log_refresh("Finding with heuristic 'Loop count'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
+
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
     if self.slow_heuristics:
@@ -2033,7 +2080,7 @@ class CBinDiff:
                   and df.pseudocode is not null 
                   and f.pseudocode is not null"""
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
-      self.add_matches_from_query_ratio(sql, choose, choose)
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.49)
 
       sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy AST hash' description,
                       f.pseudocode, df.pseudocode,
@@ -2057,7 +2104,7 @@ class CBinDiff:
                   and f.pseudocode_lines = df.pseudocode_lines
                   and df.pseudocode_lines <= 5"""
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.58)
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
     sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description
                from functions f,
@@ -2097,6 +2144,28 @@ class CBinDiff:
 
   def find_unreliable_matches(self):
     choose = self.unreliable_chooser
+
+    sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
+                    f.pseudocode, df.pseudocode,
+                    f.assembly, df.assembly,
+                    f.pseudocode_primes, df.pseudocode_primes
+               from functions f,
+                    diff.functions df
+              where f.strongly_connected = df.strongly_connected
+                and df.strongly_connected > 2"""
+    log_refresh("Finding with heuristic 'Strongly connected components'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.54)
+
+    sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
+                f.pseudocode, df.pseudocode,
+                f.assembly, df.assembly,
+                f.pseudocode_primes, df.pseudocode_primes
+           from functions f,
+                diff.functions df
+          where f.loops = df.loops
+            and df.loops > 1"""
+    log_refresh("Finding with heuristic 'Loop count'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
 
     if self.slow_heuristics:
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
@@ -2182,7 +2251,7 @@ class CBinDiff:
                   and f.pseudocode_lines = df.pseudocode_lines
                   and df.pseudocode_lines > 5"""
       log_refresh("Finding with heuristic 'Similar pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.58)
+      self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
 
       sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity' description,
                         f.pseudocode, df.pseudocode,
@@ -2282,7 +2351,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     if row[0] != VERSION_VALUE:
       Warning("The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
-      #return False
+      return False
 
     # Create the choosers
     self.create_choosers()
