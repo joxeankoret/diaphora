@@ -547,7 +547,8 @@ class CBinDiff:
                         pseudocode_hash2 text,
                         pseudocode_hash3 text,
                         strongly_connected integer,
-                        loops integer) """
+                        loops integer,
+                        rva text unique) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -679,6 +680,9 @@ class CBinDiff:
     sql = "create index if not exists idx_loops on functions(loops)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_rva on functions(rva)"
+    cur.execute(sql)
+
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -689,7 +693,7 @@ class CBinDiff:
     cur.close()
 
   def read_function(self, f, discard=False):
-    name = GetFunctionName(f)
+    name = GetFunctionName(int(f))
     true_name = name
     demangled_name = Demangle(name, INF_SHORT_DN)
     if demangled_name is not None:
@@ -721,19 +725,23 @@ class CBinDiff:
     assembly = {}
     basic_blocks_data = {}
     bb_relations = {}
+    
+    image_base = self.get_base_address()
     for block in flow:
       nodes += 1
       instructions_data = []
+      block_ea = block.startEA - image_base
       for x in list(Heads(block.startEA, block.endEA)):
         mnem = GetMnem(x)
         disasm = GetDisasm(x)
+
         try:
-          assembly[block.startEA].append(disasm)
+          assembly[block_ea].append(disasm)
         except KeyError:
           if nodes == 1:
-            assembly[block.startEA] = [disasm]
+            assembly[block_ea] = [disasm]
           else:
-            assembly[block.startEA] = ["loc_%x:" % x, disasm]
+            assembly[block_ea] = ["loc_%x:" % x, disasm]
 
         instructions += 1
         bytes_hash.append(chr(Byte(x)))
@@ -750,14 +758,16 @@ class CBinDiff:
             tmp_name = demangled_name
           if not tmp_name.startswith("sub_"):
             names.add(tmp_name)
+
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
-        instructions_data.append([x, mnem, disasm, ins_cmt1, ins_cmt2])
-      basic_blocks_data[block.startEA] = instructions_data
+        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2])
 
-      bb_relations[block.startEA] = []
+      basic_blocks_data[block_ea] = instructions_data
+
+      bb_relations[block_ea] = []
       for succ_block in block.succs():
-        bb_relations[block.startEA].append(succ_block.startEA)
+        bb_relations[block_ea].append(succ_block.startEA - image_base)
         edges += 1
         indegree += 1
         if not dones.has_key(succ_block.id):
@@ -765,9 +775,9 @@ class CBinDiff:
 
       for pred_block in block.preds():
         try:
-          bb_relations[pred_block.startEA].append(block.startEA)
+          bb_relations[pred_block.startEA - image_base].append(block.startEA - image_base)
         except KeyError:
-          bb_relations[pred_block.startEA] = [block.startEA]
+          bb_relations[pred_block.startEA - image_base] = [block.startEA - image_base]
 
         edges += 1
         outdegree += 1
@@ -780,7 +790,7 @@ class CBinDiff:
       if len(sc) > 1:
         loops += 1
       else:
-        if sc in bb_relations and sc in bb_relations[sc]:
+        if sc[0] in bb_relations and sc[0] in bb_relations[sc[0]]:
           loops += 1
 
     keys = assembly.keys()
@@ -817,16 +827,15 @@ class CBinDiff:
 
     # Not yet used; in the near future we will use RVA instead of full
     # addresses
-    address = f - self.get_base_address()
+    rva = f - self.get_base_address()
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
-             pseudo_hash2, pseudo_hash3, len(strongly_connected), loops,
+             pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
-    # idaapi.get_imagebase() sometimes, for libraries, returns 0x0 :/
-    return MinEA()
+    return idaapi.get_imagebase()
 
   def get_instruction_id(self, addr):
     cur = self.db_cursor()
@@ -869,9 +878,9 @@ class CBinDiff:
                                     comment, mangled_function, bytes_hash, pseudocode,
                                     pseudocode_lines, pseudocode_hash1, pseudocode_primes,
                                     function_flags, assembly, prototype2, pseudocode_hash2,
-                                    pseudocode_hash3, strongly_connected, loops)
+                                    pseudocode_hash3, strongly_connected, loops, rva)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -1399,6 +1408,7 @@ class CBinDiff:
       name = row[2]
       flags = row[3]
 
+      ea1 = int(ea1)
       if not name.startswith("sub_") or force:
         if not MakeNameEx(ea1, name, SN_NOWARN|SN_NOCHECK):
           for i in xrange(10):
@@ -1420,14 +1430,15 @@ class CBinDiff:
     to_import = set()
     # Import all the function names and comments
     for item in items:
-      ea1 = str(int(item[1], 16))
-      ea2 = str(int(item[3], 16))
+      ea1 = int(item[1], 16)
+      ea2 = int(item[3], 16)
       self.do_import_one(ea1, ea2)
       to_import.add(ea1)
 
     try:
       show_wait_box("Updating primary database...")
       for ea in to_import:
+        ea = int(ea)
         new_func = self.read_function(ea)
         self.delete_function(ea)
         self.save_function(new_func)
@@ -1482,12 +1493,14 @@ class CBinDiff:
         self.diff(self.last_diff_db)"""
     except:
       log("import_all(): %s" % str(sys.exc_info()[1]))
+      traceback.print_exc()
 
   def import_all_auto(self, items):
     try:
       self.do_import_all_auto(items)
     except:
       log("import_all(): %s" % str(sys.exc_info()[1]))
+      traceback.print_exc()
 
   def equal_db(self):
     cur = self.db_cursor()
@@ -1579,7 +1592,7 @@ class CBinDiff:
                     f.pseudocode_primes, df.pseudocode_primes
                from functions f,
                     diff.functions df
-              where f.address = df.address
+              where f.rva = df.rva
                 and f.instructions = df.instructions
                 and f.nodes = df.nodes
                 and f.edges = df.edges
@@ -1876,7 +1889,7 @@ class CBinDiff:
                      f.pseudocode_primes, df.pseudocode_primes
                from functions f,
                     diff.functions df
-              where f.address = df.address
+              where f.rva = df.rva
                 and f.instructions = df.instructions
                 and f.nodes = df.nodes
                 and f.edges = df.edges
@@ -2402,6 +2415,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if do_continue:
         # Compare the call graphs
         self.check_callgraph()
+
         # Find the unmodified functions
         log_refresh("Finding best matches...")
         self.find_equal_matches()
