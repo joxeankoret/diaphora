@@ -50,7 +50,7 @@ from idautils import *
 
 from PySide import QtGui, QtCore
 
-from others.tarjan_sort import strongly_connected_components
+from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
@@ -548,7 +548,8 @@ class CBinDiff:
                         pseudocode_hash3 text,
                         strongly_connected integer,
                         loops integer,
-                        rva text unique) """
+                        rva text unique,
+                        tarjan_topological_sort text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -683,6 +684,9 @@ class CBinDiff:
     sql = "create index if not exists idx_rva on functions(rva)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_tarjan_topological_sort on functions(tarjan_topological_sort)"
+    cur.execute(sql)
+
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -725,12 +729,19 @@ class CBinDiff:
     assembly = {}
     basic_blocks_data = {}
     bb_relations = {}
+    bb_topo_num = {}
+    bb_topological = {}
     
     image_base = self.get_base_address()
     for block in flow:
       nodes += 1
       instructions_data = []
+
       block_ea = block.startEA - image_base
+      idx = len(bb_topological)
+      bb_topological[idx] = []
+      bb_topo_num[block_ea] = idx
+
       for x in list(Heads(block.startEA, block.endEA)):
         mnem = GetMnem(x)
         disasm = GetDisasm(x)
@@ -764,10 +775,10 @@ class CBinDiff:
         instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2])
 
       basic_blocks_data[block_ea] = instructions_data
-
       bb_relations[block_ea] = []
       for succ_block in block.succs():
-        bb_relations[block_ea].append(succ_block.startEA - image_base)
+        succ_base = succ_block.startEA - image_base
+        bb_relations[block_ea].append(succ_base)
         edges += 1
         indegree += 1
         if not dones.has_key(succ_block.id):
@@ -784,7 +795,16 @@ class CBinDiff:
         if not dones.has_key(succ_block.id):
           dones[succ_block] = 1
 
+    for block in flow:
+      block_ea = block.startEA - image_base
+      for succ_block in block.succs():
+        succ_base = succ_block.startEA - image_base
+        bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
+
     strongly_connected = strongly_connected_components(bb_relations)
+    bb_topological = robust_topological_sort(bb_topological)
+    bb_topological = json.dumps(bb_topological)
+
     loops = 0
     for sc in strongly_connected:
       if len(sc) > 1:
@@ -831,7 +851,7 @@ class CBinDiff:
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
-             pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva,
+             pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -878,9 +898,10 @@ class CBinDiff:
                                     comment, mangled_function, bytes_hash, pseudocode,
                                     pseudocode_lines, pseudocode_hash1, pseudocode_primes,
                                     function_flags, assembly, prototype2, pseudocode_hash2,
-                                    pseudocode_hash3, strongly_connected, loops, rva)
+                                    pseudocode_hash3, strongly_connected, loops, rva,
+                                    tarjan_topological_sort)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -2031,6 +2052,19 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Partial pseudo-code fuzzy hash'")
       self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
 
+    sql = """select f.address, f.name, df.address, df.name,
+                    'Topological sort hash' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes
+               from functions f,
+                    diff.functions df
+              where f.strongly_connected = df.strongly_connected
+                and f.tarjan_topological_sort = df.tarjan_topological_sort
+                and f.strongly_connected > 3"""
+    log_refresh("Finding with heuristic 'Topological sort hash'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
+
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
@@ -2109,6 +2143,7 @@ class CBinDiff:
                 and df.nodes > 4"""
     log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
+
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
