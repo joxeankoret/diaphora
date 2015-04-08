@@ -501,6 +501,10 @@ class CBinDiff:
     self.function_summaries_only = False
     ####################################################################
 
+  def __del__(self):
+    if self.db is not None:
+      self.db_close()
+
   def open_db(self):
     self.db = sqlite3.connect(self.db_name)
     self.db.text_factory = str
@@ -801,9 +805,16 @@ class CBinDiff:
         succ_base = succ_block.startEA - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
-    strongly_connected = strongly_connected_components(bb_relations)
-    bb_topological = robust_topological_sort(bb_topological)
-    bb_topological = json.dumps(bb_topological)
+    try:
+      strongly_connected = strongly_connected_components(bb_relations)
+      bb_topological = robust_topological_sort(bb_topological)
+      bb_topological = json.dumps(bb_topological)
+    except:
+      # XXX: FIXME: The original implementation that we're using is 
+      # recursive and can fail. We really need to create our own non
+      # recursive version.
+      strongly_connected = []
+      bb_topological = None
 
     loops = 0
     for sc in strongly_connected:
@@ -1451,8 +1462,8 @@ class CBinDiff:
     to_import = set()
     # Import all the function names and comments
     for item in items:
-      ea1 = int(item[1], 16)
-      ea2 = int(item[3], 16)
+      ea1 = str(int(item[1], 16))
+      ea2 = str(int(item[3], 16))
       self.do_import_one(ea1, ea2)
       to_import.add(ea1)
 
