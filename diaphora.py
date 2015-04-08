@@ -503,6 +503,12 @@ class CBinDiff:
 
   def __del__(self):
     if self.db is not None:
+      try:
+        if self.last_diff_db is not None:
+          with self.db.cursor():
+            cur.execute('detach "%s"' % self.last_diff_db)
+      except:
+        pass
       self.db_close()
 
   def open_db(self):
@@ -1425,7 +1431,7 @@ class CBinDiff:
     cur.close()
 
   def delete_function(self, ea):
-    cur = self.db.cursor()
+    cur = self.db_cursor()
     cur.execute("delete from functions where address = ?", (ea, ))
     cur.close()
 
@@ -2490,11 +2496,38 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         self.register_menu()
         log("Done")
     finally:
+      cur.close()
       hide_wait_box()
     return True
 
 #-----------------------------------------------------------------------
+def remove_file(filename):
+  try:
+    os.remove(filename)
+  except:
+    # Fix for Bug #5: https://github.com/joxeankoret/diaphora/issues/5
+    #
+    # For some reason, in Windows, the handle to the SQLite database is
+    # not closed, and I really try to be sure that all the databases are 
+    # detached, no cursor is leaked, etc... So, in case we cannot remove
+    # the database file because it's still being used by IDA in Windows
+    # for some unknown reason, just drop the database's tables and after
+    # that continue normally.
+    with sqlite3.connect(filename) as db:
+      cur = db.cursor()
+      try:
+        funcs = ["functions", "program", "program_data", "version",
+               "instructions", "basic_blocks", "bb_relations",
+               "bb_instructions", "function_bblocks"]
+        for func in funcs:
+          db.execute("drop table if exists %s" % func)
+      finally:
+        cur.close()
+
+#-----------------------------------------------------------------------
 def diff_or_export():
+  global g_bindiff
+
   if GetIdbPath() == "" or len(list(Functions())) == 0:
     Warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
     return
@@ -2551,7 +2584,9 @@ def diff_or_export():
       export = False
 
     if export:
-      os.remove(file_out)
+      if g_bindiff is not None:
+        g_bindiff = None
+      remove_file(file_out)
       log("Database %s removed" % repr(file_out))
 
   try:
@@ -2589,7 +2624,10 @@ if __name__ == "__main__":
     bd = CBinDiff(file_out)
     bd.use_decompiler_always = use_decompiler
     if os.path.exists(file_out):
-      os.remove(file_out)
+      if g_bindiff is not None:
+        g_bindiff = None
+
+      remove_file(file_out)
       log("Database %s removed" % repr(file_out))
 
     bd.export()
