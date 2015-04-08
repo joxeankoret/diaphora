@@ -2429,7 +2429,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     cur = self.db_cursor()
     cur.execute('attach "%s" as diff' % db)
-    hide_wait_box()
 
     try:
       cur.execute("select value from diff.version")
