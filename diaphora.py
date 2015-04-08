@@ -2429,10 +2429,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     cur = self.db_cursor()
     cur.execute('attach "%s" as diff' % db)
-    show_wait_box("Analysing main database...")
-    cur.execute("analyze main")
-    replace_wait_box("Analysing diff database...")
-    cur.execute("analyze diff")
     hide_wait_box()
 
     try:
