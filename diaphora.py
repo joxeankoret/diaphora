@@ -321,7 +321,8 @@ class CBinDiffExporterSetup(Form):
   <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
   <Use experimental heuristics:{rExperimental}>
-  <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>{cGroup1}>
+  <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
+  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>{cGroup1}>
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
@@ -337,7 +338,8 @@ class CBinDiffExporterSetup(Form):
                                                "rRelaxRatio",
                                                "rExperimental",
                                                "rFuncSummariesOnly",
-                                               "rIgnoreSubNames"))}
+                                               "rIgnoreSubNames",
+                                               "rIgnoreAllNames"))}
     Form.__init__(self, s, args)
 
 #-----------------------------------------------------------------------
@@ -519,6 +521,8 @@ class CBinDiff:
     # Ignore IDA's automatically generated sub_* names for heuristics
     # like the 'Same name'?
     self.ignore_sub_names = True
+    # Ignore any and all function names for the 'Same name' heuristic?
+    self.ignore_all_names = True
     ####################################################################
 
   def __del__(self):
@@ -1919,52 +1923,53 @@ class CBinDiff:
   def find_matches(self):
     choose = self.partial_chooser
 
-    cur = self.db_cursor()
-    sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
-                    f.pseudocode, d.pseudocode,
-                    f.assembly, d.assembly,
-                    f.pseudocode_primes, d.pseudocode_primes
-               from functions f,
-                    diff.functions d
-              where (d.mangled_function = f.mangled_function
-                  or d.name = f.name)"""
-    log_refresh("Finding with heuristic 'Same name'")
-    cur.execute(sql)
-    rows = cur.fetchall()
-    cur.close()
+    if not self.ignore_all_names:
+      cur = self.db_cursor()
+      sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
+                      f.pseudocode, d.pseudocode,
+                      f.assembly, d.assembly,
+                      f.pseudocode_primes, d.pseudocode_primes
+                 from functions f,
+                      diff.functions d
+                where (d.mangled_function = f.mangled_function
+                    or d.name = f.name)"""
+      log_refresh("Finding with heuristic 'Same name'")
+      cur.execute(sql)
+      rows = cur.fetchall()
+      cur.close()
 
-    if len(rows) > 0:
-      for row in rows:
-        ea = row[0]
-        name = row[1]
-        ea2 = row[2]
-        name1 = row[3]
-        name2 = row[4]
-        name2_1 = row[5]
-        if name in self.matched1 or name1 in self.matched1 or \
-           name2 in self.matched2 or name2_1 in self.matched2:
-          continue
+      if len(rows) > 0:
+        for row in rows:
+          ea = row[0]
+          name = row[1]
+          ea2 = row[2]
+          name1 = row[3]
+          name2 = row[4]
+          name2_1 = row[5]
+          if name in self.matched1 or name1 in self.matched1 or \
+             name2 in self.matched2 or name2_1 in self.matched2:
+            continue
 
-        if self.ignore_sub_names and name.startswith("sub_"):
-          continue
+          if self.ignore_sub_names and name.startswith("sub_"):
+            continue
 
-        ast1 = row[10]
-        ast2 = row[11]
-        pseudo1 = row[6]
-        pseudo2 = row[7]
-        asm1 = row[8]
-        asm2 = row[9]
-        ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
+          ast1 = row[10]
+          ast2 = row[11]
+          pseudo1 = row[6]
+          pseudo2 = row[7]
+          asm1 = row[8]
+          asm2 = row[9]
+          ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
 
-        if float(ratio) == 1.0:
-          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1))
-        else:
-          choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio))
+          if float(ratio) == 1.0:
+            self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1))
+          else:
+            choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio))
 
-        self.matched1.add(name)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-        self.matched2.add(name2_1)
+          self.matched1.add(name)
+          self.matched1.add(name1)
+          self.matched2.add(name2)
+          self.matched2.add(name2_1)
 
     sql = """select f.address, f.name, df.address, df.name,
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
@@ -2585,6 +2590,7 @@ def diff_or_export():
   x.rExperimental.checked = False
   x.rNonIdaSubs.checked = False
   x.rIgnoreSubNames.checked = True
+  x.rIgnoreAllNames.checked = False
   # Enable, by default, exporting only function summaries for huge dbs.
   x.rFuncSummariesOnly.checked = len(list(Functions())) > 100000
   if not x.Execute():
@@ -2601,6 +2607,7 @@ def diff_or_export():
   max_ea = x.iMaxEA.value
   ida_subs = x.rNonIdaSubs.checked == False
   ignore_sub_names = x.rIgnoreSubNames.checked
+  ignore_all_names = x.rIgnoreAllNames.checked
   func_summaries_only = x.rFuncSummariesOnly.checked
 
   if file_out == file_in:
@@ -2643,6 +2650,7 @@ def diff_or_export():
     bd.max_ea = max_ea
     bd.ida_subs = ida_subs
     bd.ignore_sub_names = ignore_sub_names
+    bd.ignore_all_names = ignore_all_names
     bd.function_summaries_only = func_summaries_only
     if export:
       bd.export()
