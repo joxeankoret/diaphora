@@ -378,10 +378,8 @@ class timeraction_t(object):
     self.obj = idaapi.register_timer(self.interval, self)
     if self.obj is None:
       raise RuntimeError, "Failed to register timer"
-    Message("Registered timer...\n")
 
   def __call__(self):
-    Message("Running timer for %s(%s)\n" % (repr(self.func), repr(self.args)))
     if self.args is not None:
       self.func(self.args)
     else:
