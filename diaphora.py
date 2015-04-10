@@ -137,7 +137,7 @@ class CChooser(Choose2):
       self.vfname2 = name2
       self.description = desc
       self.ratio = ratio
-      self.cmd_import_one = None
+      self.cmd_import_selected = None
       self.cmd_import_all = None
       self.cmd_import_all_funcs = None
 
@@ -146,9 +146,9 @@ class CChooser(Choose2):
 
   def __init__(self, title, bindiff, show_commands=True):
     if title.startswith("Unmatched in"):
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20] ])
+      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20] ], Choose2.CH_MULTI)
     else:
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10], ["Name 2", 20], ["Ratio", 5], ["Description", 60] ])
+      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10], ["Name 2", 20], ["Ratio", 5], ["Description", 60] ], Choose2.CH_MULTI)
 
     if title == "Unmatched in primary":
       self.primary = False
@@ -164,14 +164,15 @@ class CChooser(Choose2):
     self.cmd_diff_asm = None
     self.cmd_diff_graph = None
     self.cmd_diff_c = None
-    self.cmd_x = None
-    self.cmd_import_one = None
+    self.cmd_import_selected = None
     self.cmd_import_all = None
     self.cmd_import_all_funcs = None
     self.cmd_show_asm = None
     self.cmd_show_pseudo = None
     self.cmd_highlight_functions = None
     self.cmd_unhighlight_functions = None
+    
+    self.selected_items = []
 
   def OnClose(self):
     """space holder"""
@@ -187,7 +188,10 @@ class CChooser(Choose2):
     item = self.items[int(n)]
     if self.primary:
       try:
-        jumpto(int(item[1], 16))
+        jump_ea = int(item[1], 16)
+        # Only jump for valid addresses
+        if isEnabled(jump_ea):
+          jumpto(jump_ea)
       except:
         print "OnSelectLine", sys.exc_info()[1]
     else:
@@ -203,8 +207,11 @@ class CChooser(Choose2):
     return len(self.items)
 
   def OnDeleteLine(self, n):
-    del self.items[n]
-    self.n -= 1
+    try:
+      del self.items[n]
+      self.n -= 1
+    except:
+      pass
     return True
 
   def OnRefresh(self, n):
@@ -227,11 +234,9 @@ class CChooser(Choose2):
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
-      #self.cmd_x = self.AddCommand("")
-      self.cmd_import_one = self.AddCommand("Import function")
+      self.cmd_import_selected = self.AddCommand("Import selected")
       self.cmd_import_all = self.AddCommand("Import *all* functions")
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
-      #self.cmd_x = self.AddCommand("")
       self.cmd_highlight_functions = self.AddCommand("Highlight matches")
       self.cmd_unhighlight_functions = self.AddCommand("Unhighlight matches")
     elif not self.show_commands and (self.cmd_show_asm is None or force):
@@ -256,8 +261,12 @@ class CChooser(Choose2):
     elif cmd_id == self.cmd_import_all_funcs:
       if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all_auto(self.items)
-    elif cmd_id == self.cmd_import_one:
-      self.bindiff.import_one(self.items[n])
+    elif cmd_id == self.cmd_import_selected:
+      if len(self.selected_items) <= 1:
+        self.bindiff.import_one(self.items[n])
+      else:
+        if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
+          self.bindiff.import_selected(self.items, self.selected_items)
     elif cmd_id == self.cmd_diff_c:
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_asm:
@@ -290,6 +299,9 @@ class CChooser(Choose2):
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
     return True
 
+  def OnSelectionChange(self, sel_list):
+    self.selected_items = sel_list
+
 #-----------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
   def __init__(self):
@@ -308,7 +320,8 @@ class CBinDiffExporterSetup(Form):
   <Use probably unreliable methods:{rUnreliable}>
   <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
-  <Use experimental heuristics:{rExperimental}>{cGroup1}>
+  <Use experimental heuristics:{rExperimental}>
+  <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>{cGroup1}>
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
@@ -323,7 +336,8 @@ class CBinDiffExporterSetup(Form):
                                                "rSlowHeuristics",
                                                "rRelaxRatio",
                                                "rExperimental",
-                                               "rFuncSummariesOnly"))}
+                                               "rFuncSummariesOnly",
+                                               "rIgnoreSubNames"))}
     Form.__init__(self, s, args)
 
 #-----------------------------------------------------------------------
@@ -364,9 +378,14 @@ class timeraction_t(object):
     self.obj = idaapi.register_timer(self.interval, self)
     if self.obj is None:
       raise RuntimeError, "Failed to register timer"
+    Message("Registered timer...\n")
 
   def __call__(self):
-    self.func()
+    Message("Running timer for %s(%s)\n" % (repr(self.func), repr(self.args)))
+    if self.args is not None:
+      self.func(self.args)
+    else:
+      self.func()
     return -1
 
 #-----------------------------------------------------------------------
@@ -499,6 +518,9 @@ class CBinDiff:
     # Export only function summaries instead of also exporting both the
     # basic blocks and all instructions used by functions?
     self.function_summaries_only = False
+    # Ignore IDA's automatically generated sub_* names for heuristics
+    # like the 'Same name'?
+    self.ignore_sub_names = True
     ####################################################################
 
   def __del__(self):
@@ -712,6 +734,8 @@ class CBinDiff:
     demangled_name = Demangle(name, INF_SHORT_DN)
     if demangled_name is not None:
       name = demangled_name
+
+    f = int(f)
     func = get_func(f)
     flow = FlowChart(func)
     size = func.endEA - func.startEA
@@ -1116,11 +1140,15 @@ class CBinDiff:
     Wait()
 
   def import_one(self, item):
-    if askyn_c(1, "AUTOHIDE DATABASE\nHIDECANCEL\nDo you want to import type libraries, structs and enumerations?") == 1:
+    ret = askyn_c(1, "AUTOHIDE DATABASE\nDo you want to import all the type libraries, structs and enumerations?")
+
+    if ret == 1:
       # Import all the type libraries from the diff database
       self.import_til()
       # Import all the struct and enum definitions
       self.import_definitions()
+    elif ret == -1:
+      return
 
     # Import just the selected item
     ea1 = str(int(item[1], 16))
@@ -1464,6 +1492,17 @@ class CBinDiff:
 
     cur.close()
 
+  def import_selected(self, items, selected):
+    # Import all the type libraries from the diff database
+    self.import_til()
+    # Import all the struct and enum definitions
+    self.import_definitions()
+
+    new_items = []
+    for item in selected:
+      new_items.append(items[item-1])
+    self.import_items(new_items)
+
   def import_items(self, items):
     to_import = set()
     # Import all the function names and comments
@@ -1476,7 +1515,7 @@ class CBinDiff:
     try:
       show_wait_box("Updating primary database...")
       for ea in to_import:
-        ea = int(ea)
+        ea = str(ea)
         new_func = self.read_function(ea)
         self.delete_function(ea)
         self.save_function(new_func)
@@ -1507,28 +1546,34 @@ class CBinDiff:
     
     self.import_items(new_items)
 
+  def re_diff(self):
+    self.best_chooser.Close()
+    self.partial_chooser.Close()
+    if self.unreliable_chooser is not None:
+      self.unreliable_chooser.Close()
+    if self.unmatched_primary is not None:
+      self.unmatched_primary.Close()
+    if self.unmatched_second is not None:
+      self.unmatched_second.Close()
+
+    ret = askyn_c(1, "Do you want to show only the new matches?")
+    if ret == -1:
+      return
+    elif ret == 0:
+      self.matched1 = set()
+      self.matched2 = set()
+
+    self.diff(self.last_diff_db)
+
   def import_all(self, items):
     try:
       self.do_import_all(items)
-      """ It causes IDA to fail. One more bug... At the moment, we're not
-          doing it... 
+      
       msg = "AUTOHIDE DATABASE\nHIDECANCEL\nAll functions were imported. Do you want to relaunch the diffing process?"
       if askyn_c(1, msg) == 1:
         self.db.execute("detach diff")
-
-        print dir(self.best_chooser)
-        self.best_chooser.Close()
-        self.partial_chooser.Close()
-        if self.unreliable_chooser is not None:
-          self.unreliable_chooser.Close()
-        if self.unmatched_primary is not None:
-          self.unmatched_primary.Close()
-        if self.unmatched_second is not None:
-          self.unmatched_second.Close()
-
-        self.best_chooser = self.partial_chooser = self.unreliable_chooser = self.unmatched_primary = self.unmatched_second = None
-        self.hide_wait_box()
-        self.diff(self.last_diff_db)"""
+        # We cannot run that code here or otherwise IDA will crash corrupting the stack
+        timer = timeraction_t(self.re_diff, None, 1000)
     except:
       log("import_all(): %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
@@ -1902,6 +1947,9 @@ class CBinDiff:
            name2 in self.matched2 or name2_1 in self.matched2:
           continue
 
+        if self.ignore_sub_names and name.startswith("sub_"):
+          continue
+
         ast1 = row[10]
         ast2 = row[11]
         pseudo1 = row[6]
@@ -2080,7 +2128,7 @@ class CBinDiff:
                 and f.tarjan_topological_sort = df.tarjan_topological_sort
                 and f.strongly_connected > 3"""
     log_refresh("Finding with heuristic 'Topological sort hash'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.4)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
@@ -2538,6 +2586,7 @@ def diff_or_export():
   x.rRelaxRatio.checked = False
   x.rExperimental.checked = False
   x.rNonIdaSubs.checked = False
+  x.rIgnoreSubNames.checked = True
   # Enable, by default, exporting only function summaries for huge dbs.
   x.rFuncSummariesOnly.checked = len(list(Functions())) > 100000
   if not x.Execute():
@@ -2553,6 +2602,7 @@ def diff_or_export():
   min_ea = x.iMinEA.value
   max_ea = x.iMaxEA.value
   ida_subs = x.rNonIdaSubs.checked == False
+  ignore_sub_names = x.rIgnoreSubNames.checked
   func_summaries_only = x.rFuncSummariesOnly.checked
 
   if file_out == file_in:
@@ -2594,6 +2644,7 @@ def diff_or_export():
     bd.min_ea = min_ea
     bd.max_ea = max_ea
     bd.ida_subs = ida_subs
+    bd.ignore_sub_names = ignore_sub_names
     bd.function_summaries_only = func_summaries_only
     if export:
       bd.export()
