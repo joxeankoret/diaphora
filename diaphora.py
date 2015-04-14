@@ -48,7 +48,7 @@ from idc import *
 from idaapi import *
 from idautils import *
 
-from PySide import QtGui, QtCore
+from PySide import QtGui
 
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 from jkutils.kfuzzy import CKoretFuzzyHashing
@@ -60,6 +60,7 @@ VERSION_VALUE = "1.0.1"
 COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
+# Constants unexported in IDA Python
 PRTYPE_SEMI=0x0008
 
 #-----------------------------------------------------------------------
@@ -301,6 +302,19 @@ class CChooser(Choose2):
 
   def OnSelectionChange(self, sel_list):
     self.selected_items = sel_list
+  
+  def OnGetLineAttr(self, n):
+    if not self.title.startswith("Unmatched"):
+      item = self.items[n]
+      ratio = float(item[5])
+      if ratio == 1:
+        return
+      else:
+        red = int(255 * (1 - ratio))
+        green = int(128 * ratio)
+        color = int("0x00%02x%02x" % (green, red), 16)
+        return [color, 0]
+    return [0xFFFFFF, 0]
 
 #-----------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
@@ -1235,6 +1249,9 @@ class CBinDiff:
     cur.close()
 
   def get_cmp_asm(self, asm):
+    if asm is None:
+      return asm
+
     tmp = asm.split(";")[0]
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
     reps = ["loc_", "sub_", "qword_", "dword_", "byte_", "word_", "off_", "unk_"]
@@ -1575,7 +1592,7 @@ class CBinDiff:
       if askyn_c(1, msg) == 1:
         self.db.execute("detach diff")
         # We cannot run that code here or otherwise IDA will crash corrupting the stack
-        timer = timeraction_t(self.re_diff, None, 1000)
+        timeraction_t(self.re_diff, None, 1000)
     except:
       log("import_all(): %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
@@ -1752,7 +1769,7 @@ class CBinDiff:
     v1 = fratio(pseudo1, pseudo2)
     if v1 == 1:
       return 1.0
-    v2 = fratio(asm1, asm2)
+    v2 = fratio(self.get_cmp_asm(asm1), self.get_cmp_asm(asm2))
     if v2 == 1:
       return 1.0
 
@@ -2212,7 +2229,6 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
 
-
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
     if self.slow_heuristics:
@@ -2239,19 +2255,6 @@ class CBinDiff:
                   and f.pseudocode_lines <= 5"""
       log_refresh("Finding with heuristic 'Small pseudo-code fuzzy AST hash'")
       self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-      sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
-                 from functions f,
-                      diff.functions df
-                where df.pseudocode is not null 
-                  and f.pseudocode is not null
-                  and f.pseudocode_lines = df.pseudocode_lines
-                  and df.pseudocode_lines <= 5"""
-      log_refresh("Finding with heuristic 'Similar small pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
     sql = """select f.address, f.name, df.address, df.name, 'Equal small pseudo-code' description,
                     f.pseudocode, df.pseudocode,
@@ -2343,7 +2346,7 @@ class CBinDiff:
                    and f.cyclomatic_complexity = df.cyclomatic_complexity
                    and f.nodes > 1 and f.edges > 0"""
       log_refresh("Finding with heuristic 'Nodes, edges, complexity and mnemonics'")
-      self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
+      self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges, complexity and prototype' description,
@@ -2390,7 +2393,7 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Nodes, edges and complexity'")
       self.add_matches_from_query_ratio(sql, choose, choose)
 
-      sql = """select f.address, f.name, df.address, df.name, 'Similar pseudo-code' description,
+      sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
                       f.pseudocode_primes, df.pseudocode_primes
