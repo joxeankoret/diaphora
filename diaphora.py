@@ -20,12 +20,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 KNOWN BUGS:
 
 [ ] The choosers aren't updated when importing stuff.
-[ ] The choosers appear in any IDA window with the focus, not on the
-    main part.
 
 TODO (for future versions):
 
+[ ] Heuristics based on switchs (SPP with get_switch_info_ex(x).ncases?).
 [ ] Instruction-level comment porting.
+[ ] Import all names (global variables, etc...).
 
 """
 
@@ -56,7 +56,7 @@ from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0.1"
+VERSION_VALUE = "1.0.2"
 COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -149,7 +149,7 @@ class CChooser(Choose2):
     if title.startswith("Unmatched in"):
       Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20] ], Choose2.CH_MULTI)
     else:
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10], ["Name 2", 20], ["Ratio", 5], ["Description", 60] ], Choose2.CH_MULTI)
+      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10], ["Name 2", 20], ["Ratio", 5], ["Description", 30] ], Choose2.CH_MULTI)
 
     if title == "Unmatched in primary":
       self.primary = False
@@ -220,9 +220,9 @@ class CChooser(Choose2):
 
   def add_item(self, item):
     if self.title.startswith("Unmatched in"):
-      self.items.append(["%08lu" % self.n, "%08x" % int(item.ea), item.vfname])
+      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
-      self.items.append(["%08lu" % self.n, "%08x" % int(item.ea), item.vfname, "%08x" % int(item.ea2), item.vfname2, "%f" % item.ratio, item.description])
+      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname, "%08x" % int(item.ea2), item.vfname2, "%f" % item.ratio, item.description])
     self.n += 1
 
   def show(self, force=False):
@@ -307,7 +307,7 @@ class CChooser(Choose2):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
       ratio = float(item[5])
-      if ratio == 1:
+      if ratio == 1 and False:
         return
       else:
         red = int(255 * (1 - ratio))
@@ -597,7 +597,8 @@ class CBinDiff:
                         strongly_connected integer,
                         loops integer,
                         rva text unique,
-                        tarjan_topological_sort text) """
+                        tarjan_topological_sort text,
+                        strongly_connected_spp text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -726,6 +727,9 @@ class CBinDiff:
     sql = "create index if not exists idx_strongly_connected on functions(strongly_connected)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_strongly_connected_spp on functions(strongly_connected_spp)"
+    cur.execute(sql)
+
     sql = "create index if not exists idx_loops on functions(loops)"
     cur.execute(sql)
 
@@ -851,10 +855,17 @@ class CBinDiff:
         succ_base = succ_block.startEA - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
+    strongly_connected_spp = 0
+
     try:
       strongly_connected = strongly_connected_components(bb_relations)
       bb_topological = robust_topological_sort(bb_topological)
       bb_topological = json.dumps(bb_topological)
+      strongly_connected_spp = 1
+      for item in strongly_connected:
+        val = len(item)
+        if val > 1:
+          strongly_connected_spp *= self.primes[val]
     except:
       # XXX: FIXME: The original implementation that we're using is 
       # recursive and can fail. We really need to create our own non
@@ -909,6 +920,7 @@ class CBinDiff:
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
+             strongly_connected_spp, 
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -950,15 +962,15 @@ class CBinDiff:
         new_props.append(prop)
 
     sql = """insert into main.functions (name, nodes, edges, indegree, outdegree, size,
-                                    instructions, mnemonics,     names, prototype,
+                                    instructions, mnemonics, names, prototype,
                                     cyclomatic_complexity, primes_value, address,
                                     comment, mangled_function, bytes_hash, pseudocode,
                                     pseudocode_lines, pseudocode_hash1, pseudocode_primes,
                                     function_flags, assembly, prototype2, pseudocode_hash2,
                                     pseudocode_hash3, strongly_connected, loops, rva,
-                                    tarjan_topological_sort)
+                                    tarjan_topological_sort, strongly_connected_spp)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -1930,7 +1942,7 @@ class CBinDiff:
       ratio = (commons * 1.) / total
       if ratio >= 0.5:
         ea2 = row[5]
-        choose.add_item(CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics small differences", ratio))
+        choose.add_item(CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics with small differences", ratio))
         self.matched1.add(name1)
         self.matched2.add(name2)
 
@@ -2147,7 +2159,20 @@ class CBinDiff:
               where f.strongly_connected = df.strongly_connected
                 and f.tarjan_topological_sort = df.tarjan_topological_sort
                 and f.strongly_connected > 3"""
-    log_refresh("Finding with heuristic 'Topological sort hash'")
+    log_refresh("Finding with heuristic 'Topological sort hash (first pass)'")
+    self.add_matches_from_query_ratio_max(sql, self.best_chooser, None, 0.99)
+
+    sql = """select f.address, f.name, df.address, df.name,
+                    'Topological sort hash' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes
+               from functions f,
+                    diff.functions df
+              where f.strongly_connected = df.strongly_connected
+                and f.tarjan_topological_sort = df.tarjan_topological_sort
+                and f.strongly_connected > 3"""
+    log_refresh("Finding with heuristic 'Topological sort hash (second pass)'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.4)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
@@ -2186,7 +2211,9 @@ class CBinDiff:
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
                   and df.strongly_connected > 1
-                  and f.nodes > 3 and df.nodes > 3"""
+                  and f.nodes > 3 and df.nodes > 3
+                  and f.strongly_connected_spp > 1
+                  and df.strongly_connected_spp > 1"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
     else:
@@ -2198,7 +2225,9 @@ class CBinDiff:
                     diff.functions df
               where f.strongly_connected = df.strongly_connected
                 and df.strongly_connected > 3
-                and f.nodes > 3 and df.nodes > 3"""
+                and f.nodes > 3 and df.nodes > 3
+                and f.strongly_connected_spp > 1
+                and df.strongly_connected_spp > 1"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
 
@@ -2214,6 +2243,28 @@ class CBinDiff:
               and f.nodes > 3 and df.nodes > 3"""
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
+
+    sql = """  select f.address, f.name, df.address, df.name, 'Strongly connected components small-primes-product' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes
+                 from functions f,
+                      diff.functions df
+                where f.strongly_connected_spp = df.strongly_connected_spp
+                  and df.strongly_connected_spp > 1"""
+    log_refresh("Finding with heuristic 'Strongly connected components small-primers-product'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
+
+    sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes
+                 from functions f,
+                      diff.functions df
+                where f.names = df.names
+                  and df.names != '[]'"""
+    log_refresh("Finding with heuristic 'Same names and order'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
 
     sql = """select f.address, f.name, df.address, df.name,
                     'Same nodes, edges and strongly connected components' description,
@@ -2656,11 +2707,25 @@ def diff_or_export():
     bd.ignore_all_names = ignore_all_names
     bd.function_summaries_only = func_summaries_only
     if export:
-      bd.export()
+      if os.getenv("DIAPHORA_PROFILE") is not None:
+        log("*** Profiling export ***")
+        import cProfile
+        profiler = cProfile.Profile()
+        profiler.runcall(bd.export)
+        profiler.print_stats(sort="time")
+      else:
+        bd.export()
       log("Database exported")
 
     if file_in != "":
-      bd.diff(file_in)
+      if os.getenv("DIAPHORA_PROFILE") is not None:
+        log("*** Profiling diff ***")
+        import cProfile
+        profiler = cProfile.Profile()
+        profiler.runcall(bd.diff, file_in)
+        profiler.print_stats(sort="time")
+      else:
+        bd.diff(file_in)
   except:
     print("Error: %s" % sys.exc_info()[1])
     traceback.print_exc()
