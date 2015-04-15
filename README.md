@@ -14,4 +14,6 @@ You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/d
 
 ## Screenshots
 
-This is a screenshot of Diaphora diffing the Microsoft bulleting MS15-034: https://pbs.twimg.com/media/CCnruP_W0AA8ksc.png:large
+This is a screenshot of Diaphora diffing the Microsoft bulleting MS15-034:
+
+![Diaphora diffing MS15-034](https://pbs.twimg.com/media/CCnruP_W0AA8ksc.png:large)
