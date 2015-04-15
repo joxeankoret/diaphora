@@ -307,13 +307,10 @@ class CChooser(Choose2):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
       ratio = float(item[5])
-      if ratio == 1 and False:
-        return
-      else:
-        red = int(255 * (1 - ratio))
-        green = int(128 * ratio)
-        color = int("0x00%02x%02x" % (green, red), 16)
-        return [color, 0]
+      red = int(255 * (1 - ratio))
+      green = int(128 * ratio)
+      color = int("0x00%02x%02x" % (green, red), 16)
+      return [color, 0]
     return [0xFFFFFF, 0]
 
 #-----------------------------------------------------------------------
@@ -2252,7 +2249,7 @@ class CBinDiff:
                       diff.functions df
                 where f.strongly_connected_spp = df.strongly_connected_spp
                   and df.strongly_connected_spp > 1"""
-    log_refresh("Finding with heuristic 'Strongly connected components small-primers-product'")
+    log_refresh("Finding with heuristic 'Strongly connected components small-primes-product'")
     self.add_matches_from_query_ratio(sql, choose, choose)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
