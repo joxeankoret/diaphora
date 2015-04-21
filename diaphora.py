@@ -503,6 +503,23 @@ MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 2
 
 #-----------------------------------------------------------------------
+# Fix for people using IDASkins with very h4x0r $tYl3z like the
+# Consonance color scheme
+HtmlDiff._styles = """ 
+table.diff {
+  font-family:Courier;
+  border:medium;
+  background-color:#ffffff;
+  color:#000000
+}
+.diff_header {background-color:#e0e0e0} 
+td.diff_header {text-align:right} 
+.diff_next {background-color:#c0c0c0} 
+.diff_add {background-color:#aaffaa} 
+.diff_chg {background-color:#ffff77} 
+.diff_sub {background-color:#ffaaaa}"""
+
+#-----------------------------------------------------------------------
 class CBinDiff:
   def __init__(self, db_name):
     self.names = dict(Names())
