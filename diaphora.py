@@ -38,6 +38,7 @@ import sqlite3
 import traceback
 
 from hashlib import md5
+from cStringIO import StringIO
 from difflib import SequenceMatcher, HtmlDiff
 
 from pygments import highlight
@@ -62,6 +63,23 @@ COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Constants unexported in IDA Python
 PRTYPE_SEMI=0x0008
+
+# Messages
+MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n<b>Relaxed ratio calculations</b> will be enabled. It will ignore many small
+modifications to functions and will match more functions with higher ratios. Enable this option if you're only interested in the
+new functionality. Disable it for patch diffing if you're interested in small modifications (like buffer sizes).
+<br><br>
+This is automatically done for diffing big databases (more than 20,000 functions in the database).<br><br>
+You can disable it by un-checking the 'Relaxed calculations of differences ratios' option."""
+
+MSG_FUNCTION_SUMMARIES_ONLY = """AUTOHIDE DATABASE\n<b>Do not export basic blocks or instructions</b> will be enabled.<br>
+It will not export the information relative to basic blocks or<br>
+instructions and 'Diff assembly in a graph' will not be available.
+<br><br>
+This is automatically done for exporting huge databases with<br>
+more than 100,000 functions.<br><br>
+You can disable it by un-checking the 'Do not export basic blocks<br>
+or instructions' option."""
 
 #-----------------------------------------------------------------------
 def log(msg):
@@ -222,7 +240,7 @@ class CChooser(Choose2):
     if self.title.startswith("Unmatched in"):
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
-      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname, "%08x" % int(item.ea2), item.vfname2, "%f" % item.ratio, item.description])
+      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname, "%08x" % int(item.ea2), item.vfname2, "%.2f" % item.ratio, item.description])
     self.n += 1
 
   def show(self, force=False):
@@ -481,6 +499,10 @@ def show_choosers():
     g_bindiff.show_choosers(True)
 
 #-----------------------------------------------------------------------
+MAX_PROCESSED_ROWS = 1000000
+TIMEOUT_LIMIT = 60 * 2
+
+#-----------------------------------------------------------------------
 class CBinDiff:
   def __init__(self, db_name):
     self.names = dict(Names())
@@ -514,12 +536,13 @@ class CBinDiff:
     ####################################################################
     # LIMITS
     #
-    # Do not run heuristics for more than 2 minutes
-    self.timeout = 60 * 2
+    # Do not run heuristics for more than 2 minutes per each 20.000
+    # functions.
+    self.timeout = TIMEOUT_LIMIT
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
-    # value.
-    self.max_processed_rows = 1000000
+    # value per each 20k functions.
+    self.max_processed_rows = MAX_PROCESSED_ROWS
     # Limits to filter the functions to export
     self.min_ea = MinEA()
     self.max_ea = MaxEA()
@@ -1257,6 +1280,30 @@ class CBinDiff:
       cdiffer.Show(src, title)
     cur.close()
 
+  def get_cmp_asm_lines(self, asm):
+    sio = StringIO(asm)
+    lines = []
+    get_cmp_asm = self.get_cmp_asm
+    for line in sio.readlines():
+      line = line.strip("\n")
+      lines.append(get_cmp_asm(line))
+    return "\n".join(lines)
+
+  def get_cmp_pseudo_lines(self, pseudo):
+    if pseudo is None:
+      return pseudo
+
+    # Remove all the comments
+    tmp = re.sub(" // .*", "", pseudo)
+
+    # Now, replace sub_, byte_, word_, dword_, loc_, etc...
+    reps = ["loc_", "sub_", "qword_", "dword_", "byte_", "word_", "off_", "unk_"]
+    for rep in reps:
+      tmp = re.sub(rep + "[a-f0-9A-F]+", rep + "XXXX", tmp)
+    tmp = re.sub("v[0-9]+", "vXXX", tmp)
+    tmp = re.sub("a[0-9]+", "aXXX", tmp)
+    return tmp
+
   def get_cmp_asm(self, asm):
     if asm is None:
       return asm
@@ -1775,15 +1822,28 @@ class CBinDiff:
       if v3 == 1:
         return 1.0
 
-    v1 = fratio(pseudo1, pseudo2)
-    if v1 == 1:
-      return 1.0
-    v2 = fratio(self.get_cmp_asm(asm1), self.get_cmp_asm(asm2))
+    v1 = 0
+    if pseudo1 is not None and pseudo2 is not None and pseudo1 != "" and pseudo2 != "":
+      tmp1 = self.get_cmp_pseudo_lines(pseudo1)
+      tmp2 = self.get_cmp_pseudo_lines(pseudo2)
+      if tmp1 == "" or tmp2 == "":
+        log("Error cleaning pseudo-code!")
+        print tmp1
+        print tmp2
+      else:
+        v1 = fratio(tmp1, tmp2)
+        v1 = float("{0:.3f}".format(v1))
+        if v1 == 1:
+          return 1.0
+
+    v2 = fratio(self.get_cmp_asm_lines(asm1), self.get_cmp_asm_lines(asm2))
+    v2 = float("{0:.3f}".format(v2))
     if v2 == 1:
       return 1.0
 
     if self.relaxed_ratio and not ast_done:
       v3 = fratio(ast1, ast2)
+      v3 = float("{0:.3f}".format(v3))
       if v3 == 1:
         return 1.0
 
@@ -1824,11 +1884,19 @@ class CBinDiff:
         continue
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
-      if r == 1:
+      if r == 1 and best != self.best_chooser:
+        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif r == 1:
         best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif r > 0.0 and unreliable is None:
+      elif r < 5 and unreliable is not None:
+        unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      else:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
         self.matched1.add(name1)
         self.matched2.add(name2)
@@ -1870,7 +1938,11 @@ class CBinDiff:
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
 
-      if r > val:
+      if r == 1 and best != self.best_chooser:
+        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif r > val:
         best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
         self.matched1.add(name1)
         self.matched2.add(name2)
@@ -2156,21 +2228,8 @@ class CBinDiff:
               where f.strongly_connected = df.strongly_connected
                 and f.tarjan_topological_sort = df.tarjan_topological_sort
                 and f.strongly_connected > 3"""
-    log_refresh("Finding with heuristic 'Topological sort hash (first pass)'")
-    self.add_matches_from_query_ratio_max(sql, self.best_chooser, None, 0.99)
-
-    sql = """select f.address, f.name, df.address, df.name,
-                    'Topological sort hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
-               from functions f,
-                    diff.functions df
-              where f.strongly_connected = df.strongly_connected
-                and f.tarjan_topological_sort = df.tarjan_topological_sort
-                and f.strongly_connected > 3"""
-    log_refresh("Finding with heuristic 'Topological sort hash (second pass)'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.4)
+    log_refresh("Finding with heuristic 'Topological sort hash'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
@@ -2208,7 +2267,7 @@ class CBinDiff:
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
                   and df.strongly_connected > 1
-                  and f.nodes > 3 and df.nodes > 3
+                  and f.nodes > 5 and df.nodes > 5
                   and f.strongly_connected_spp > 1
                   and df.strongly_connected_spp > 1"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
@@ -2222,7 +2281,7 @@ class CBinDiff:
                     diff.functions df
               where f.strongly_connected = df.strongly_connected
                 and df.strongly_connected > 3
-                and f.nodes > 3 and df.nodes > 3
+                and f.nodes > 5 and df.nodes > 5
                 and f.strongly_connected_spp > 1
                 and df.strongly_connected_spp > 1"""
       log_refresh("Finding with heuristic 'Strongly connected components'")
@@ -2367,7 +2426,7 @@ class CBinDiff:
             where f.loops = df.loops
               and df.loops > 1"""
       log_refresh("Finding with heuristic 'Loop count'")
-      self.add_matches_from_query_ratio(sql, choose, choose)
+      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Bytes hash' description,
@@ -2409,7 +2468,7 @@ class CBinDiff:
                    and f.cyclomatic_complexity = df.cyclomatic_complexity
                    and f.prototype2 != 'int()'"""
       log_refresh("Finding with heuristic 'Nodes, edges, complexity and prototype'")
-      self.add_matches_from_query_ratio(sql, choose, choose)
+      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges, complexity, in-degree and out-degree' description,
@@ -2439,7 +2498,7 @@ class CBinDiff:
                    and f.cyclomatic_complexity = df.cyclomatic_complexity
                    and f.nodes > 1 and f.edges > 0"""
       log_refresh("Finding with heuristic 'Nodes, edges and complexity'")
-      self.add_matches_from_query_ratio(sql, choose, choose)
+      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
       sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
@@ -2452,7 +2511,7 @@ class CBinDiff:
                   and f.pseudocode_lines = df.pseudocode_lines
                   and df.pseudocode_lines > 5"""
       log_refresh("Finding with heuristic 'Similar pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
 
       sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity' description,
                         f.pseudocode, df.pseudocode,
@@ -2463,7 +2522,7 @@ class CBinDiff:
                   where f.cyclomatic_complexity = df.cyclomatic_complexity
                     and f.cyclomatic_complexity >= 50"""
       log_refresh("Finding with heuristic 'Same high complexity'")
-      self.add_matches_from_query_ratio(sql, choose, choose)
+      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
   def find_unmatched(self):
     cur = self.db_cursor()
@@ -2625,7 +2684,8 @@ def remove_file(filename):
 def diff_or_export():
   global g_bindiff
 
-  if GetIdbPath() == "" or len(list(Functions())) == 0:
+  total_functions = len(list(Functions()))
+  if GetIdbPath() == "" or total_functions == 0:
     Warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
     return
 
@@ -2635,15 +2695,22 @@ def diff_or_export():
   x.rUnreliable.checked = True
   x.iMinEA.value = MinEA()
   x.iMaxEA.value = MaxEA()
-  # Disable by default slow heuristics for medium size databases
-  x.rSlowHeuristics.checked = len(list(Functions())) < 2000
-  x.rRelaxRatio.checked = False
+  x.rSlowHeuristics.checked = True
+  # Enable, by default, relaxed calculations on difference ratios for 
+  # 'big' databases (>20k functions)
+  x.rRelaxRatio.checked = total_functions > 20000
+  if total_functions > 20000:
+    Warning(MSG_RELAXED_RATIO_ENABLED)
+
   x.rExperimental.checked = False
   x.rNonIdaSubs.checked = False
   x.rIgnoreSubNames.checked = True
   x.rIgnoreAllNames.checked = False
   # Enable, by default, exporting only function summaries for huge dbs.
-  x.rFuncSummariesOnly.checked = len(list(Functions())) > 100000
+  x.rFuncSummariesOnly.checked = total_functions > 100000
+  if total_functions > 100000:
+    Warning(MSG_FUNCTION_SUMMARIES_ONLY)
+
   if not x.Execute():
     return
 
@@ -2703,6 +2770,9 @@ def diff_or_export():
     bd.ignore_sub_names = ignore_sub_names
     bd.ignore_all_names = ignore_all_names
     bd.function_summaries_only = func_summaries_only
+    bd.max_processed_rows = MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
+    bd.timeout = TIMEOUT_LIMIT * max(total_functions / 20000, 1)
+
     if export:
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling export ***")
