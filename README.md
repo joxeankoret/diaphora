@@ -19,3 +19,10 @@ You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/d
 This is a screenshot of Diaphora diffing the [Microsoft bulletin MS15-034](https://technet.microsoft.com/en-us/library/security/ms15-034.aspx):
 
 ![Diaphora diffing MS15-034](https://pbs.twimg.com/media/CCnruP_W0AA8ksc.png:large)
+
+These are some screenshots of Diaphora diffing the [Microsoft bulleting MS15-050 https://technet.microsoft.com/en-us/library/security/ms15-050.aspx], extracted from a blog post from Alex Ionescu [Analyzing MS15-050 With Diaphora http://www.alex-ionescu.com/?p=271]
+
+![Diaphora diffing MS15-050, best matches](http://www.alex-ionescu.com/wp-content/uploads/diaphora2.png)
+![Diaphora diffing MS15-050, partial matches](http://www.alex-ionescu.com/wp-content/uploads/diaphora2.png)
+![Diaphora diffing MS15-050, diffing pseudo-code](http://www.alex-ionescu.com/wp-content/uploads/diaphora1.png)
+
