@@ -1338,6 +1338,7 @@ class CBinDiff:
       return asm
 
     tmp = asm.split(";")[0]
+    tmp = asm.split(" # ")[0]
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
     for rep in CMP_REPS:
       tmp = re.sub(rep + "[a-f0-9A-F]+", "XXXX", tmp)
@@ -2523,6 +2524,40 @@ class CBinDiff:
                   and df.names != '[]'"""
     log_refresh("Finding with heuristic 'Same low complexity and names'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
+  
+    if self.slow_heuristics:
+      # For large databases (>25k functions) it may cause, for a reason,
+      # the following error: OperationalError: database or disk is full
+      sql = """ select f.address, f.name, df.address, df.name,
+                 'Same graph' description,
+                 f.pseudocode, df.pseudocode,
+                 f.assembly, df.assembly,
+                 f.pseudocode_primes, df.pseudocode_primes
+            from functions f,
+                 diff.functions df
+           where f.nodes = df.nodes 
+             and f.edges = df.edges
+             and f.indegree = df.indegree
+             and f.outdegree = df.outdegree
+             and f.cyclomatic_complexity = df.cyclomatic_complexity
+             and f.strongly_connected = df.strongly_connected
+             and f.loops = df.loops
+             and f.tarjan_topological_sort = df.tarjan_topological_sort
+             and f.strongly_connected_spp = df.strongly_connected_spp
+           order by
+                 case when f.size = df.size then 1 else 0 end +
+                 case when f.instructions = df.instructions then 1 else 0 end +
+                 case when f.mnemonics = df.mnemonics then 1 else 0 end +
+                 case when f.names = df.names then 1 else 0 end +
+                 case when f.prototype2 = df.prototype2 then 1 else 0 end +
+                 case when f.primes_value = df.primes_value then 1 else 0 end +
+                 case when f.bytes_hash = df.bytes_hash then 1 else 0 end +
+                 case when f.pseudocode_hash1 = df.pseudocode_hash1 then 1 else 0 end +
+                 case when f.pseudocode_primes = df.pseudocode_primes then 1 else 0 end +
+                 case when f.pseudocode_hash2 = df.pseudocode_hash2 then 1 else 0 end +
+                 case when f.pseudocode_hash3 = df.pseudocode_hash3 then 1 else 0 end DESC"""
+      log_refresh("Finding with heuristic 'Same graph'")
+      self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
   def find_unreliable_matches(self):
     choose = self.unreliable_chooser
