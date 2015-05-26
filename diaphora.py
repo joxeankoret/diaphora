@@ -573,6 +573,7 @@ class CBinDiff:
     
     self.total_functions1 = None
     self.total_functions2 = None
+    self.equal_callgraph = False
 
     self.kfh = CKoretFuzzyHashing()
     # With this block size we're sure it will only apply to functions
@@ -1382,6 +1383,7 @@ class CBinDiff:
     reps = ["\+[a-f0-9A-F]+h\+"]
     for rep in reps:
       tmp = re.sub(rep, "+XXXX+", tmp)
+    tmp = re.sub("\.\.[a-f0-9A-F]{8}", "XXX", tmp)
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
@@ -1755,6 +1757,7 @@ class CBinDiff:
       cg_factors2 = json.loads(rows[1][1])
 
       if cg1 == cg2:
+        self.equal_callgraph = True
         log("Callgraph signature for both databases is equal, the programs seem to be 100% equal structurally")
         Warning("Callgraph signature for both databases is equal, the programs seem to be 100% equal structurally")
       else:
@@ -1794,6 +1797,9 @@ class CBinDiff:
         choose.add_item(CChooser.Item(ea, name, ea2, name, "100% equal", 1))
         self.matched1.add(name)
         self.matched2.add(name)
+
+    if self.equal_callgraph and not self.ignore_all_names:
+      self.find_same_name(self.partial_chooser)
 
     sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description
                from functions f,
@@ -2138,56 +2144,58 @@ class CBinDiff:
     cur.close()
     return
 
+  def find_same_name(self, choose):
+    cur = self.db_cursor()
+    sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
+                    f.pseudocode, d.pseudocode,
+                    f.assembly, d.assembly,
+                    f.pseudocode_primes, d.pseudocode_primes
+               from functions f,
+                    diff.functions d
+              where (d.mangled_function = f.mangled_function
+                  or d.name = f.name)"""
+    log_refresh("Finding with heuristic 'Same name'")
+    cur.execute(sql)
+    rows = cur.fetchall()
+    cur.close()
+
+    if len(rows) > 0 and not self.all_functions_matched():
+      for row in rows:
+        ea = row[0]
+        name = row[1]
+        ea2 = row[2]
+        name1 = row[3]
+        name2 = row[4]
+        name2_1 = row[5]
+        if name in self.matched1 or name1 in self.matched1 or \
+           name2 in self.matched2 or name2_1 in self.matched2:
+          continue
+
+        if self.ignore_sub_names and name.startswith("sub_"):
+          continue
+
+        ast1 = row[10]
+        ast2 = row[11]
+        pseudo1 = row[6]
+        pseudo2 = row[7]
+        asm1 = row[8]
+        asm2 = row[9]
+        ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
+        if float(ratio) == 1.0:
+          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1))
+        else:
+          choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio))
+
+        self.matched1.add(name)
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+        self.matched2.add(name2_1)
+
   def find_matches(self):
     choose = self.partial_chooser
 
-    if not self.ignore_all_names:
-      cur = self.db_cursor()
-      sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
-                      f.pseudocode, d.pseudocode,
-                      f.assembly, d.assembly,
-                      f.pseudocode_primes, d.pseudocode_primes
-                 from functions f,
-                      diff.functions d
-                where (d.mangled_function = f.mangled_function
-                    or d.name = f.name)"""
-      log_refresh("Finding with heuristic 'Same name'")
-      cur.execute(sql)
-      rows = cur.fetchall()
-      cur.close()
-
-      if len(rows) > 0:
-        for row in rows:
-          ea = row[0]
-          name = row[1]
-          ea2 = row[2]
-          name1 = row[3]
-          name2 = row[4]
-          name2_1 = row[5]
-          if name in self.matched1 or name1 in self.matched1 or \
-             name2 in self.matched2 or name2_1 in self.matched2:
-            continue
-
-          if self.ignore_sub_names and name.startswith("sub_"):
-            continue
-
-          ast1 = row[10]
-          ast2 = row[11]
-          pseudo1 = row[6]
-          pseudo2 = row[7]
-          asm1 = row[8]
-          asm2 = row[9]
-          ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
-
-          if float(ratio) == 1.0:
-            self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1))
-          else:
-            choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio))
-
-          self.matched1.add(name)
-          self.matched1.add(name1)
-          self.matched2.add(name2)
-          self.matched2.add(name2_1)
+    if not self.equal_callgraph and not self.ignore_all_names:
+      self.find_same_name(choose)
 
     sql = """select f.address, f.name, df.address, df.name,
                     'All attributes' description,
