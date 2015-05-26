@@ -364,8 +364,7 @@ class CBinDiffExporterSetup(Form):
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
-    def_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
-    args = {'iFileSave': Form.FileInput(save=True, swidth=40, value=def_db),
+    args = {'iFileSave': Form.FileInput(save=True, swidth=40),
             'iFileOpen': Form.FileInput(open=True, swidth=40),
             'iMinEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
             'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
@@ -379,6 +378,41 @@ class CBinDiffExporterSetup(Form):
                                                "rIgnoreSubNames",
                                                "rIgnoreAllNames"))}
     Form.__init__(self, s, args)
+    
+  def set_options(self, opts):
+    if opts.file_out is not None:
+      self.iFileSave.value = opts.file_out
+    if opts.file_in is not None:
+      self.iFileOpen.value = opts.file_in
+    self.rUseDecompiler.checked = opts.use_decompiler
+    self.rUnreliable.checked = opts.unreliable
+    self.rSlowHeuristics.checked = opts.slow
+    self.rRelaxRatio.checked = opts.relax
+    self.rExperimental.checked = opts.experimental
+    self.iMinEA.value = opts.min_ea
+    self.iMaxEA.value = opts.max_ea
+    self.rNonIdaSubs.checked = opts.ida_subs == False
+    self.rIgnoreSubNames.checked = opts.ignore_sub_names
+    self.rIgnoreAllNames.checked = opts.ignore_all_names
+    self.rFuncSummariesOnly.checked = opts.func_summaries_only
+  
+  def get_options(self):
+    opts = dict(
+      file_out = self.iFileSave.value,
+      file_in  = self.iFileOpen.value,
+      use_decompiler = self.rUseDecompiler.checked,
+      unreliable = self.rUnreliable.checked,
+      slow = self.rSlowHeuristics.checked,
+      relax = self.rRelaxRatio.checked,
+      experimental = self.rExperimental.checked,
+      min_ea = self.iMinEA.value,
+      max_ea = self.iMaxEA.value,
+      ida_subs = self.rNonIdaSubs.checked == False,
+      ignore_sub_names = self.rIgnoreSubNames.checked,
+      ignore_all_names = self.rIgnoreAllNames.checked,
+      func_summaries_only = self.rFuncSummariesOnly.checked
+    )
+    return BinDiffOptions(**opts)
 
 #-----------------------------------------------------------------------
 try:
@@ -2868,8 +2902,30 @@ def remove_file(filename):
       finally:
         cur.close()
 
+class BinDiffOptions:
+  def __init__(self, **kwargs):
+    total_functions = len(list(Functions()))
+    self.file_out = kwargs.get('file_out', os.path.splitext(GetIdbPath())[0] + ".sqlite")
+    self.file_in  = kwargs.get('file_in', '')
+    self.use_decompiler = kwargs.get('use_decompiler', True)
+    self.unreliable = kwargs.get('unreliable', True)
+    self.slow = kwargs.get('slow', True)
+    # Enable, by default, relaxed calculations on difference ratios for 
+    # 'big' databases (>20k functions)
+    self.relax = kwargs.get('relax', total_functions > 20000)
+    if self.relax:
+      Warning(MSG_RELAXED_RATIO_ENABLED)
+    self.experimental = kwargs.get('experimental', False)
+    self.min_ea = kwargs.get('min_ea', MinEA())
+    self.max_ea = kwargs.get('max_ea', MaxEA())
+    self.ida_subs = kwargs.get('ida_subs', True)
+    self.ignore_sub_names = kwargs.get('ignore_sub_names', True)
+    self.ignore_all_names = kwargs.get('ignore_all_names', False)
+    # Enable, by default, exporting only function summaries for huge dbs.
+    self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
+
 #-----------------------------------------------------------------------
-def diff_or_export():
+def _diff_or_export(use_ui, **options):
   global g_bindiff
 
   total_functions = len(list(Functions()))
@@ -2877,60 +2933,33 @@ def diff_or_export():
     Warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
     return
 
-  x = CBinDiffExporterSetup()
-  x.Compile()
-  x.rUseDecompiler.checked = True
-  x.rUnreliable.checked = True
-  x.iMinEA.value = MinEA()
-  x.iMaxEA.value = MaxEA()
-  x.rSlowHeuristics.checked = True
-  # Enable, by default, relaxed calculations on difference ratios for 
-  # 'big' databases (>20k functions)
-  x.rRelaxRatio.checked = total_functions > 20000
-  if total_functions > 20000:
-    Warning(MSG_RELAXED_RATIO_ENABLED)
+  opts = BinDiffOptions(**options)
+  
+  if use_ui:
+    x = CBinDiffExporterSetup()
+    x.Compile()
+    x.set_options(opts)
 
-  x.rExperimental.checked = False
-  x.rNonIdaSubs.checked = False
-  x.rIgnoreSubNames.checked = True
-  x.rIgnoreAllNames.checked = False
-  # Enable, by default, exporting only function summaries for huge dbs.
-  x.rFuncSummariesOnly.checked = total_functions > 100000
-  if total_functions > 100000:
-    Warning(MSG_FUNCTION_SUMMARIES_ONLY)
+    if not x.Execute():
+      return
+    
+    opts = x.get_options()
 
-  if not x.Execute():
-    return
-
-  file_out = x.iFileSave.value
-  file_in  = x.iFileOpen.value
-  use_decompiler = x.rUseDecompiler.checked
-  unreliable = x.rUnreliable.checked
-  slow = x.rSlowHeuristics.checked
-  relax = x.rRelaxRatio.checked
-  experimental = x.rExperimental.checked
-  min_ea = x.iMinEA.value
-  max_ea = x.iMaxEA.value
-  ida_subs = x.rNonIdaSubs.checked == False
-  ignore_sub_names = x.rIgnoreSubNames.checked
-  ignore_all_names = x.rIgnoreAllNames.checked
-  func_summaries_only = x.rFuncSummariesOnly.checked
-
-  if file_out == file_in:
+  if opts.file_out == opts.file_in:
     Warning("Both databases are the same file!")
     return
-  elif file_out == "" or len(file_out) < 5:
+  elif opts.file_out == "" or len(opts.file_out) < 5:
     Warning("No output database selected or invalid filename. Please select a database file.")
     return
-  elif file_out[len(file_out)-4:].lower() in [".idb", ".i64"] or file_in[len(file_in)-4:].lower() in [".idb", ".i64"]:
+  elif opts.file_out[len(opts.file_out)-4:].lower() in [".idb", ".i64"] or opts.file_in[len(opts.file_in)-4:].lower() in [".idb", ".i64"]:
     Warning("One of the selected databases is an IDA database (IDB or I64), not a SQLite database!")
     return
-  elif file_out.lower().endswith(".til") or file_in.lower().endswith(".id0") or file_in.lower().endswith(".id1") or file_in.lower().endswith(".nam"):
+  elif opts.file_out.lower().endswith(".til") or opts.file_in.lower().endswith(".id0") or opts.file_in.lower().endswith(".id1") or opts.file_in.lower().endswith(".nam"):
     Warning("One of the selected databases is an IDA temporary file, not a SQLite database!")
     return
 
   export = True
-  if os.path.exists(file_out):
+  if os.path.exists(opts.file_out):
     ret = askyn_c(0, "Export database already exists. Do you want to overwrite it?")
     if ret == -1:
       log("Cancelled")
@@ -2942,22 +2971,22 @@ def diff_or_export():
     if export:
       if g_bindiff is not None:
         g_bindiff = None
-      remove_file(file_out)
-      log("Database %s removed" % repr(file_out))
+      remove_file(opts.file_out)
+      log("Database %s removed" % repr(opts.file_out))
 
   try:
-    bd = CBinDiff(file_out)
-    bd.use_decompiler_always = use_decompiler
-    bd.unreliable = unreliable
-    bd.slow_heuristics = slow
-    bd.relaxed_ratio = relax
-    bd.experimental = experimental
-    bd.min_ea = min_ea
-    bd.max_ea = max_ea
-    bd.ida_subs = ida_subs
-    bd.ignore_sub_names = ignore_sub_names
-    bd.ignore_all_names = ignore_all_names
-    bd.function_summaries_only = func_summaries_only
+    bd = CBinDiff(opts.file_out)
+    bd.use_decompiler_always = opts.use_decompiler
+    bd.unreliable = opts.unreliable
+    bd.slow_heuristics = opts.slow
+    bd.relaxed_ratio = opts.relax
+    bd.experimental = opts.experimental
+    bd.min_ea = opts.min_ea
+    bd.max_ea = opts.max_ea
+    bd.ida_subs = opts.ida_subs
+    bd.ignore_sub_names = opts.ignore_sub_names
+    bd.ignore_all_names = opts.ignore_all_names
+    bd.function_summaries_only = opts.func_summaries_only
     bd.max_processed_rows = MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
     bd.timeout = TIMEOUT_LIMIT * max(total_functions / 20000, 1)
 
@@ -2972,20 +3001,26 @@ def diff_or_export():
         bd.export()
       log("Database exported")
 
-    if file_in != "":
+    if opts.file_in != "":
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling diff ***")
         import cProfile
         profiler = cProfile.Profile()
-        profiler.runcall(bd.diff, file_in)
+        profiler.runcall(bd.diff, opts.file_in)
         profiler.print_stats(sort="time")
       else:
-        bd.diff(file_in)
+        bd.diff(opts.file_in)
   except:
     print("Error: %s" % sys.exc_info()[1])
     traceback.print_exc()
 
   return bd
+
+def diff_or_export_ui():
+  return _diff_or_export(True)
+
+def diff_or_export(**options):
+  return _diff_or_export(False, **options)
 
 if __name__ == "__main__":
   if os.getenv("DIAPHORA_AUTO") is not None:
@@ -3007,5 +3042,5 @@ if __name__ == "__main__":
 
     bd.export()
   else:
-    diff_or_export()
+    diff_or_export_ui()
 
