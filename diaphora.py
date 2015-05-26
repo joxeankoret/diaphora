@@ -536,6 +536,9 @@ class CBinDiff:
     self.open_db()
     self.matched1 = set()
     self.matched2 = set()
+    
+    self.total_functions1 = None
+    self.total_functions2 = None
 
     self.kfh = CKoretFuzzyHashing()
     # With this block size we're sure it will only apply to functions
@@ -1707,7 +1710,7 @@ class CBinDiff:
   def check_callgraph(self):
     cur = self.db_cursor()
     sql = """select callgraph_primes, callgraph_all_primes from program
-              union
+             union all
              select callgraph_primes, callgraph_all_primes from diff.program"""
     cur.execute(sql)
     rows = cur.fetchall()
@@ -1718,7 +1721,8 @@ class CBinDiff:
       cg_factors2 = json.loads(rows[1][1])
 
       if cg1 == cg2:
-        Warning("Callgraph signature for both databases is equal, the program seems to be 100% equal structurally")
+        log("Callgraph signature for both databases is equal, the programs seem to be 100% equal structurally")
+        Warning("Callgraph signature for both databases is equal, the programs seem to be 100% equal structurally")
       else:
         FACTORS_CACHE[cg1] = cg_factors1
         FACTORS_CACHE[cg2] = cg_factors2
@@ -1726,10 +1730,24 @@ class CBinDiff:
         total = sum(cg_factors1.values())
         percent = diff * 100. / total
         log("Callgraphs from both programs differ in %f%%" % percent)
+
     cur.close()
 
   def find_equal_matches(self):
     cur = self.db_cursor()
+    # Start by calculating the total number of functions in both databases
+    sql = """select count(*) total1 from functions
+             union all
+             select count(*) total2 from diff.functions"""
+    cur.execute(sql)
+    rows = cur.fetchall()
+    if len(rows) != 2:
+      Warning("Malformed database, only %d rows!" % len(rows))
+      raise Exception("Malformed database!")
+
+    self.total_functions1 = rows[0][0]
+    self.total_functions2 = rows[1][0]
+
     sql = "select address, mangled_function from (select * from functions intersect select * from diff.functions) x"
     cur.execute(sql)
     rows = cur.fetchall()
@@ -1905,7 +1923,14 @@ class CBinDiff:
     r = max(v1, v2, v3)
     return r
 
+  def all_functions_matched(self):
+    return len(self.matched1) == self.total_functions1 or \
+           len(self.matched2) == self.total_functions2
+
   def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None):
+    if self.all_functions_matched():
+      return
+
     cur = self.db_cursor()
     cur.execute(sql)
 
@@ -1959,6 +1984,9 @@ class CBinDiff:
     cur.close()
 
   def add_matches_from_query_ratio_max(self, sql, best, partial, val):
+    if self.all_functions_matched():
+      return
+    
     cur = self.db_cursor()
     cur.execute(sql)
 
@@ -2010,6 +2038,9 @@ class CBinDiff:
 
   def add_matches_from_query(self, sql, choose):
     """ Warning: use this *only* if the ratio is known to be 1.00 """
+    if self.all_functions_matched():
+      return
+    
     cur = self.db_cursor()
     cur.execute(sql)
 
