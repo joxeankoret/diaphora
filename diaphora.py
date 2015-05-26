@@ -877,6 +877,8 @@ class CBinDiff:
     
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
+    cpu_ins_list.sort()
+
     image_base = self.get_base_address()
     for block in flow:
       nodes += 1
