@@ -683,7 +683,8 @@ class CBinDiff:
                         tarjan_topological_sort text,
                         strongly_connected_spp text,
                         clean_assembly text,
-                        clean_pseudo text) """
+                        clean_pseudo text,
+                        mnemonics_spp text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -824,6 +825,9 @@ class CBinDiff:
     sql = "create index if not exists idx_tarjan_topological_sort on functions(tarjan_topological_sort)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
+    cur.execute(sql)
+
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -871,6 +875,8 @@ class CBinDiff:
     bb_topo_num = {}
     bb_topological = {}
     
+    mnemonics_spp = 1
+    cpu_ins_list = GetInstructionList()
     image_base = self.get_base_address()
     for block in flow:
       nodes += 1
@@ -884,6 +890,9 @@ class CBinDiff:
       for x in list(Heads(block.startEA, block.endEA)):
         mnem = GetMnem(x)
         disasm = GetDisasm(x)
+
+        if mnem in cpu_ins_list:
+          mnemonics_spp += self.primes[cpu_ins_list.index(mnem)]
 
         try:
           assembly[block_ea].append(disasm)
@@ -1006,7 +1015,7 @@ class CBinDiff:
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
-             strongly_connected_spp, clean_assembly, clean_pseudo,
+             strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -1055,10 +1064,10 @@ class CBinDiff:
                                     function_flags, assembly, prototype2, pseudocode_hash2,
                                     pseudocode_hash3, strongly_connected, loops, rva,
                                     tarjan_topological_sort, strongly_connected_spp,
-                                    clean_assembly, clean_pseudo)
+                                    clean_assembly, clean_pseudo, mnemonics_spp)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?)"""
+                                        ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -2330,6 +2339,19 @@ class CBinDiff:
                  and f.names = df.names
                  and f.names != '[]'"""
     log_refresh("Finding with heuristic 'Mnemonics and names'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
+
+    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'Mnemonics small-primes-product' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes
+                from functions f,
+                     diff.functions df
+               where f.mnemonics_spp = df.mnemonics_spp
+                 and f.instructions = df.instructions
+                 and df.instructions > 5"""
+    log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
     self.add_matches_from_query_ratio(sql, choose, choose)
 
     # Search using some of the previous criterias but calculating the
