@@ -237,7 +237,6 @@ class CChooser(Choose2):
   def OnDeleteLine(self, n):
     try:
       del self.items[n]
-      self.n -= 1
     except:
       pass
     return True
@@ -1046,6 +1045,10 @@ class CBinDiff:
     return rowid
 
   def save_function(self, props):
+    # XXX: FIXME: TODO: Insert relations (xrefs) between instructions
+    # too. It will allow, in the future, to create the reader for some
+    # devices...
+
     cur = self.db_cursor()
     new_props = []
     for prop in props[:len(props)-2]:
@@ -1983,7 +1986,11 @@ class CBinDiff:
       return
 
     cur = self.db_cursor()
-    cur.execute(sql)
+    try:
+      cur.execute(sql)
+    except:
+      log("Error: %s" % str(sys.exc_info()[1]))
+      return
 
     i = 0
     t = time.time()
@@ -2039,7 +2046,11 @@ class CBinDiff:
       return
     
     cur = self.db_cursor()
-    cur.execute(sql)
+    try:
+      cur.execute(sql)
+    except:
+      log("Error: %s" % str(sys.exc_info()[1]))
+      return
 
     i = 0
     t = time.time()
@@ -2093,7 +2104,11 @@ class CBinDiff:
       return
     
     cur = self.db_cursor()
-    cur.execute(sql)
+    try:
+      cur.execute(sql)
+    except:
+      log("Error: %s" % str(sys.exc_info()[1]))
+      return
 
     i = 0
     while 1:
@@ -2734,7 +2749,7 @@ class CBinDiff:
                  where f.nodes = df.nodes
                    and f.edges = df.edges
                    and f.cyclomatic_complexity = df.cyclomatic_complexity
-                   and f.nodes > 1 and f.edges > 0
+                   and f.nodes > 3 and f.edges > 2
                    and f.indegree = df.indegree
                    and f.outdegree = df.outdegree"""
       log_refresh("Finding with heuristic 'Nodes, edges, complexity, in-degree and out-degree'")
@@ -2849,7 +2864,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       cur.execute("select value from diff.version")
     except:
       log("Error: %s " % sys.exc_info()[1])
-      Warning("The selected file does not like a valid SQLite exported database!")
+      Warning("The selected file does not look like a valid SQLite exported database!")
       cur.close()
       return False
 
