@@ -366,8 +366,8 @@ class CBinDiffExporterSetup(Form):
 """
     args = {'iFileSave': Form.FileInput(save=True, swidth=40),
             'iFileOpen': Form.FileInput(open=True, swidth=40),
-            'iMinEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
-            'iMaxEA': Form.NumericInput(tp=Form.FT_ADDR, swidth=22),
+            'iMinEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
+            'iMaxEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
                                                "rUnreliable",
                                                "rNonIdaSubs",
@@ -573,7 +573,6 @@ class CBinDiff:
     self.open_db()
     self.matched1 = set()
     self.matched2 = set()
-    
     self.total_functions1 = None
     self.total_functions2 = None
     self.equal_callgraph = False
