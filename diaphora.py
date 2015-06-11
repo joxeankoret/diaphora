@@ -59,7 +59,7 @@ from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0.4"
+VERSION_VALUE = "1.0.5"
 COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -688,7 +688,9 @@ class CBinDiff:
                         strongly_connected_spp text,
                         clean_assembly text,
                         clean_pseudo text,
-                        mnemonics_spp text) """
+                        mnemonics_spp text,
+                        switches text,
+                        switches_spp text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -832,6 +834,12 @@ class CBinDiff:
     sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_switches on functions(switches)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_switches_spp on functions(switches_spp)"
+    cur.execute(sql)
+
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -878,7 +886,9 @@ class CBinDiff:
     bb_relations = {}
     bb_topo_num = {}
     bb_topological = {}
-    
+    switches = []
+    switches_spp = 1
+
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
@@ -927,6 +937,22 @@ class CBinDiff:
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
         instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2])
+
+        switch = get_switch_info_ex(x)
+        if switch:
+          switch_cases = switch.get_jtable_size()
+          switch_low_case = switch.lowcase
+          results = calc_switch_cases(x, switch)
+
+          switch_cases_values = []
+          for idx in xrange(len(results.cases)):
+            cur_case = results.cases[idx]
+            for cidx in xrange(len(cur_case)):
+              case_id = cur_case[cidx]
+              if case_id not in switch_cases_values:
+                switch_cases_values.append(case_id)
+              switches_spp *= self.primes[case_id]
+          switches.append([switch_cases, switch_cases_values])
 
       basic_blocks_data[block_ea] = instructions_data
       bb_relations[block_ea] = []
@@ -1021,7 +1047,8 @@ class CBinDiff:
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
-             strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp,
+             strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
+             switches_spp,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -1074,10 +1101,11 @@ class CBinDiff:
                                     function_flags, assembly, prototype2, pseudocode_hash2,
                                     pseudocode_hash3, strongly_connected, loops, rva,
                                     tarjan_topological_sort, strongly_connected_spp,
-                                    clean_assembly, clean_pseudo, mnemonics_spp)
+                                    clean_assembly, clean_pseudo, mnemonics_spp, switches,
+                                    switches_spp)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -1208,7 +1236,11 @@ class CBinDiff:
       except KeyError:
         callgraph_all_primes[ret] = 1
       self.save_function(props)
-    
+
+      # Try to fix bug #30
+      if i % 1000 == 0:
+        self.db.commit()
+
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
     self.export_structures()
@@ -1676,11 +1708,13 @@ class CBinDiff:
 
     try:
       show_wait_box("Updating primary database...")
+      total = 0
       for ea in to_import:
         ea = str(ea)
         new_func = self.read_function(ea)
         self.delete_function(ea)
         self.save_function(new_func)
+        total += 1
       self.db.commit()
     finally:
       hide_wait_box()
@@ -2290,6 +2324,28 @@ class CBinDiff:
     sql += postfix
     log_refresh("Finding with heuristic 'All or most attributes'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
+
+    sql = """select f.address, f.name, df.address, df.name, 'Switch structures' description,
+                f.pseudocode, df.pseudocode,
+                f.assembly, df.assembly,
+                f.pseudocode_primes, df.pseudocode_primes
+           from functions f,
+                diff.functions df
+          where f.switches = df.switches
+            and df.switches != '[]' """ + postfix
+    log_refresh("Finding with heuristic 'Switch structures'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
+
+    sql = """select f.address, f.name, df.address, df.name, 'Switch structures (unordered)' description,
+                f.pseudocode, df.pseudocode,
+                f.assembly, df.assembly,
+                f.pseudocode_primes, df.pseudocode_primes
+           from functions f,
+                diff.functions df
+          where f.switches_spp = df.switches_spp
+            and df.switches != '[]' """ + postfix
+    log_refresh("Finding with heuristic 'Switch structures (unordered)'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.4)
 
     sql = """select f.address, f.name, df.address, df.name,
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
