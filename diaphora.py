@@ -689,8 +689,7 @@ class CBinDiff:
                         clean_assembly text,
                         clean_pseudo text,
                         mnemonics_spp text,
-                        switches text,
-                        switches_spp text) """
+                        switches text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -837,9 +836,6 @@ class CBinDiff:
     sql = "create index if not exists idx_switches on functions(switches)"
     cur.execute(sql)
 
-    sql = "create index if not exists idx_switches_spp on functions(switches_spp)"
-    cur.execute(sql)
-
     cur.close()
 
   def add_program_data(self, type_name, key, value):
@@ -887,7 +883,6 @@ class CBinDiff:
     bb_topo_num = {}
     bb_topological = {}
     switches = []
-    switches_spp = 1
 
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
@@ -945,15 +940,16 @@ class CBinDiff:
           switch_low_case = switch.lowcase
           results = calc_switch_cases(x, switch)
 
-          switch_cases_values = []
-          for idx in xrange(len(results.cases)):
-            cur_case = results.cases[idx]
-            for cidx in xrange(len(cur_case)):
-              case_id = cur_case[cidx]
-              if case_id not in switch_cases_values:
-                switch_cases_values.append(case_id)
-              switches_spp *= self.primes[case_id]
-          switches.append([switch_cases, switch_cases_values])
+          try:
+            switch_cases_values = set()
+            for idx in xrange(len(results.cases)):
+              cur_case = results.cases[idx]
+              for cidx in xrange(len(cur_case)):
+                case_id = cur_case[cidx]
+                switch_cases_values.add(case_id)
+            switches.append([switch_cases, list(switch_cases_values)])
+          except:
+            log("Error reading switch for 0x%x: %s" % (f, str(sys.exc_info()[1])))
 
       basic_blocks_data[block_ea] = instructions_data
       bb_relations[block_ea] = []
@@ -1049,7 +1045,6 @@ class CBinDiff:
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             switches_spp,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -1102,11 +1097,10 @@ class CBinDiff:
                                     function_flags, assembly, prototype2, pseudocode_hash2,
                                     pseudocode_hash3, strongly_connected, loops, rva,
                                     tarjan_topological_sort, strongly_connected_spp,
-                                    clean_assembly, clean_pseudo, mnemonics_spp, switches,
-                                    switches_spp)
+                                    clean_assembly, clean_pseudo, mnemonics_spp, switches)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -2336,17 +2330,6 @@ class CBinDiff:
             and df.switches != '[]' """ + postfix
     log_refresh("Finding with heuristic 'Switch structures'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
-
-    sql = """select f.address, f.name, df.address, df.name, 'Switch structures (unordered)' description,
-                f.pseudocode, df.pseudocode,
-                f.assembly, df.assembly,
-                f.pseudocode_primes, df.pseudocode_primes
-           from functions f,
-                diff.functions df
-          where f.switches_spp = df.switches_spp
-            and df.switches != '[]' """ + postfix
-    log_refresh("Finding with heuristic 'Switch structures (unordered)'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.4)
 
     sql = """select f.address, f.name, df.address, df.name,
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
