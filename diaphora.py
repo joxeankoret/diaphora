@@ -859,7 +859,7 @@ class CBinDiff:
     f = int(f)
     func = get_func(f)
     flow = FlowChart(func)
-    size = func.endEA - func.startEA
+    size = 0
 
     if not self.ida_subs:
       # Unnamed function, ignore it...
@@ -906,6 +906,7 @@ class CBinDiff:
       for x in list(Heads(block.startEA, block.endEA)):
         mnem = GetMnem(x)
         disasm = GetDisasm(x)
+        size += ItemSize(x)
 
         if mnem in cpu_ins_list:
           mnemonics_spp += self.primes[cpu_ins_list.index(mnem)]
