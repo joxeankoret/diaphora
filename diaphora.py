@@ -639,6 +639,7 @@ class CBinDiff:
   def open_db(self):
     self.db = sqlite3.connect(self.db_name)
     self.db.text_factory = str
+    self.db.row_factory = sqlite3.Row
     self.create_schema()
 
   def db_cursor(self):
@@ -835,6 +836,12 @@ class CBinDiff:
     sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_clean_asm on functions(clean_assembly)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_clean_pseudo on functions(clean_pseudo)"
+    cur.execute(sql)
+
     sql = "create index if not exists idx_switches on functions(switches)"
     cur.execute(sql)
 
@@ -912,6 +919,7 @@ class CBinDiff:
         mnem = GetMnem(x)
         disasm = GetDisasm(x)
         size += ItemSize(x)
+        instructions += 1
 
         if mnem in cpu_ins_list:
           mnemonics_spp += self.primes[cpu_ins_list.index(mnem)]
@@ -924,12 +932,11 @@ class CBinDiff:
           else:
             assembly[block_ea] = ["loc_%x:" % x, disasm]
 
-        instructions += 1
         
         decoded_size = idaapi.decode_insn(x)
-        if idaapi.cmd.Operands[0].type in [2, 5, 6, 7]:
+        if idaapi.cmd.Operands[0].type in [o_mem, o_imm, o_far, o_near]:
           decoded_size -= idaapi.cmd.Operands[0].offb
-        if idaapi.cmd.Operands[1].type in [2, 5, 6, 7]:
+        if idaapi.cmd.Operands[1].type in [o_mem, o_imm, o_far, o_near]:
           decoded_size -= idaapi.cmd.Operands[1].offb
         if decoded_size <= 0:
           decoded_size = 1
@@ -2344,6 +2351,132 @@ class CBinDiff:
         self.matched2.add(name2)
         self.matched2.add(name2_1)
 
+  def get_function_id(self, name, primary=True):
+    cur = self.db_cursor()
+    rid = None
+    db_name = "main"
+    if not primary:
+      db_name = "diff"
+
+    try:
+      sql = "select id from %s.functions where name = ?" % db_name
+      cur.execute(sql, (name,))
+      row = cur.fetchone()
+      if row:
+        rid = row[0]
+    finally:
+      cur.close()
+    
+    return rid
+
+  def find_matches_in_hole(self, last, item, row):
+    cur = self.db_cursor()
+    try:
+
+      postfix = ""
+      if self.ignore_small_functions:
+        postfix = " and instructions > 5"
+
+      desc = "Call address sequence"
+      id1 = row["id1"]
+      id2 = row["id2"]
+      sql = """ select * from functions where id = ? """ + postfix + """
+                union all 
+                select * from diff.functions where id = ? """ + postfix
+
+      #print "LAST", last, "NEXT", id1
+      thresold = min(0.6, float(item[5]))
+      done = False
+      for j in range(0, min(10, id1 - last)):
+        if done:
+          break
+
+        for i in range(0, min(10, id1 - last)):
+          if done:
+            break
+
+          cur.execute(sql, (id1+j, id2+i))
+          rows = cur.fetchall()
+          if len(rows) == 2:
+            name1 = rows[0]["name"]
+            name2 = rows[1]["name"]
+            if name1 in self.matched1 or name2 in self.matched2:
+              continue
+
+            r = self.check_ratio(rows[0]["pseudocode_primes"], rows[1]["pseudocode_primes"], \
+                                 rows[0]["pseudocode"], rows[1]["pseudocode"], \
+                                 rows[0]["assembly"], rows[1]["assembly"])
+            if r < 0.5:
+              if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
+                r = 0.5001
+
+            #print "  HOLE SEARCH: %s against %s -> %f" % (name1, name2, r)
+            if r > thresold:
+              ea = rows[0]["address"]
+              ea2 = rows[1]["address"]
+              if r == 1:
+                self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.matched1.add(name1)
+                self.matched2.add(name2)
+              elif r > 0.5:
+                self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.matched1.add(name1)
+                self.matched2.add(name2)
+              else:
+                self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.matched1.add(name1)
+                self.matched2.add(name2)
+    finally:
+      cur.close()
+
+  def find_from_matches(self, the_items):
+    # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
+    # Rule 1: if a function A in program P is has id X and function B in
+    # the same program is has id + 1, then, in program P2, function B
+    # maybe the next function to A in P2.
+
+    log_refresh("Finding with heuristic 'Call address sequence'")
+    cur = self.db_cursor()
+    try:
+      # Create a copy of all the functions
+      cur.execute("create temporary table best_matches (id, id1, ea1, name1, id2, ea2, name2)")
+
+      # Insert each matched function into the temporary table
+      i = 0
+      for match in the_items:
+        ea1 = match[1]
+        name1 = match[2]
+        ea2 = match[3]
+        name2 = match[4]
+        id1 = self.get_function_id(name1)
+        id2 = self.get_function_id(name2, False)
+        sql = """insert into best_matches (id, id1, ea1, name1, id2, ea2, name2)
+                                   values (?, ?, ?, ?, ?, ?, ?)"""
+        cur.execute(sql, (i, id1, ea1, name1, id2, ea2, name2))
+        i += 1
+
+      last = None
+      cur.execute("select * from best_matches order by id1 asc")
+      for row in cur:
+        row_id = row["id1"]
+        if last is None or last+1 == row_id:
+          last = row_id
+          continue
+
+        item = the_items[row["id"]]
+        self.find_matches_in_hole(last, item, row)
+        last = row_id
+
+      cur.execute("drop table best_matches")
+    finally:
+      cur.close()
+
+    # Rule 2: given a match for a function F in programs P & P2, find
+    # parents and children of the matched function using the parents and
+    # children of program P.
+    # TODO: Implement it.
+    pass
+
   def find_matches(self):
     choose = self.partial_chooser
 
@@ -2647,20 +2780,17 @@ class CBinDiff:
                   and df.strongly_connected_spp > 1""" + postfix
       log_refresh("Finding with heuristic 'Strongly connected components'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
-    else:
-      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
-               from functions f,
-                    diff.functions df
-              where f.strongly_connected = df.strongly_connected
-                and df.strongly_connected > 3
-                and f.nodes > 5 and df.nodes > 5
-                and f.strongly_connected_spp > 1
-                and df.strongly_connected_spp > 1""" + postfix
-      log_refresh("Finding with heuristic 'Strongly connected components'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
+
+    sql = """  select f.address, f.name, df.address, df.name, 'Strongly connected components small-primes-product' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes
+                 from functions f,
+                      diff.functions df
+                where f.strongly_connected_spp = df.strongly_connected_spp
+                  and df.strongly_connected_spp > 1""" + postfix
+    log_refresh("Finding with heuristic 'Strongly connected components small-primes-product'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     if self.slow_heuristics:
       sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
@@ -2674,17 +2804,6 @@ class CBinDiff:
               and f.nodes > 3 and df.nodes > 3""" + postfix
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
-
-    sql = """  select f.address, f.name, df.address, df.name, 'Strongly connected components small-primes-product' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
-                 from functions f,
-                      diff.functions df
-                where f.strongly_connected_spp = df.strongly_connected_spp
-                  and df.strongly_connected_spp > 1""" + postfix
-    log_refresh("Finding with heuristic 'Strongly connected components small-primes-product'")
-    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
                       f.pseudocode, df.pseudocode,
@@ -2713,6 +2832,10 @@ class CBinDiff:
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
+    
+    # Call address sequence heuristic
+    self.find_from_matches(self.best_chooser.items)
+    self.find_from_matches(self.partial_chooser.items)
     
     postfix = ""
     if self.ignore_small_functions:
