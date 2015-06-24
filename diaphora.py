@@ -934,9 +934,9 @@ class CBinDiff:
 
         
         decoded_size = idaapi.decode_insn(x)
-        if idaapi.cmd.Operands[0].type in [o_mem, o_imm, o_far, o_near]:
+        if idaapi.cmd.Operands[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
           decoded_size -= idaapi.cmd.Operands[0].offb
-        if idaapi.cmd.Operands[1].type in [o_mem, o_imm, o_far, o_near]:
+        if idaapi.cmd.Operands[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
           decoded_size -= idaapi.cmd.Operands[1].offb
         if decoded_size <= 0:
           decoded_size = 1
@@ -1908,6 +1908,22 @@ class CBinDiff:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'Same RVA and hash' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.function_hash, df.function_hash
+                from functions f,
+                     diff.functions df
+               where df.rva = f.rva
+                 and df.bytes_hash = f.bytes_hash
+                 and df.instructions = f.instructions
+                 and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                   or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
+    log_refresh("Finding with heuristic 'Same RVA and hash'")
+    self.add_matches_from_query(sql, choose)
+
+    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Function hash' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
@@ -2708,7 +2724,7 @@ class CBinDiff:
                from functions f,
                     diff.functions df
               where df.pseudocode_primes = f.pseudocode_primes
-                and f.pseudocode_lines > 5
+                and f.pseudocode_lines > 3
                 and length(f.pseudocode_primes) >= 35""" + postfix
     log_refresh("Finding with heuristic 'Pseudo-code fuzzy AST hash'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
