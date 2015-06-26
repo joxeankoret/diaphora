@@ -888,7 +888,6 @@ class CBinDiff:
     mnems = []
     dones = {}
     names = set()
-    
     bytes_hash = []
     bytes_sum = 0
     function_hash = []
@@ -1921,6 +1920,22 @@ class CBinDiff:
                  and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
                    or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
     log_refresh("Finding with heuristic 'Same RVA and hash'")
+    self.add_matches_from_query(sql, choose)
+
+    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'Same order and hash' description,
+                     f.pseudocode, df.pseudocode,
+                     f.assembly, df.assembly,
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.function_hash, df.function_hash
+                from functions f,
+                     diff.functions df
+               where df.id = f.id
+                 and df.bytes_hash = f.bytes_hash
+                 and df.instructions = f.instructions
+                 and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                   or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
+    log_refresh("Finding with heuristic 'Same order and hash'")
     self.add_matches_from_query(sql, choose)
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
