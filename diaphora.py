@@ -544,6 +544,21 @@ def show_choosers():
     g_bindiff.show_choosers(True)
 
 #-----------------------------------------------------------------------
+def save_results():
+  global g_bindiff
+  if g_bindiff is not None:
+    filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
+    if filename is not None:
+      g_bindiff.save_results(filename)
+
+#-----------------------------------------------------------------------
+def load_results():
+  tmp_diff = CBinDiff(":memory:")
+  filename = AskFile(0, "*.diaphora", "Select the file to load diffing results")
+  if filename is not None:
+    tmp_diff.load_results(filename)
+
+#-----------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
@@ -852,6 +867,146 @@ class CBinDiff:
     cur.execute(sql)
 
     cur.close()
+
+  def attach_database(self, diff_db):
+    cur = self.db_cursor()
+    cur.execute('attach "%s" as diff' % diff_db)
+    cur.close()
+
+  def reinit(self, main_db, diff_db):
+    log("Main database '%s'." % main_db)
+    log("Diff database '%s'." % diff_db)
+
+    self.__init__(main_db)
+    self.attach_database(diff_db)
+    self.create_choosers()
+
+  def load_results(self, filename):
+    results_db = sqlite3.connect(filename)
+    results_db.text_factory = str
+    results_db.row_factory = sqlite3.Row
+
+    cur = results_db.cursor()
+    try:
+      sql = "select main_db, diff_db, version from config"
+      cur.execute(sql)
+      rows = cur.fetchall()
+      if len(rows) != 1:
+        Warning("Malformed results database!")
+        return False
+      
+      row = rows[0]
+      version = row["version"]
+      if version != VERSION_VALUE:
+        msg = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
+        Warning(msg % (version, VERSION_VALUE))
+
+      main_db = row["main_db"]
+      diff_db = row["diff_db"]
+      if not os.path.exists(main_db):
+        log("Primary database %s not found." % main_db)
+        main_db = AskFile(0, main_db, "Select the primary database path")
+        if main_db is None:
+          return False
+      
+      if not os.path.exists(diff_db):
+        diff_db = AskFile(0, main_db, "Select the secondary database path")
+        if diff_db is None:
+          return False
+      
+      self.reinit(main_db, diff_db)
+
+      sql = "select * from results"
+      cur.execute(sql)
+      for row in cur.fetchall():
+        if row["type"] == "best":
+          choose = self.best_chooser
+        elif row["type"] == "partial":
+          choose = self.partial_chooser
+        else:
+          chose = self.unreliable_chooser
+
+        ea1 = int(row["address"], 16)
+        name1 = row["name"]
+        ea2 = int(row["address2"], 16)
+        name2 = row["name2"]
+        desc = row["description"]
+        ratio = float(row["ratio"])
+        choose.add_item(CChooser.Item(ea1, name1, ea2, name2, desc, ratio))
+      
+      sql = "select * from unmatched"
+      cur.execute(sql)
+      for row in cur.fetchall():
+        if row["type"] == "primary":
+          choose = self.unmatched_primary
+        else:
+          choose = self.unmatched_second
+        choose.add_item(CChooser.Item(int(row["address"], 16), row["name"]))
+
+      log("Showing diff results.")
+      self.show_choosers()
+      return True
+    finally:
+      cur.close()
+      results_db.close()
+
+    return False
+
+  def save_results(self, filename):
+    if os.path.exists(filename):
+      os.remove(filename)
+      log("Previous diff results '%s' removed." % filename)
+
+    results_db = sqlite3.connect(filename)
+    results_db.text_factory = str
+
+    cur = results_db.cursor()
+    try:
+      sql = "create table config (main_db text, diff_db text, version text, date text)"
+      cur.execute(sql)
+
+      sql = "insert into config values (?, ?, ?, ?)"
+      cur.execute(sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime()))
+
+      sql = "create table results (type, line, address, name, address2, name2, ratio, description)"
+      cur.execute(sql)
+
+      sql = "create table unmatched (type, line, address, name)"
+      cur.execute(sql)
+
+      with results_db:
+        results_sql   = "insert into results values (?, ?, ?, ?, ?, ?, ?, ?)"
+        unmatched_sql = "insert into unmatched values (?, ?, ?, ?)"
+
+        for item in self.best_chooser.items:
+          l = list(item)
+          l.insert(0, 'best')
+          cur.execute(results_sql, l)
+        
+        for item in self.partial_chooser.items:
+          l = list(item)
+          l.insert(0, 'partial')
+          cur.execute(results_sql, l)
+
+        for item in self.unreliable_chooser.items:
+          l = list(item)
+          l.insert(0, 'unreliable')
+          cur.execute(results_sql, l)
+        
+        for item in self.unmatched_primary.items:
+          l = list(item)
+          l.insert(0, 'primary')
+          cur.execute(unmatched_sql, l)
+
+        for item in self.unmatched_second.items:
+          l = list(item)
+          l.insert(0, 'secondary')
+          cur.execute(unmatched_sql, l)
+
+      log("Diffing results saved in file '%s'." % filename)
+    finally:
+      cur.close()
+      results_db.close()
 
   def add_program_data(self, type_name, key, value):
     cur = self.db_cursor()
@@ -1656,7 +1811,7 @@ class CBinDiff:
     sql = sql % db
     cur.execute(sql, (str(ea), ))
     row = cur.fetchone()
-    if row is None:
+    if row is None or row[0] is None or row[1] is None:
       Warning("Sorry, there is no pseudo-code available for the selected function.")
     else:
       fmt = HtmlFormatter()
@@ -3124,6 +3279,9 @@ class CBinDiff:
     self.partial_chooser = CChooser("Partial matches", self)
     self.best_chooser = CChooser("Best matches", self)
 
+    self.unmatched_second = CChooser("Unmatched in secondary", self, False)
+    self.unmatched_primary = CChooser("Unmatched in primary", self, False)
+
   def show_choosers(self, force=False):
     if len(self.best_chooser.items) > 0:
       self.best_chooser.show(force)
@@ -3142,6 +3300,8 @@ class CBinDiff:
     g_bindiff = self
 
     idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Show results", "F3", 0, show_choosers, ())
+    idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Save results", None, 0, save_results, ())
+    idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Load results", None, 0, load_results, ())
     Warning("""AUTOHIDE REGISTRY\nIf you close one tab you can always re-open it by pressing F3
 or selecting Edit -> Plugins -> Diaphora - Show results""")
 
@@ -3356,9 +3516,11 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
+#-----------------------------------------------------------------------
 def diff_or_export_ui():
   return _diff_or_export(True)
 
+#-----------------------------------------------------------------------
 def diff_or_export(**options):
   return _diff_or_export(False, **options)
 
