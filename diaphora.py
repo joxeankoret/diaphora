@@ -2533,7 +2533,7 @@ class CBinDiff:
                     diff.functions d
               where (d.mangled_function = f.mangled_function
                   or d.name = f.name
-                  or ltrim(d.name, "_") = ltrim(f.name))"""
+                  or ltrim(d.name, '_') = ltrim(f.name, '_'))"""
     log_refresh("Finding with heuristic 'Same name'")
     cur.execute(sql)
     rows = cur.fetchall()
