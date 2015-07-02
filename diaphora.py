@@ -68,8 +68,8 @@ PRTYPE_SEMI=0x0008
 # Used to clean-up the pseudo-code and assembly dumps in order to get
 # better comparison ratios
 CMP_REPS = ["loc_", "sub_", "qword_", "dword_", "byte_", "word_", "off_",
-            "unk_", "stru_", "dbl_", "locret_"]
-CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr "]
+            "unk_", "stru_", "dbl_", "locret_", "short"]
+CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
 # Messages
 MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n<b>Relaxed ratio calculations</b> will be enabled. It will ignore many small
@@ -266,6 +266,7 @@ class CChooser(Choose2):
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
       self.cmd_highlight_functions = self.AddCommand("Highlight matches")
       self.cmd_unhighlight_functions = self.AddCommand("Unhighlight matches")
+      self.cmd_save_results = self.AddCommand("Save diffing results")
     elif not self.show_commands and (self.cmd_show_asm is None or force):
       self.cmd_show_asm = self.AddCommand("Show assembly")
       self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
@@ -324,6 +325,11 @@ class CChooser(Choose2):
       name2 = item[4]
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
+    elif cmd_id == self.cmd_save_results:
+      filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
+      if filename is not None:
+        self.bindiff.save_results(filename)
+
     return True
 
   def OnSelectionChange(self, sel_list):
@@ -1364,6 +1370,15 @@ class CBinDiff:
     cur.execute(sql, (primes, all_primes, md5sum))
     cur.close()
 
+  def GetLocalType(self, ordinal, flags):
+    ret = GetLocalTinfo(ordinal)
+    if ret is not None:
+      (stype, fields) = ret
+      if stype:
+        name = GetLocalTypeName(ordinal)
+        return idc_print_type(stype, fields, name, flags)
+    return ""
+
   def export_structures(self):
     # It seems that GetMaxLocalType, sometimes, can return negative
     # numbers, according to one beta-tester. My guess is that it's a bug
@@ -1375,15 +1390,23 @@ class CBinDiff:
       return
 
     for i in range(local_types):
-      try:
-        name = GetLocalTypeName(i+1)
-        definition = GetLocalType(i+1, PRTYPE_MULTI|PRTYPE_TYPE|PRTYPE_SEMI|PRTYPE_PRAGMA)
-        type_name = "struct"
-        if definition.startswith("enum"):
-          type_name = "enum"
-        self.add_program_data(type_name, name, definition)
-      except:
-        pass
+      name = GetLocalTypeName(i+1)
+      definition = self.GetLocalType(i+1, PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_SEMI | PRTYPE_PRAGMA)
+      type_name = "struct"
+      if definition.startswith("enum"):
+        type_name = "enum"
+      elif definition.startswith("union"):
+        type_name = "union"
+
+      # For some reason, IDA my return types with the form "__int128 unsigned",
+      # we want it the right way "unsigned __int128".
+      if name and name.find(" ") > -1:
+        names = name.split(" ")
+        name = names[0]
+        if names[1] == "unsigned":
+          name = "unsigned %s" % name
+
+      self.add_program_data(type_name, name, definition)
 
   def get_til_names(self):
     idb_path = GetIdbPath()
@@ -1471,7 +1494,7 @@ class CBinDiff:
     """ Try to get a valid structure definition by removing (yes) the 
         invalid characters typically found in IDA's generated structs."""
     ret = defs.replace("?", "_").replace("@", "_")
-    ret = ret.replace("$", "_")
+    ret = ret.replace("$", "_").replace("#", "_")
     return ret
 
   def import_definitions(self):
@@ -1482,10 +1505,17 @@ class CBinDiff:
 
     new_rows = set()
     for row in rows:
-      if GetStrucIdByName(row[1]) == BADADDR:
+      if row[1] is None:
+        continue
+
+      the_name = row[1].split(" ")[0]
+      if GetStrucIdByName(the_name) == BADADDR:
         type_name = "struct"
         if row[0] == "enum":
           type_name = "enum"
+        elif row[0] == "union":
+          type_name == "union"
+
         new_rows.add(row)
         ret = ParseTypes("%s %s;" % (type_name, row[1]))
         if ret != 0:
@@ -1493,7 +1523,11 @@ class CBinDiff:
 
     for i in xrange(10):
       for row in new_rows:
-        if GetStrucIdByName(row[1]) == BADADDR:
+        if row[1] is None:
+          continue
+
+        the_name = row[1].split(" ")[0]
+        if GetStrucIdByName(the_name) == BADADDR and GetStrucIdByName(row[1]) == BADADDR:
           definition = self.get_valid_definition(row[2])
           ret = ParseTypes(definition)
           if ret != 0:
@@ -1616,6 +1650,7 @@ class CBinDiff:
       tmp = re.sub(rep + "[a-f0-9A-F]+", rep + "XXXX", tmp)
     tmp = re.sub("v[0-9]+", "vXXX", tmp)
     tmp = re.sub("a[0-9]+", "aXXX", tmp)
+    tmp = re.sub("arg_[0-9]+", "aXXX", tmp)
     return tmp
 
   def get_cmp_asm(self, asm):
@@ -2262,8 +2297,6 @@ class CBinDiff:
       tmp2 = self.get_cmp_pseudo_lines(pseudo2)
       if tmp1 == "" or tmp2 == "":
         log("Error cleaning pseudo-code!")
-        print tmp1
-        print tmp2
       else:
         v1 = fratio(tmp1, tmp2)
         v1 = float(decimal_values.format(v1))
@@ -2499,7 +2532,8 @@ class CBinDiff:
                from functions f,
                     diff.functions d
               where (d.mangled_function = f.mangled_function
-                  or d.name = f.name)"""
+                  or d.name = f.name
+                  or ltrim(d.name, "_") = ltrim(f.name))"""
     log_refresh("Finding with heuristic 'Same name'")
     cur.execute(sql)
     rows = cur.fetchall()
@@ -2570,7 +2604,6 @@ class CBinDiff:
                 union all 
                 select * from diff.functions where id = ? """ + postfix
 
-      #print "LAST", last, "NEXT", id1
       thresold = min(0.6, float(item[5]))
       done = False
       for j in range(0, min(10, id1 - last)):
@@ -2596,7 +2629,6 @@ class CBinDiff:
               if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
                 r = 0.5001
 
-            #print "  HOLE SEARCH: %s against %s -> %f" % (name1, name2, r)
             if r > thresold:
               ea = rows[0]["address"]
               ea2 = rows[1]["address"]
