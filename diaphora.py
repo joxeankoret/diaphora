@@ -565,6 +565,14 @@ def load_results():
     tmp_diff.load_results(filename)
 
 #-----------------------------------------------------------------------
+def import_definitions():
+  tmp_diff = CBinDiff(":memory:")
+  filename = AskFile(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
+  if filename is not None:
+    if askyn_c(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
+      tmp_diff.import_definitions_only(filename)
+
+#-----------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
@@ -879,13 +887,20 @@ class CBinDiff:
     cur.execute('attach "%s" as diff' % diff_db)
     cur.close()
 
-  def reinit(self, main_db, diff_db):
+  def reinit(self, main_db, diff_db, create_choosers=True):
     log("Main database '%s'." % main_db)
     log("Diff database '%s'." % diff_db)
 
     self.__init__(main_db)
     self.attach_database(diff_db)
-    self.create_choosers()
+
+    if create_choosers:
+      self.create_choosers()
+
+  def import_definitions_only(self, filename):
+    self.reinit(":memory:", filename)
+    self.import_til()
+    self.import_definitions()
 
   def load_results(self, filename):
     results_db = sqlite3.connect(filename)
@@ -1027,6 +1042,9 @@ class CBinDiff:
     demangled_name = Demangle(name, INF_SHORT_DN)
     if demangled_name is not None:
       name = demangled_name
+    
+    # Always remove the first underscores
+    name = name.lstrip("_")
 
     f = int(f)
     func = get_func(f)
@@ -2532,8 +2550,7 @@ class CBinDiff:
                from functions f,
                     diff.functions d
               where (d.mangled_function = f.mangled_function
-                  or d.name = f.name
-                  or ltrim(d.name, '_') = ltrim(f.name, '_'))"""
+                  or d.name = f.name)"""
     log_refresh("Finding with heuristic 'Same name'")
     cur.execute(sql)
     rows = cur.fetchall()
