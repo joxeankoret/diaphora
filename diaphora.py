@@ -35,6 +35,7 @@ import sys
 import time
 import json
 import decimal
+import difflib
 import sqlite3
 import traceback
 
@@ -58,7 +59,7 @@ from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0.6"
+VERSION_VALUE = "1.0.7"
 COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -749,7 +750,8 @@ class CBinDiff:
                 disasm text,
                 mnemonic text,
                 comment1 text,
-                comment2 text) """
+                comment2 text,
+                name text) """
     cur.execute(sql)
 
     sql = "create index if not exists idx_instructions_address on instructions (address)"
@@ -945,7 +947,7 @@ class CBinDiff:
         elif row["type"] == "partial":
           choose = self.partial_chooser
         else:
-          chose = self.unreliable_chooser
+          choose = self.unreliable_chooser
 
         ea1 = int(row["address"], 16)
         name1 = row["name"]
@@ -1130,6 +1132,7 @@ class CBinDiff:
         if op_value == BADADDR:
           op_value = GetOperandValue(x, 0)
 
+        tmp_name = None
         if op_value != BADADDR and op_value in self.names:
           tmp_name = self.names[op_value]
           demangled_name = Demangle(name, INF_SHORT_DN)
@@ -1138,14 +1141,21 @@ class CBinDiff:
           if not tmp_name.startswith("sub_"):
             names.add(tmp_name)
 
+        l = list(CodeRefsFrom(x, 0))
+        if len(l) == 0:
+          l = DataRefsFrom(x)
+
+        for ref in l:
+          if ref in self.names:
+            tmp_name = self.names[ref]
+
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
-        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2])
+        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name])
 
         switch = get_switch_info_ex(x)
         if switch:
           switch_cases = switch.get_jtable_size()
-          switch_low_case = switch.lowcase
           results = calc_switch_cases(x, switch)
 
           # It seems that IDAPython for idaq64 has some bug when reading
@@ -1332,16 +1342,16 @@ class CBinDiff:
     if not self.function_summaries_only:
       bb_data, bb_relations = props[len(props)-2:]
       instructions_ids = {}
-      sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2)
-                                 values (?, ?, ?, ?, ?)"""
+      sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2, name)
+                                 values (?, ?, ?, ?, ?, ?)"""
       self_get_instruction_id = self.get_instruction_id
       cur_execute = cur.execute
       for key in bb_data:
         for insn in bb_data[key]:
-          addr, mnem, disasm, cmt1, cmt2 = insn
+          addr, mnem, disasm, cmt1, cmt2, name = insn
           db_id = self_get_instruction_id(str(addr))
           if db_id is None:
-            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2))
+            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name))
             db_id = cur.lastrowid
           instructions_ids[addr] = db_id
 
@@ -1916,6 +1926,116 @@ class CBinDiff:
     cur.execute("delete from functions where address = ?", (ea, ))
     cur.close()
 
+  def is_auto_generated(self, name):
+    for rep in CMP_REPS:
+      if name.startswith(rep):
+        return True
+    return False
+
+  def import_instruction(self, ins_data1, ins_data2):
+    # XXX: TODO: Looking to the API, I have no idea how to put a comment
+    # in a line instead of for the whole function so, skipping for now
+    # importing also instruction level comments.
+
+    ea1 = self.get_base_address() + int(ins_data1[0])
+    ea2, cmt1, cmt2, name = ins_data2
+
+    data_refs = list(DataRefsFrom(ea1))
+    if len(data_refs) > 0:
+      # Global variables
+      tmp_ea = data_refs[0]
+      if tmp_ea in self.names:
+        curr_name = self.names[tmp_ea]
+        if curr_name != name and self.is_auto_generated(curr_name):
+          MakeName(tmp_ea, name)
+      else:
+        MakeName(tmp_ea, name)
+    else:
+      # Functions
+      code_refs = list(CodeRefsFrom(ea1, 0))
+      if len(code_refs) > 0:
+        curr_name = GetFunctionName(code_refs[0])
+        if curr_name != name and self.is_auto_generated(curr_name):
+          MakeName(code_refs[0], name)
+
+  def import_instruction_level(self, ea1, ea2, cur):
+    cur = self.db_cursor()
+    try:
+      # Check first if we have any importable items
+      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name
+                  from diff.function_bblocks bb,
+                       diff.functions f,
+                       diff.bb_instructions bbi,
+                       diff.instructions ins
+                 where f.id = bb.function_id
+                   and bbi.basic_block_id = bb.basic_block_id
+                   and ins.id = bbi.instruction_id
+                   and f.address = ?
+                   and (ins.comment1 is not null
+                     or ins.comment2 is not null
+                     or ins.name is not null) """
+      cur.execute(sql, (ea2,))
+      import_rows = cur.fetchall()
+      if len(import_rows) > 0:
+        import_syms = {}
+        for row in import_rows:
+          import_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"]]
+
+        # Check in the current database
+        sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name
+                    from function_bblocks bb,
+                         functions f,
+                         bb_instructions bbi,
+                         instructions ins
+                   where f.id = bb.function_id
+                     and bbi.basic_block_id = bb.basic_block_id
+                     and ins.id = bbi.instruction_id
+                     and f.address = ?"""
+        cur.execute(sql, (ea1,))
+        match_rows = cur.fetchall()
+        if len(match_rows) > 0:
+          matched_syms = {}
+          for row in match_rows:
+            matched_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"]]
+
+          # We have 'something' to import, let's diff the assembly...
+          sql = """select *
+                     from (
+                   select assembly, 1
+                     from functions
+                    where address = ?
+                      and assembly is not null
+             union select assembly, 2
+                     from diff.functions
+                    where address = ?
+                      and assembly is not null)
+                    order by 2 asc"""
+          cur.execute(sql, (ea1, ea2))
+          diff_rows = cur.fetchall()
+          if len(diff_rows) > 0:
+            lines1 = diff_rows[0][0]
+            lines2 = diff_rows[1][0]
+
+            matches = {}
+            to_line = None
+            change_line = None
+            diff_list = difflib.ndiff(lines1.splitlines(1), lines2.splitlines(1))
+            for x in diff_list:
+              if x[0] == '-':
+                change_line = x[1:].strip(" ").strip("\r").strip("\n")
+              elif x[0] == '+':
+                to_line = x[1:].strip(" ").strip("\r").strip("\n")
+              elif change_line is not None:
+                change_line = None
+
+              if to_line is not None and change_line is not None:
+                matches[change_line] = to_line
+                if change_line in matched_syms and to_line in import_syms:
+                  self.import_instruction(matched_syms[change_line], import_syms[to_line])
+                change_line = to_line = None
+    finally:
+      cur.close()
+
   def do_import_one(self, ea1, ea2, force = False):
     cur = self.db_cursor()
     sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
@@ -1942,6 +2062,8 @@ class CBinDiff:
 
       if flags is not None:
         SetFunctionFlags(ea1, flags)
+
+      self.import_instruction_level(ea1, ea2, cur)
 
     cur.close()
 
