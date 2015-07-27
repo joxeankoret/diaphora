@@ -751,7 +751,8 @@ class CBinDiff:
                 mnemonic text,
                 comment1 text,
                 comment2 text,
-                name text) """
+                name text,
+                type text) """
     cur.execute(sql)
 
     sql = "create index if not exists idx_instructions_address on instructions (address)"
@@ -1145,13 +1146,15 @@ class CBinDiff:
         if len(l) == 0:
           l = DataRefsFrom(x)
 
+        tmp_type = None
         for ref in l:
           if ref in self.names:
             tmp_name = self.names[ref]
+            tmp_type = GetType(ref)
 
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
-        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name])
+        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name, tmp_type])
 
         switch = get_switch_info_ex(x)
         if switch:
@@ -1342,16 +1345,16 @@ class CBinDiff:
     if not self.function_summaries_only:
       bb_data, bb_relations = props[len(props)-2:]
       instructions_ids = {}
-      sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2, name)
-                                 values (?, ?, ?, ?, ?, ?)"""
+      sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2, name, type)
+                                 values (?, ?, ?, ?, ?, ?, ?)"""
       self_get_instruction_id = self.get_instruction_id
       cur_execute = cur.execute
       for key in bb_data:
         for insn in bb_data[key]:
-          addr, mnem, disasm, cmt1, cmt2, name = insn
+          addr, mnem, disasm, cmt1, cmt2, name, mtype = insn
           db_id = self_get_instruction_id(str(addr))
           if db_id is None:
-            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name))
+            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name, mtype))
             db_id = cur.lastrowid
           instructions_ids[addr] = db_id
 
@@ -1933,36 +1936,51 @@ class CBinDiff:
     return False
 
   def import_instruction(self, ins_data1, ins_data2):
-    # XXX: TODO: Looking to the API, I have no idea how to put a comment
-    # in a line instead of for the whole function so, skipping for now
-    # importing also instruction level comments.
-
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, name = ins_data2
+    ea2, cmt1, cmt2, name, mtype = ins_data2
+    # Set instruction level comments
+    if cmt1 is not None and get_cmt(ea1, 0) is None:
+      set_cmt(ea1, cmt1, 0)
 
+    if cmt2 is not None and get_cmt(ea1, 1) is None:
+      set_cmt(ea1, cmt1, 1)
+
+    tmp_ea = None
+    set_type = False
     data_refs = list(DataRefsFrom(ea1))
     if len(data_refs) > 0:
       # Global variables
       tmp_ea = data_refs[0]
       if tmp_ea in self.names:
-        curr_name = self.names[tmp_ea]
+        curr_name = GetTrueName(tmp_ea)
         if curr_name != name and self.is_auto_generated(curr_name):
           MakeName(tmp_ea, name)
+          set_type = False
       else:
         MakeName(tmp_ea, name)
+        set_type = True
     else:
       # Functions
       code_refs = list(CodeRefsFrom(ea1, 0))
+      if len(code_refs) == 0:
+        code_refs = list(CodeRefsFrom(ea1, 1))
+
       if len(code_refs) > 0:
-        curr_name = GetFunctionName(code_refs[0])
+        curr_name = GetTrueName(code_refs[0])
         if curr_name != name and self.is_auto_generated(curr_name):
           MakeName(code_refs[0], name)
+          tmp_ea = code_refs[0]
+          set_type = True
+
+    if tmp_ea is not None and set_type:
+      if mtype is not None and GetType(tmp_ea) != mtype:
+        SetType(tmp_ea, mtype)
 
   def import_instruction_level(self, ea1, ea2, cur):
     cur = self.db_cursor()
     try:
       # Check first if we have any importable items
-      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name
+      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
                   from diff.function_bblocks bb,
                        diff.functions f,
                        diff.bb_instructions bbi,
@@ -1979,10 +1997,10 @@ class CBinDiff:
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"]]
+          import_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"]]
 
         # Check in the current database
-        sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name
+        sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
                     from function_bblocks bb,
                          functions f,
                          bb_instructions bbi,
@@ -1996,7 +2014,7 @@ class CBinDiff:
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"]]
+            matched_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
