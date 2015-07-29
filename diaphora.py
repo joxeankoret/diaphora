@@ -1124,7 +1124,7 @@ class CBinDiff:
 
         curr_bytes = GetManyBytes(x, decoded_size)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
-            print 'Failed to read %d bytes at [%08x]' % (decoded_size, x)
+            log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
             continue
         
         bytes_hash.append(curr_bytes)
