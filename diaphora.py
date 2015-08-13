@@ -428,7 +428,7 @@ class CBinDiffExporterSetup(Form):
 try:
   class CAstVisitor(ctree_visitor_t):
     def __init__(self, cfunc):
-      self.primes = primes(1024)
+      self.primes = primes(4096)
       ctree_visitor_t.__init__(self, CV_FAST)
       self.cfunc = cfunc
       self.primes_hash = 1
@@ -598,7 +598,7 @@ td.diff_header {text-align:right}
 class CBinDiff:
   def __init__(self, db_name):
     self.names = dict(Names())
-    self.primes = primes(1024*1024)
+    self.primes = primes(2048*2048)
     self.db_name = db_name
     self.open_db()
     self.matched1 = set()
@@ -1051,6 +1051,10 @@ class CBinDiff:
 
     f = int(f)
     func = get_func(f)
+    if not func:
+      log("Cannot get a function object for 0x%x" % f)
+      return False
+
     flow = FlowChart(func)
     size = 0
 
@@ -1248,7 +1252,12 @@ class CBinDiff:
     cc = edges - nodes + 2
     proto = self.guess_type(f)
     proto2 = GetType(f)
-    prime = str(self.primes[cc])
+    try:
+      prime = str(self.primes[cc])
+    except:
+      log("Cyclomatic complexity too big: 0x%x -> %d" % (f, cc))
+      prime = 0
+
     comment = GetFunctionCmt(f, 1)
     bytes_hash = md5("".join(bytes_hash)).hexdigest()
     function_hash = md5("".join(function_hash)).hexdigest()
