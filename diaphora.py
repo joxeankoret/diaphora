@@ -1480,7 +1480,7 @@ class CBinDiff:
     t = time.time()
     for func in func_list:
       i += 1
-      if i % (total_funcs/100) == 0 or i == 1:
+      if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
         elapsed = time.time() - t
         remaining = (elapsed / i) * (total_funcs - i)
