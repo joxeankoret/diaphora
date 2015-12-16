@@ -51,7 +51,15 @@ from idc import *
 from idaapi import *
 from idautils import *
 
-from PySide import QtGui
+try:
+  # In versions prior to IDA 6.9 PySide is used...
+  from PySide import QtGui
+  QtWidgets = QtGui
+  is_pyqt5 = False
+except ImportError:
+  # ...while in IDA 6.9, they switched to PyQt5
+  from PyQt5 import QtCore, QtGui, QtWidgets
+  is_pyqt5 = True
 
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 from jkutils.kfuzzy import CKoretFuzzyHashing
@@ -134,7 +142,10 @@ def ast_ratio(ast1, ast2):
 #-----------------------------------------------------------------------
 class CHtmlViewer(PluginForm):
   def OnCreate(self, form):
-    self.parent = self.FormToPySideWidget(form)
+    if is_pyqt5:
+      self.parent = self.FormToPyQtWidget(form)
+    else:
+      self.parent = self.FormToPySideWidget(form)
     self.PopulateForm()
     
     self.browser = None
@@ -142,10 +153,10 @@ class CHtmlViewer(PluginForm):
     return 1
   
   def PopulateForm(self):
-    self.layout = QtGui.QVBoxLayout()
-    self.browser = QtGui.QTextBrowser()
+    self.layout = QtWidgets.QVBoxLayout()
+    self.browser = QtWidgets.QTextBrowser()
     # Commented for now
-    #self.browser.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+    #self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
     self.browser.setHtml(self.text)
     self.browser.setReadOnly(True)
     self.browser.setFontWeight(12)
@@ -3634,6 +3645,13 @@ class BinDiffOptions:
     self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
 
 #-----------------------------------------------------------------------
+def is_ida_file(filename):
+  filename = filename.lower()
+  return filename.endswith(".idb") or filename.endswith(".i64") or \
+         filename.endswith(".til") or filename.endswith(".id0") or \
+         filename.endswith(".id1") or filename.endswith(".nam")
+
+#-----------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
   global g_bindiff
 
@@ -3660,11 +3678,8 @@ def _diff_or_export(use_ui, **options):
   elif opts.file_out == "" or len(opts.file_out) < 5:
     Warning("No output database selected or invalid filename. Please select a database file.")
     return
-  elif opts.file_out[len(opts.file_out)-4:].lower() in [".idb", ".i64"] or opts.file_in[len(opts.file_in)-4:].lower() in [".idb", ".i64"]:
-    Warning("One of the selected databases is an IDA database (IDB or I64), not a SQLite database!")
-    return
-  elif opts.file_out.lower().endswith(".til") or opts.file_in.lower().endswith(".id0") or opts.file_in.lower().endswith(".id1") or opts.file_in.lower().endswith(".nam"):
-    Warning("One of the selected databases is an IDA temporary file, not a SQLite database!")
+  elif is_ida_file(opts.file_in) or is_ida_file(opts.file_out):
+    Warning("One of the selected databases is an IDA file. Please select only database files")
     return
 
   export = True

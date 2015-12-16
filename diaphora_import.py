@@ -23,7 +23,12 @@ import diaphora
 reload(diaphora)
 from diaphora import import_definitions
 
-from PySide import QtGui
+try:
+  # In versions prior to IDA 6.9 PySide is used...
+  from PySide import QtGui
+except ImportError:
+  # ...while in IDA 6.9, they switched to PyQt5
+  from PyQt5 import QtGui
 
 #-----------------------------------------------------------------------
 def main():
