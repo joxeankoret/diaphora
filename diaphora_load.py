@@ -23,10 +23,12 @@ import diaphora
 reload(diaphora)
 from diaphora import load_results
 
-try:
+from idaapi import IDA_SDK_VERSION
+
+if IDA_SDK_VERSION < 690:
   # In versions prior to IDA 6.9 PySide is used...
   from PySide import QtGui
-except ImportError:
+else:
   # ...while in IDA 6.9, they switched to PyQt5
   from PyQt5 import QtGui
 

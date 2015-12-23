@@ -51,12 +51,12 @@ from idc import *
 from idaapi import *
 from idautils import *
 
-try:
+if IDA_SDK_VERSION < 690:
   # In versions prior to IDA 6.9 PySide is used...
   from PySide import QtGui
   QtWidgets = QtGui
   is_pyqt5 = False
-except ImportError:
+else:
   # ...while in IDA 6.9, they switched to PyQt5
   from PyQt5 import QtCore, QtGui, QtWidgets
   is_pyqt5 = True
