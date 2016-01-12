@@ -742,6 +742,7 @@ class CBinDiff:
                 id integer primary key,
                 callgraph_primes text,
                 callgraph_all_primes text,
+                processor text,
                 md5sum text
               ) """
     cur.execute(sql)
@@ -1420,8 +1421,11 @@ class CBinDiff:
 
   def save_callgraph(self, primes, all_primes, md5sum):
     cur = self.db_cursor()
-    sql = "insert into main.program (callgraph_primes, callgraph_all_primes, md5sum) values (?, ?, ?)"
-    cur.execute(sql, (primes, all_primes, md5sum))
+    sql = "insert into main.program (callgraph_primes, callgraph_all_primes, processor, md5sum) values (?, ?, ?, ?)"
+    proc = idaapi.get_idp_name()
+    if BADADDR == 0xFFFFFFFFFFFFFFFF:
+      proc += "64"
+    cur.execute(sql, (primes, all_primes, proc, md5sum))
     cur.close()
 
   def GetLocalType(self, ordinal, flags):
