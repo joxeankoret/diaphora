@@ -611,6 +611,7 @@ class CBinDiff:
     self.names = dict(Names())
     self.primes = primes(2048*2048)
     self.db_name = db_name
+    self.db = None
     self.open_db()
     self.matched1 = set()
     self.matched2 = set()
@@ -678,6 +679,7 @@ class CBinDiff:
       self.db_close()
 
   def open_db(self):
+    print "DATABASE NAME", self.db_name
     self.db = sqlite3.connect(self.db_name)
     self.db.text_factory = str
     self.db.row_factory = sqlite3.Row
@@ -3758,8 +3760,9 @@ if __name__ == "__main__":
     use_decompiler = os.getenv("DIAPHORA_USE_DECOMPILER")
     if use_decompiler is None:
       use_decompiler = False
-    bd = CBinDiff(file_out)
-    bd.use_decompiler_always = use_decompiler
+
+    idaapi.autoWait()
+
     if os.path.exists(file_out):
       if g_bindiff is not None:
         g_bindiff = None
@@ -3767,7 +3770,10 @@ if __name__ == "__main__":
       remove_file(file_out)
       log("Database %s removed" % repr(file_out))
 
+    bd = CBinDiff(file_out)
+    bd.use_decompiler_always = use_decompiler
     bd.export()
+
+    idaapi.qexit(0)
   else:
     diff_or_export_ui()
-
