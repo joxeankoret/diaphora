@@ -98,6 +98,16 @@ You can disable it by un-checking the 'Do not export basic blocks<br>
 or instructions' option."""
 
 #-----------------------------------------------------------------------
+def result_iter(cursor, arraysize=1000):
+  'An iterator that uses fetchmany to keep memory usage down'
+  while True:
+    results = cursor.fetchmany(arraysize)
+    if not results:
+      break
+    for result in results:
+      yield result
+
+#-----------------------------------------------------------------------
 def log(msg):
   Message("[%s] %s\n" % (time.asctime(), msg))
 
@@ -956,7 +966,7 @@ class CBinDiff:
 
       sql = "select * from results"
       cur.execute(sql)
-      for row in cur.fetchall():
+      for row in result_iter(cur):
         if row["type"] == "best":
           choose = self.best_chooser
         elif row["type"] == "partial":
@@ -974,7 +984,7 @@ class CBinDiff:
       
       sql = "select * from unmatched"
       cur.execute(sql)
-      for row in cur.fetchall():
+      for row in result_iter(cur):
         if row["type"] == "primary":
           choose = self.unmatched_primary
         else:
@@ -1566,7 +1576,7 @@ class CBinDiff:
     cur = self.db_cursor()
     sql = "select type, name, value from diff.program_data where type in ('structure', 'struct', 'enum')"
     cur.execute(sql)
-    rows = cur.fetchall()
+    rows = result_iter(cur)
 
     new_rows = set()
     for row in rows:
@@ -1741,6 +1751,11 @@ class CBinDiff:
     # Strip any possible remaining white-space character at the end of
     # the cleaned-up instruction
     tmp = re.sub("[ \t\n]+$", "", tmp)
+
+    # Replace aName_XXX with aXXX, useful to ignore small changes in 
+    # offsets created to strings
+    tmp = re.sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
+
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
@@ -1855,7 +1870,7 @@ class CBinDiff:
                order by bb.address asc""" % (db, db, db, db, db)
     cur.execute(sql, (ea1,))
     bb_blocks = {}
-    for row in cur.fetchall():
+    for row in result_iter(cur):
       bb_ea = str(int(row[0]))
       ins_ea = str(int(row[1]))
       mnem = row[2]
@@ -1886,7 +1901,7 @@ class CBinDiff:
                and f.address = ?
              order by 1 asc, 2 asc""" % (db, db, db, db, db, db)
     cur.execute(sql, (ea1, ))
-    rows = cur.fetchall()
+    rows = result_iter(cur)
 
     bb_relations = {}
     for row in rows:
@@ -2692,7 +2707,7 @@ class CBinDiff:
                  and f.cyclomatic_complexity = df.cyclomatic_complexity
                  and f.names != '[]'"""
     cur.execute(sql)
-    rows = cur.fetchall()
+    rows = result_iter(cur)
     for row in rows:
       ea = str(row[0])
       name1 = row[1]
