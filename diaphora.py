@@ -1532,7 +1532,7 @@ class CBinDiff:
       self.save_function(props)
 
       # Try to fix bug #30
-      if i % (total_funcs/10) == 0:
+      if total_funcs > 10 and i % (total_funcs/10) == 0:
         self.db.commit()
 
     md5sum = GetInputFileMD5()
