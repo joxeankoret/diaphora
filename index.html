@@ -1,41 +1,44 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
+
   <head>
-    <meta charset="utf-8">
+    <meta charset='utf-8'>
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Diaphora by joxeankoret</title>
+    <meta name="description" content="Diaphora : A Free and Open Source Program Diffing Tool">
 
-    <link rel="stylesheet" href="stylesheets/styles.css">
-    <link rel="stylesheet" href="stylesheets/github-light.css">
-    <script src="javascripts/scale.fix.js"></script>
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Diaphora</title>
   </head>
+
   <body>
-    <div class="wrapper">
-      <header>
-        <h1 class="header">Diaphora</h1>
-        <p class="header">A Free and Open Source Program Diffing Tool</p>
 
-        <ul>
-          <li class="download"><a class="buttons" href="https://github.com/joxeankoret/diaphora/zipball/master">Download ZIP</a></li>
-          <li class="download"><a class="buttons" href="https://github.com/joxeankoret/diaphora/tarball/master">Download TAR</a></li>
-          <li><a class="buttons github" href="https://github.com/joxeankoret/diaphora">View On GitHub</a></li>
-        </ul>
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/joxeankoret/diaphora">View on GitHub</a>
 
-        <p class="header">This project is maintained by <a class="header name" href="https://github.com/joxeankoret">joxeankoret</a></p>
+          <h1 id="project_title">Diaphora</h1>
+          <h2 id="project_tagline">A Free and Open Source Program Diffing Tool</h2>
 
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/joxeankoret/diaphora/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/joxeankoret/diaphora/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
 
-      </header>
-      <section>
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
         <h3>
 <a id="welcome" class="anchor" href="#welcome" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Welcome!</h3>
 
-<p>Diaphora (διαφορά, Greek for 'difference') is a program diffing plugin for IDA Pro, similar to Zynamics Bindiff or the FOSS counterparts DarunGrim, TurboDiff, etc... It was released during SyScan 2015.</p>
+<p>Diaphora (διαφορά, Greek for 'difference') is a Free and Open Source program diffing tool, that integrates as a plugin for IDA Pro, similar to Zynamics Bindiff or the other FOSS counterparts DarunGrim, TurboDiff, etc... It was released during SyScan 2015.</p>
 
 <p>Diaphora, in its current version, integrates with IDA Pro and exclusively works with this tool (which happens to be the de-facto reverse engineering tool). However support for <a href="https://github.com/radare/radare2">Radare2</a> will be added in the future. For more details, please check the tutorial in the <a href="https://github.com/joxeankoret/diaphora/tree/master/doc">doc</a> directory in the <a href="https://github.com/joxeankoret/diaphora">GitHub project page</a>.</p>
+
+<p>As with any open source project, any form of help for this project is highly appreciated. You can submit your own patches, make feature requests, report bugs or <a href="#Donate">donate</a> to support the development of Diaphora.</p>
 
 <h2>
 <a id="getting-help-and-asking-for-features" class="anchor" href="#getting-help-and-asking-for-features" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Getting help and asking for features</h2>
@@ -48,13 +51,6 @@
 <a id="documentation" class="anchor" href="#documentation" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Documentation</h2>
 
 <p>You can take a look to the <a href="https://github.com/joxeankoret/diaphora/blob/master/doc/diaphora_help.pdf">tutorial</a>.</p>
-
-<h2>
-<a id="donate" class="anchor" href="#donate" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Donate</h2>
-
-<p>If you like Diaphora, you can make a donation to support the development of this project.</p>
-
-<p><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L"><img src="https://www.paypalobjects.com/webstatic/en_US/btn/btn_donate_cc_147x47.png"></a></p>
 
 <h2>
 <a id="screenshots" class="anchor" href="#screenshots" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Screenshots</h2>
@@ -93,15 +89,37 @@
 </ul>
 
 <h2>
+<a id="donate" class="anchor" href="#donate" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Donate</h2>
+
+<p>If you like Diaphora, you can make a donation to support the development of this project.</p>
+
+<p><a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L"><img src="https://www.paypalobjects.com/webstatic/en_US/btn/btn_donate_cc_147x47.png"></a></p>
+
+<h2>
+<a id="list-of-diaphora-supporters" class="anchor" href="#list-of-diaphora-supporters" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>List of Diaphora supporters</h2>
+
+<p>Below are all the Diaphora supporters who generously made a donation:</p>
+
+<ul>
+<li>Quynh Nguyen, author of <a href="http://www.capstone-engine.org">Capstone</a>.</li>
+</ul>
+
+<h2>
 <a id="contact" class="anchor" href="#contact" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Contact</h2>
 
 <p>You can contact the author, Joxean Koret, by sending an e-mail to admin AT joxeankoret DOT com.</p>
       </section>
-      <footer>
-        <p><small>Hosted on <a href="https://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Diaphora maintained by <a href="https://github.com/joxeankoret">joxeankoret</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
       </footer>
     </div>
-    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
-		
+
+    
+
   </body>
 </html>
