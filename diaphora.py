@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015, Joxean Koret
+Copyright (c) 2015-2016, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -68,7 +68,7 @@ from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
 
 #-----------------------------------------------------------------------
 VERSION_VALUE = "1.0.8"
-COPYRIGHT_VALUE="Copyright(c) 2015 Joxean Koret"
+COPYRIGHT_VALUE="Copyright(c) 2015-2016 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Constants unexported in IDA Python
@@ -180,13 +180,15 @@ class CHtmlViewer(PluginForm):
 #-----------------------------------------------------------------------
 class CChooser(Choose2):
   class Item:
-    def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0):
+    def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
       self.ea = ea
       self.vfname = name
       self.ea2 = ea2
       self.vfname2 = name2
       self.description = desc
       self.ratio = ratio
+      self.bb1 = bb1
+      self.bb2 = bb2
       self.cmd_import_selected = None
       self.cmd_import_all = None
       self.cmd_import_all_funcs = None
@@ -196,9 +198,10 @@ class CChooser(Choose2):
 
   def __init__(self, title, bindiff, show_commands=True):
     if title.startswith("Unmatched in"):
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20] ], Choose2.CH_MULTI)
+      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose2.CH_MULTI)
     else:
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10], ["Name 2", 20], ["Ratio", 5], ["Description", 30] ], Choose2.CH_MULTI)
+      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
+                                      ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose2.CH_MULTI)
 
     if title == "Unmatched in primary":
       self.primary = False
@@ -270,7 +273,9 @@ class CChooser(Choose2):
     if self.title.startswith("Unmatched in"):
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
-      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname, "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio, item.description])
+      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
+                         "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio,
+                         "%d" % item.bb1, "%d" % item.bb2, item.description])
     self.n += 1
 
   def show(self, force=False):
@@ -689,7 +694,6 @@ class CBinDiff:
       self.db_close()
 
   def open_db(self):
-    print "DATABASE NAME", self.db_name
     self.db = sqlite3.connect(self.db_name)
     self.db.text_factory = str
     self.db.row_factory = sqlite3.Row
@@ -980,8 +984,11 @@ class CBinDiff:
         name2 = row["name2"]
         desc = row["description"]
         ratio = float(row["ratio"])
-        choose.add_item(CChooser.Item(ea1, name1, ea2, name2, desc, ratio))
-      
+        bb1 = int(row["bb1"])
+        bb2 = int(row["bb2"])
+
+        choose.add_item(CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2))
+
       sql = "select * from unmatched"
       cur.execute(sql)
       for row in result_iter(cur):
@@ -1016,14 +1023,14 @@ class CBinDiff:
       sql = "insert into config values (?, ?, ?, ?)"
       cur.execute(sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime()))
 
-      sql = "create table results (type, line, address, name, address2, name2, ratio, description)"
+      sql = "create table results (type, line, address, name, address2, name2, ratio, description, bb1, bb2)"
       cur.execute(sql)
 
       sql = "create table unmatched (type, line, address, name)"
       cur.execute(sql)
 
       with results_db:
-        results_sql   = "insert into results values (?, ?, ?, ?, ?, ?, ?, ?)"
+        results_sql   = "insert into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         unmatched_sql = "insert into unmatched values (?, ?, ?, ?)"
 
         for item in self.best_chooser.items:
@@ -2286,7 +2293,7 @@ class CBinDiff:
     self.total_functions1 = rows[0][0]
     self.total_functions2 = rows[1][0]
 
-    sql = "select address, mangled_function from (select * from functions intersect select * from diff.functions) x"
+    sql = "select address, mangled_function, nodes from (select * from functions intersect select * from diff.functions) x"
     cur.execute(sql)
     rows = cur.fetchall()
     choose = self.best_chooser
@@ -2295,7 +2302,9 @@ class CBinDiff:
         name = row[1]
         ea = LocByName(name)
         ea2 = row[0]
-        choose.add_item(CChooser.Item(ea, name, ea2, name, "100% equal", 1))
+        nodes = int(row[2])
+
+        choose.add_item(CChooser.Item(ea, name, ea2, name, "100% equal", 1, nodes, nodes))
         self.matched1.add(name)
         self.matched2.add(name)
 
@@ -2305,10 +2314,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Same RVA and hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
-                     f.function_hash, df.function_hash
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where df.rva = f.rva
@@ -2321,10 +2327,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Same order and hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
-                     f.function_hash, df.function_hash
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where df.id = f.id
@@ -2337,10 +2340,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Function hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
-                     f.function_hash, df.function_hash
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.function_hash = df.function_hash 
@@ -2350,9 +2350,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Bytes hash and names' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.bytes_hash = df.bytes_hash
@@ -2364,9 +2362,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Bytes hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.bytes_hash = df.bytes_hash
@@ -2379,9 +2375,7 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Bytes sum' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.bytes_sum = df.bytes_sum
@@ -2390,7 +2384,8 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Bytes sum'")
     self.add_matches_from_query(sql, choose)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description
+    sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.pseudocode = df.pseudocode
@@ -2410,7 +2405,8 @@ class CBinDiff:
                      'Same cleaned up assembly or pseudo-code' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.clean_assembly = df.clean_assembly
@@ -2421,7 +2417,8 @@ class CBinDiff:
     sql = """select f.address, f.name, df.address, df.name, 'Same address, nodes, edges and mnemonics' description,
                     f.pseudocode, df.pseudocode,
                     f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.rva = df.rva
@@ -2577,25 +2574,27 @@ class CBinDiff:
       asm2 = row[8]
       ast1 = row[9]
       ast2 = row[10]
+      bb1 = int(row[11])
+      bb2 = int(row[12])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
       if r == 1:
-        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       elif r >= 0.5:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       elif r < 5 and unreliable is not None:
-        unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       else:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
 
@@ -2637,6 +2636,8 @@ class CBinDiff:
       asm2 = row[8]
       ast1 = row[9]
       ast2 = row[10]
+      bb1 = int(row[11])
+      bb2 = int(row[12])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
@@ -2644,15 +2645,15 @@ class CBinDiff:
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
 
       if r == 1:
-        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       elif r > val:
-        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       elif partial is not None:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
 
@@ -2684,11 +2685,13 @@ class CBinDiff:
       ea2 = row[2]
       name2 = row[3]
       desc = row[4]
+      bb1 = int(row[5])
+      bb2 = int(row[6])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
-      choose.add_item(CChooser.Item(ea, name1, ea2, name2, desc, 1))
+      choose.add_item(CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2))
       self.matched1.add(name1)
       self.matched2.add(name2)
     cur.close()
@@ -2698,7 +2701,8 @@ class CBinDiff:
     
     # Same basic blocks, edges, mnemonics, etc... but different names
     sql = """ select distinct f.address ea, f.name name1, df.name name2,
-                     f.names, df.names, df.address ea2
+                     f.names, df.names, df.address ea2,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -2716,6 +2720,9 @@ class CBinDiff:
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
+      bb1 = int(row[6])
+      bb2 = int(row[7])
+
       s1 = set(json.loads(row[3]))
       s2 = set(json.loads(row[4]))
       total = max(len(s1), len(s2))
@@ -2723,7 +2730,7 @@ class CBinDiff:
       ratio = (commons * 1.) / total
       if ratio >= 0.5:
         ea2 = row[5]
-        item = CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics with small differences", ratio)
+        item = CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics with small differences", ratio, bb1, bb2)
         if ratio == 1.0:
           self.best_chooser.add_item(item)
         else:
@@ -2739,7 +2746,8 @@ class CBinDiff:
     sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
                     f.pseudocode, d.pseudocode,
                     f.assembly, d.assembly,
-                    f.pseudocode_primes, d.pseudocode_primes
+                    f.pseudocode_primes, d.pseudocode_primes,
+                    f.nodes bb1, d.nodes bb2
                from functions f,
                     diff.functions d
               where d.mangled_function = f.mangled_function
@@ -2766,15 +2774,18 @@ class CBinDiff:
 
         ast1 = row[10]
         ast2 = row[11]
+        bb1 = row[12]
+        bb2 = row[13]
+
         pseudo1 = row[6]
         pseudo2 = row[7]
         asm1 = row[8]
         asm2 = row[9]
         ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
         if float(ratio) == 1.0:
-          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1))
+          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1, bb1, bb2))
         else:
-          choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio))
+          choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio, bb1, bb2))
 
         self.matched1.add(name)
         self.matched1.add(name1)
@@ -2842,16 +2853,19 @@ class CBinDiff:
             if r > thresold:
               ea = rows[0]["address"]
               ea2 = rows[1]["address"]
+              bb1 = rows[0]["nodes"]
+              bb2 = rows[1]["nodes"]
+
               if r == 1:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
               elif r > 0.5:
-                self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
               else:
-                self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r))
+                self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
     finally:
@@ -2916,7 +2930,8 @@ class CBinDiff:
                     'All attributes' description,
                     f.pseudocode, df.pseudocode,
                     f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.nodes = df.nodes 
@@ -2944,7 +2959,8 @@ class CBinDiff:
                     'Most attributes' description,
                     f.pseudocode, df.pseudocode,
                     f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
                where f.nodes = df.nodes 
@@ -2970,7 +2986,8 @@ class CBinDiff:
     sql = """select f.address, f.name, df.address, df.name, 'Switch structures' description,
                 f.pseudocode, df.pseudocode,
                 f.assembly, df.assembly,
-                f.pseudocode_primes, df.pseudocode_primes
+                f.pseudocode_primes, df.pseudocode_primes,
+                f.nodes bb1, df.nodes bb2
            from functions f,
                 diff.functions df
           where f.switches = df.switches
@@ -2982,7 +2999,8 @@ class CBinDiff:
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.rva = df.rva
@@ -2998,7 +3016,8 @@ class CBinDiff:
                      'Import names hash',
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.names = df.names
@@ -3013,7 +3032,8 @@ class CBinDiff:
                      'Nodes, edges, complexity, mnemonics, names, prototype2, in-degree and out-degree',
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -3032,7 +3052,8 @@ class CBinDiff:
                      'Nodes, edges, complexity, mnemonics, names and prototype2' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -3049,7 +3070,8 @@ class CBinDiff:
                      'Mnemonics and names' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.mnemonics = df.mnemonics
@@ -3063,7 +3085,8 @@ class CBinDiff:
                      'Mnemonics small-primes-product' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
                where f.mnemonics_spp = df.mnemonics_spp
@@ -3081,7 +3104,8 @@ class CBinDiff:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy hash' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_hash1 = f.pseudocode_hash1
@@ -3093,7 +3117,8 @@ class CBinDiff:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy hash' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_hash1 = f.pseudocode_hash1""" + postfix
@@ -3103,7 +3128,8 @@ class CBinDiff:
     sql = """select distinct f.address, f.name, df.address, df.name, 'Similar pseudo-code and names' description,
                     f.pseudocode, df.pseudocode,
                     f.pseudocode, df.pseudocode,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.pseudocode_lines = df.pseudocode_lines
@@ -3119,7 +3145,8 @@ class CBinDiff:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Similar pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.pseudocode, df.pseudocode,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.pseudocode_lines = df.pseudocode_lines
@@ -3132,7 +3159,8 @@ class CBinDiff:
     sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy AST hash' description,
                     f.pseudocode, df.pseudocode,
                     f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where df.pseudocode_primes = f.pseudocode_primes
@@ -3145,7 +3173,8 @@ class CBinDiff:
       sql = """  select distinct f.address, f.name, df.address, df.name, 'Partial pseudo-code fuzzy hash' description,
                         f.pseudocode, df.pseudocode,
                         f.assembly, df.assembly,
-                        f.pseudocode_primes, df.pseudocode_primes
+                        f.pseudocode_primes, df.pseudocode_primes,
+                        f.nodes bb1, df.nodes bb2
                    from functions f,
                         diff.functions df
                   where substr(df.pseudocode_hash1, 1, 16) = substr(f.pseudocode_hash1, 1, 16)
@@ -3158,7 +3187,8 @@ class CBinDiff:
                     'Topological sort hash' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.strongly_connected = df.strongly_connected
@@ -3170,7 +3200,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -3184,7 +3215,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -3198,7 +3230,8 @@ class CBinDiff:
       sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
@@ -3212,7 +3245,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Strongly connected components small-primes-product' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected_spp = df.strongly_connected_spp
@@ -3224,7 +3258,8 @@ class CBinDiff:
       sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
                   f.pseudocode, df.pseudocode,
                   f.assembly, df.assembly,
-                  f.pseudocode_primes, df.pseudocode_primes
+                  f.pseudocode_primes, df.pseudocode_primes,
+                  f.nodes bb1, df.nodes bb2
              from functions f,
                   diff.functions df
             where f.loops = df.loops
@@ -3236,7 +3271,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -3248,7 +3284,8 @@ class CBinDiff:
                     'Same nodes, edges and strongly connected components' description,
                      f.pseudocode, df.pseudocode,
                      f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes
+                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.nodes = df.nodes
@@ -3273,7 +3310,8 @@ class CBinDiff:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.pseudocode, df.pseudocode,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.pseudocode_lines = df.pseudocode_lines
@@ -3286,7 +3324,8 @@ class CBinDiff:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Small pseudo-code fuzzy AST hash' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_primes = f.pseudocode_primes
@@ -3297,7 +3336,8 @@ class CBinDiff:
     sql = """select f.address, f.name, df.address, df.name, 'Equal small pseudo-code' description,
                     f.pseudocode, df.pseudocode,
                     f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes
+                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.pseudocode = df.pseudocode
@@ -3309,7 +3349,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -3323,7 +3364,8 @@ class CBinDiff:
     sql = """  select f.address, f.name, df.address, df.name, 'Same low complexity and names' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -3340,7 +3382,8 @@ class CBinDiff:
                  'Same graph' description,
                  f.pseudocode, df.pseudocode,
                  f.assembly, df.assembly,
-                 f.pseudocode_primes, df.pseudocode_primes
+                 f.pseudocode_primes, df.pseudocode_primes,
+                 f.nodes bb1, df.nodes bb2
             from functions f,
                  diff.functions df
            where f.nodes = df.nodes 
@@ -3378,7 +3421,8 @@ class CBinDiff:
       sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
@@ -3389,7 +3433,8 @@ class CBinDiff:
       sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
                   f.pseudocode, df.pseudocode,
                   f.assembly, df.assembly,
-                  f.pseudocode_primes, df.pseudocode_primes
+                  f.pseudocode_primes, df.pseudocode_primes,
+                  f.nodes bb1, df.nodes bb2
              from functions f,
                   diff.functions df
             where f.loops = df.loops
@@ -3401,7 +3446,8 @@ class CBinDiff:
                        'Nodes, edges, complexity and mnemonics' description,
                        f.pseudocode, df.pseudocode,
                        f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes
+                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -3416,7 +3462,8 @@ class CBinDiff:
                        'Nodes, edges, complexity and prototype' description,
                        f.pseudocode, df.pseudocode,
                        f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes
+                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -3431,7 +3478,8 @@ class CBinDiff:
                        'Nodes, edges, complexity, in-degree and out-degree' description,
                        f.pseudocode, df.pseudocode,
                        f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes
+                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -3447,7 +3495,8 @@ class CBinDiff:
                        'Nodes, edges and complexity' description,
                        f.pseudocode, df.pseudocode,
                        f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes
+                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -3460,7 +3509,8 @@ class CBinDiff:
       sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
                       f.pseudocode, df.pseudocode,
                       f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
                 where df.pseudocode is not null 
@@ -3473,7 +3523,8 @@ class CBinDiff:
       sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity' description,
                         f.pseudocode, df.pseudocode,
                         f.assembly, df.assembly,
-                        f.pseudocode_primes, df.pseudocode_primes
+                        f.pseudocode_primes, df.pseudocode_primes,
+                        f.nodes bb1, df.nodes bb2
                    from functions f,
                         diff.functions df
                   where f.cyclomatic_complexity = df.cyclomatic_complexity
