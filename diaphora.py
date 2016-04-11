@@ -16,18 +16,6 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-KNOWN BUGS:
-
-[ ] The choosers aren't updated when importing stuff.
-
-TODO (for future versions):
-
-[ ] Heuristics based on the call graph. This is why BinDiff was/is the
-    best one.
-[ ] Instruction-level comment porting.
-[ ] Import all names (global variables, etc...).
-
 """
 
 import os
@@ -2392,7 +2380,8 @@ class CBinDiff:
                 and df.pseudocode is not null
                 and f.pseudocode_lines >= 5 """ + postfix + """
               union
-             select f.address, f.name, df.address, df.name, 'Equal assembly' description
+             select f.address, f.name, df.address, df.name, 'Equal assembly' description,
+                    f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.assembly = df.assembly
