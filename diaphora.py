@@ -642,6 +642,7 @@ class CBinDiff:
     self.unmatched_primary = None
 
     self.last_diff_db = None
+    self.re_cache = {}
     
     ####################################################################
     # LIMITS
@@ -1500,35 +1501,41 @@ class CBinDiff:
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
     t = time.time()
-    for func in func_list:
-      i += 1
-      if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
-        line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
-        elapsed = time.time() - t
-        remaining = (elapsed / i) * (total_funcs - i)
 
-        m, s = divmod(remaining, 60)
-        h, m = divmod(m, 60)
-        m_elapsed, s_elapsed = divmod(elapsed, 60)
-        h_elapsed, m_elapsed = divmod(m_elapsed, 60)
+    self.db.execute("PRAGMA synchronous = OFF")
+    with self.db as db:
+      for func in func_list:
+        i += 1
+        if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
+          line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
+          elapsed = time.time() - t
+          remaining = (elapsed / i) * (total_funcs - i)
 
-        replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
+          m, s = divmod(remaining, 60)
+          h, m = divmod(m, 60)
+          m_elapsed, s_elapsed = divmod(elapsed, 60)
+          h_elapsed, m_elapsed = divmod(m_elapsed, 60)
 
-      props = self.read_function(func)
-      if props == False:
-        continue
+          replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
-      ret = props[11]
-      callgraph_primes *= decimal.Decimal(ret)
-      try:
-        callgraph_all_primes[ret] += 1
-      except KeyError:
-        callgraph_all_primes[ret] = 1
-      self.save_function(props)
+        props = self.read_function(func)
+        if props == False:
+          continue
 
-      # Try to fix bug #30
-      if total_funcs > 10 and i % (total_funcs/10) == 0:
-        self.db.commit()
+        ret = props[11]
+        callgraph_primes *= decimal.Decimal(ret)
+        try:
+          callgraph_all_primes[ret] += 1
+        except KeyError:
+          callgraph_all_primes[ret] = 1
+        self.save_function(props)
+
+        # Try to fix bug #30 and, also, try to speed up operations as
+        # doing a commit every 10 functions, as before, is overkill.
+        if total_funcs > 1000 and i % (total_funcs/1000) == 0:
+          db.commit()
+          db.execute("PRAGMA synchronous = OFF")
+          db.execute("BEGIN transaction")
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
@@ -1708,19 +1715,26 @@ class CBinDiff:
       lines.append(get_cmp_asm(line))
     return "\n".join(lines)
 
+  def re_sub(self, text, repl, string):
+    if text not in self.re_cache:
+      self.re_cache[text] = re.compile(text, flags=re.IGNORECASE)
+
+    re_obj = self.re_cache[text]
+    return re_obj.sub(repl, string)
+
   def get_cmp_pseudo_lines(self, pseudo):
     if pseudo is None:
       return pseudo
 
     # Remove all the comments
-    tmp = re.sub(" // .*", "", pseudo)
+    tmp = self.re_sub(" // .*", "", pseudo)
 
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
     for rep in CMP_REPS:
-      tmp = re.sub(rep + "[a-f0-9A-F]+", rep + "XXXX", tmp)
-    tmp = re.sub("v[0-9]+", "vXXX", tmp)
-    tmp = re.sub("a[0-9]+", "aXXX", tmp)
-    tmp = re.sub("arg_[0-9]+", "aXXX", tmp)
+      tmp = self.re_sub(rep + "[a-f0-9A-F]+", rep + "XXXX", tmp)
+    tmp = self.re_sub("v[0-9]+", "vXXX", tmp)
+    tmp = self.re_sub("a[0-9]+", "aXXX", tmp)
+    tmp = self.re_sub("arg_[0-9]+", "aXXX", tmp)
     return tmp
 
   def get_cmp_asm(self, asm):
@@ -1732,24 +1746,24 @@ class CBinDiff:
     tmp = tmp.split(" # ")[0]
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
     for rep in CMP_REPS:
-      tmp = re.sub(rep + "[a-f0-9A-F]+", "XXXX", tmp)
+      tmp = self.re_sub(rep + "[a-f0-9A-F]+", "XXXX", tmp)
 
     # Remove dword ptr, byte ptr, etc...
     for rep in CMP_REMS:
-      tmp = re.sub(rep + "[a-f0-9A-F]+", "", tmp)
+      tmp = self.re_sub(rep + "[a-f0-9A-F]+", "", tmp)
 
     reps = ["\+[a-f0-9A-F]+h\+"]
     for rep in reps:
-      tmp = re.sub(rep, "+XXXX+", tmp)
-    tmp = re.sub("\.\.[a-f0-9A-F]{8}", "XXX", tmp)
+      tmp = self.re_sub(rep, "+XXXX+", tmp)
+    tmp = self.re_sub("\.\.[a-f0-9A-F]{8}", "XXX", tmp)
     
     # Strip any possible remaining white-space character at the end of
     # the cleaned-up instruction
-    tmp = re.sub("[ \t\n]+$", "", tmp)
+    tmp = self.re_sub("[ \t\n]+$", "", tmp)
 
     # Replace aName_XXX with aXXX, useful to ignore small changes in 
     # offsets created to strings
-    tmp = re.sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
+    tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
 
     return tmp
 
@@ -3257,18 +3271,6 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
-                      f.nodes bb1, df.nodes bb2
-                 from functions f,
-                      diff.functions df
-                where f.names = df.names
-                  and df.names != '[]'""" + postfix
-    log_refresh("Finding with heuristic 'Same names and order'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
-
     sql = """select f.address, f.name, df.address, df.name,
                     'Same nodes, edges and strongly connected components' description,
                      f.pseudocode, df.pseudocode,
@@ -3294,6 +3296,19 @@ class CBinDiff:
     postfix = ""
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
+
+    # XXX: FIXME: This heuristic looks wrong. The order is not being verified any where!!!
+    sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
+                      f.pseudocode, df.pseudocode,
+                      f.assembly, df.assembly,
+                      f.pseudocode_primes, df.pseudocode_primes,
+                      f.nodes bb1, df.nodes bb2
+                 from functions f,
+                      diff.functions df
+                where f.names = df.names
+                  and df.names != '[]'""" + postfix
+    log_refresh("Finding with heuristic 'Same names and order'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
 
     if self.slow_heuristics:
       sql = """select distinct f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
