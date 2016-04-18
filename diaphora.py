@@ -1324,7 +1324,7 @@ class CBinDiff:
     row = cur.fetchone()
     rowid = None
     if row is not None:
-      rowid = row[0]
+      rowid = row["id"]
     cur.close()
     return rowid
 
@@ -1335,7 +1335,7 @@ class CBinDiff:
     row = cur.fetchone()
     rowid = None
     if row is not None:
-      rowid = row[0]
+      rowid = row["id"]
     cur.close()
     return rowid
 
@@ -1563,7 +1563,7 @@ class CBinDiff:
     sql = "select name from diff.program_data where type = 'til'"
     cur.execute(sql)
     for row in cur.fetchall():
-      LoadTil(row[0])
+      LoadTil(row["name"])
     cur.close()
     Wait()
 
@@ -1582,30 +1582,30 @@ class CBinDiff:
 
     new_rows = set()
     for row in rows:
-      if row[1] is None:
+      if row["name"] is None:
         continue
 
-      the_name = row[1].split(" ")[0]
+      the_name = row["name"].split(" ")[0]
       if GetStrucIdByName(the_name) == BADADDR:
         type_name = "struct"
-        if row[0] == "enum":
+        if row["type"] == "enum":
           type_name = "enum"
-        elif row[0] == "union":
+        elif row["type"] == "union":
           type_name == "union"
 
         new_rows.add(row)
-        ret = ParseTypes("%s %s;" % (type_name, row[1]))
+        ret = ParseTypes("%s %s;" % (type_name, row["name"]))
         if ret != 0:
           pass
 
     for i in xrange(10):
       for row in new_rows:
-        if row[1] is None:
+        if row["name"] is None:
           continue
 
-        the_name = row[1].split(" ")[0]
-        if GetStrucIdByName(the_name) == BADADDR and GetStrucIdByName(row[1]) == BADADDR:
-          definition = self.get_valid_definition(row[2])
+        the_name = row["name"].split(" ")[0]
+        if GetStrucIdByName(the_name) == BADADDR and GetStrucIdByName(row["name"]) == BADADDR:
+          definition = self.get_valid_definition(row["value"])
           ret = ParseTypes(definition)
           if ret != 0:
             pass
@@ -1668,13 +1668,13 @@ class CBinDiff:
       row2 = rows[1]
 
       html_diff = HtmlDiff()
-      asm1 = self.prettify_asm(row1[1])
-      asm2 = self.prettify_asm(row2[1])
-      buf1 = "%s proc near\n%s\n%s endp" % (row1[2], asm1, row1[2])
-      buf2 = "%s proc near\n%s\n%s endp" % (row2[2], asm2, row2[2])
+      asm1 = self.prettify_asm(row1["assembly"])
+      asm2 = self.prettify_asm(row2["assembly"])
+      buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
+      buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
       
-      title = "Diff assembler %s - %s" % (row1[2], row2[2])
+      title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
@@ -1697,11 +1697,11 @@ class CBinDiff:
       fmt = HtmlFormatter()
       fmt.noclasses = True
       fmt.linenos = True
-      asm = self.prettify_asm(row[1])
+      asm = self.prettify_asm(row["assembly"])
       final_asm = "; %s\n%s proc near\n%s\n%s endp\n"
-      final_asm = final_asm % (row[0], row[2], asm, row[2])
+      final_asm = final_asm % (row["prototype"], row["name"], asm, row["name"])
       src = highlight(final_asm, NasmLexer(), fmt)
-      title = "Assembly for %s" % row[2]
+      title = "Assembly for %s" % row["name"]
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
     cur.close()
@@ -1865,7 +1865,8 @@ class CBinDiff:
       db = "diff"
     cur = self.db_cursor()
     dones = set()
-    sql = """ select bb.address, ins.address, ins.mnemonic, ins.disasm
+    sql = """ select bb.address bb_address, ins.address ins_address,
+                     ins.mnemonic ins_mnem, ins.disasm ins_disasm
                 from %s.function_bblocks fb,
                      %s.bb_instructions bbins,
                      %s.instructions ins,
@@ -1880,10 +1881,10 @@ class CBinDiff:
     cur.execute(sql, (ea1,))
     bb_blocks = {}
     for row in result_iter(cur):
-      bb_ea = str(int(row[0]))
-      ins_ea = str(int(row[1]))
-      mnem = row[2]
-      dis = row[3]
+      bb_ea = str(int(row["bb_address"]))
+      ins_ea = str(int(row["ins_address"]))
+      mnem = row["ins_mnem"]
+      dis = row["ins_disasm"]
 
       if ins_ea in dones:
         continue
@@ -1896,10 +1897,10 @@ class CBinDiff:
 
     sql = """ select (select address
                       from %s.basic_blocks
-               where id = bbr.parent_id),
+               where id = bbr.parent_id) ea1,
                    (select address
                       from %s.basic_blocks
-               where id = bbr.child_id)
+               where id = bbr.child_id) ea2
               from %s.bb_relations bbr,
                    %s.function_bblocks fbs,
                    %s.basic_blocks bbs,
@@ -1914,8 +1915,8 @@ class CBinDiff:
 
     bb_relations = {}
     for row in rows:
-      bb_ea1 = str(row[0])
-      bb_ea2 = str(row[1])
+      bb_ea1 = str(row["ea1"])
+      bb_ea2 = str(row["ea2"])
       try:
         bb_relations[bb_ea1].add(bb_ea2)
       except KeyError:
@@ -1935,15 +1936,15 @@ class CBinDiff:
     sql = sql % db
     cur.execute(sql, (str(ea), ))
     row = cur.fetchone()
-    if row is None or row[0] is None or row[1] is None:
+    if row is None or row["prototype"] is None or row["pseudocode"] is None:
       Warning("Sorry, there is no pseudo-code available for the selected function.")
     else:
       fmt = HtmlFormatter()
       fmt.noclasses = True
       fmt.linenos = True
-      func = "%s\n%s" % (row[0], row[1])
+      func = "%s\n%s" % (row["prototype"], row["pseudocode"])
       src = highlight(func, CppLexer(), fmt)
-      title = "Pseudo-code for %s" % row[2]
+      title = "Pseudo-code for %s" % row["name"]
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
     cur.close()
@@ -1972,11 +1973,11 @@ class CBinDiff:
       row2 = rows[1]
 
       html_diff = HtmlDiff()
-      buf1 = row1[0] + "\n" + row1[1]
-      buf2 = row2[0] + "\n" + row2[1]
+      buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
+      buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
 
-      title = "Diff pseudo-code %s - %s" % (row1[2], row2[2])
+      title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
@@ -2089,8 +2090,8 @@ class CBinDiff:
           cur.execute(sql, (ea1, ea2))
           diff_rows = cur.fetchall()
           if len(diff_rows) > 0:
-            lines1 = diff_rows[0][0]
-            lines2 = diff_rows[1][0]
+            lines1 = diff_rows[0]["assembly"]
+            lines2 = diff_rows[1]["assembly"]
 
             matches = {}
             to_line = None
@@ -2118,10 +2119,10 @@ class CBinDiff:
     cur.execute(sql, (ea2,))
     row = cur.fetchone()
     if row is not None:
-      proto = row[0]
-      comment = row[1]
-      name = row[2]
-      flags = row[3]
+      proto = row["prototype"]
+      comment = row["comment"]
+      name = row["mangled_function"]
+      flags = row["function_flags"]
 
       ea1 = int(ea1)
       if not name.startswith("sub_") or force:
@@ -2240,18 +2241,18 @@ class CBinDiff:
 
   def equal_db(self):
     cur = self.db_cursor()
-    sql = "select count(*) from program p, diff.program dp where p.md5sum = dp.md5sum"
+    sql = "select count(*) total from program p, diff.program dp where p.md5sum = dp.md5sum"
     cur.execute(sql)
     row = cur.fetchone()
-    ret = row[0] == 1
+    ret = row["total"] == 1
     if not ret:
-      sql = "select count(*) from (select * from functions except select * from diff.functions) x"
+      sql = "select count(*) total from (select * from functions except select * from diff.functions) x"
       cur.execute(sql)
       row = cur.fetchone()
     else:
       log("Same MD5 in both databases")
     cur.close()
-    return row[0] == 0
+    return row["total"] == 0
 
   def check_callgraph(self):
     cur = self.db_cursor()
@@ -2261,10 +2262,10 @@ class CBinDiff:
     cur.execute(sql)
     rows = cur.fetchall()
     if len(rows) == 2:
-      cg1 = decimal.Decimal(rows[0][0])
-      cg_factors1 = json.loads(rows[0][1])
-      cg2 = decimal.Decimal(rows[1][0])
-      cg_factors2 = json.loads(rows[1][1])
+      cg1 = decimal.Decimal(rows[0]["callgraph_primes"])
+      cg_factors1 = json.loads(rows[0]["callgraph_all_primes"])
+      cg2 = decimal.Decimal(rows[1]["callgraph_primes"])
+      cg_factors2 = json.loads(rows[1]["callgraph_all_primes"])
 
       if cg1 == cg2:
         self.equal_callgraph = True
@@ -2283,28 +2284,28 @@ class CBinDiff:
   def find_equal_matches(self):
     cur = self.db_cursor()
     # Start by calculating the total number of functions in both databases
-    sql = """select count(*) total1 from functions
+    sql = """select count(*) total from functions
              union all
-             select count(*) total2 from diff.functions"""
+             select count(*) total from diff.functions"""
     cur.execute(sql)
     rows = cur.fetchall()
     if len(rows) != 2:
       Warning("Malformed database, only %d rows!" % len(rows))
       raise Exception("Malformed database!")
 
-    self.total_functions1 = rows[0][0]
-    self.total_functions2 = rows[1][0]
+    self.total_functions1 = rows[0]["total"]
+    self.total_functions2 = rows[1]["total"]
 
-    sql = "select address, mangled_function, nodes from (select * from functions intersect select * from diff.functions) x"
+    sql = "select address ea, mangled_function, nodes from (select * from functions intersect select * from diff.functions) x"
     cur.execute(sql)
     rows = cur.fetchall()
     choose = self.best_chooser
     if len(rows) > 0:
       for row in rows:
-        name = row[1]
+        name = row["mangled_function"]
         ea = LocByName(name)
-        ea2 = row[0]
-        nodes = int(row[2])
+        ea2 = row["ea"]
+        nodes = int(row["nodes"])
 
         choose.add_item(CChooser.Item(ea, name, ea2, name, "100% equal", 1, nodes, nodes))
         self.matched1.add(name)
@@ -2386,7 +2387,7 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Bytes sum'")
     self.add_matches_from_query(sql, choose)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Equal pseudo-code' description,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -2394,7 +2395,7 @@ class CBinDiff:
                 and df.pseudocode is not null
                 and f.pseudocode_lines >= 5 """ + postfix + """
               union
-             select f.address, f.name, df.address, df.name, 'Equal assembly' description,
+             select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -2406,9 +2407,9 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Same cleaned up assembly or pseudo-code' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -2417,10 +2418,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same cleaned up assembly or pseudo-code'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Same address, nodes, edges and mnemonics' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same address, nodes, edges and mnemonics' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -2566,19 +2567,19 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = str(row[0])
-      name1 = row[1]
-      ea2 = row[2]
-      name2 = row[3]
-      desc = row[4]
-      pseudo1 = row[5]
-      pseudo2 = row[6]
-      asm1 = row[7]
-      asm2 = row[8]
-      ast1 = row[9]
-      ast2 = row[10]
-      bb1 = int(row[11])
-      bb2 = int(row[12])
+      ea = str(row["ea"])
+      name1 = row["name1"]
+      ea2 = row["ea2"]
+      name2 = row["name2"]
+      desc = row["description"]
+      pseudo1 = row["pseudo1"]
+      pseudo2 = row["pseudo2"]
+      asm1 = row["asm1"]
+      asm2 = row["asm2"]
+      ast1 = row["pseudo_primes1"]
+      ast2 = row["pseudo_primes2"]
+      bb1 = int(row["bb1"])
+      bb2 = int(row["bb2"])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
@@ -2628,19 +2629,19 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = str(row[0])
-      name1 = row[1]
-      ea2 = row[2]
-      name2 = row[3]
-      desc = row[4]
-      pseudo1 = row[5]
-      pseudo2 = row[6]
-      asm1 = row[7]
-      asm2 = row[8]
-      ast1 = row[9]
-      ast2 = row[10]
-      bb1 = int(row[11])
-      bb2 = int(row[12])
+      ea = str(row["ea"])
+      name1 = row["name1"]
+      ea2 = row["ea2"]
+      name2 = row["name2"]
+      desc = row["description"]
+      pseudo1 = row["pseudo1"]
+      pseudo2 = row["pseudo2"]
+      asm1 = row["asm1"]
+      asm2 = row["asm2"]
+      ast1 = row["pseudo_primes1"]
+      ast2 = row["pseudo_primes2"]
+      bb1 = int(row["bb1"])
+      bb2 = int(row["bb2"])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
@@ -2683,13 +2684,13 @@ class CBinDiff:
       if row is None:
         break
 
-      ea = str(row[0])
-      name1 = row[1]
-      ea2 = row[2]
-      name2 = row[3]
-      desc = row[4]
-      bb1 = int(row[5])
-      bb2 = int(row[6])
+      ea = str(row["ea"])
+      name1 = row["name1"]
+      ea2 = row["ea2"]
+      name2 = row["name2"]
+      desc = row["description"]
+      bb1 = int(row["bb1"])
+      bb2 = int(row["bb2"])
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
@@ -2704,7 +2705,7 @@ class CBinDiff:
     
     # Same basic blocks, edges, mnemonics, etc... but different names
     sql = """ select distinct f.address ea, f.name name1, df.name name2,
-                     f.names, df.names, df.address ea2,
+                     f.names f_names, df.names df_names, df.address ea2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -2716,23 +2717,23 @@ class CBinDiff:
     cur.execute(sql)
     rows = result_iter(cur)
     for row in rows:
-      ea = str(row[0])
-      name1 = row[1]
-      name2 = row[2]
+      ea = str(row["ea"])
+      name1 = row["name1"]
+      name2 = row["name2"]
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
-      bb1 = int(row[6])
-      bb2 = int(row[7])
+      bb1 = int(row["bb1"])
+      bb2 = int(row["bb2"])
 
-      s1 = set(json.loads(row[3]))
-      s2 = set(json.loads(row[4]))
+      s1 = set(json.loads(row["f_names"]))
+      s2 = set(json.loads(row["df_names"]))
       total = max(len(s1), len(s2))
       commons = len(s1.intersection(s2))
       ratio = (commons * 1.) / total
       if ratio >= 0.5:
-        ea2 = row[5]
+        ea2 = row["ea2"]
         item = CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics with small differences", ratio, bb1, bb2)
         if ratio == 1.0:
           self.best_chooser.add_item(item)
@@ -2746,10 +2747,13 @@ class CBinDiff:
 
   def find_same_name(self, choose):
     cur = self.db_cursor()
-    sql = """select f.address, f.mangled_function, d.address, f.name, d.name, d.mangled_function,
-                    f.pseudocode, d.pseudocode,
-                    f.assembly, d.assembly,
-                    f.pseudocode_primes, d.pseudocode_primes,
+    sql = """select f.address ea1, f.mangled_function mangled1,
+                    d.address ea2, f.name name, d.name name2,
+                    d.mangled_function mangled2,
+                    f.pseudocode pseudo1, d.pseudocode pseudo2,
+                    f.assembly asm1, d.assembly asm2,
+                    f.pseudocode_primes primes1,
+                    d.pseudocode_primes primes2,
                     f.nodes bb1, d.nodes bb2
                from functions f,
                     diff.functions d
@@ -2762,12 +2766,12 @@ class CBinDiff:
 
     if len(rows) > 0 and not self.all_functions_matched():
       for row in rows:
-        ea = row[0]
-        name = row[1]
-        ea2 = row[2]
-        name1 = row[3]
-        name2 = row[4]
-        name2_1 = row[5]
+        ea = row["ea1"]
+        name = row["mangled1"]
+        ea2 = row["ea2"]
+        name1 = row["name"]
+        name2 = row["name2"]
+        name2_1 = row["mangled2"]
         if name in self.matched1 or name1 in self.matched1 or \
            name2 in self.matched2 or name2_1 in self.matched2:
           continue
@@ -2775,15 +2779,15 @@ class CBinDiff:
         if self.ignore_sub_names and name.startswith("sub_"):
           continue
 
-        ast1 = row[10]
-        ast2 = row[11]
-        bb1 = row[12]
-        bb2 = row[13]
+        ast1 = row["primes1"]
+        ast2 = row["primes2"]
+        bb1 = row["bb1"]
+        bb2 = row["bb2"]
 
-        pseudo1 = row[6]
-        pseudo2 = row[7]
-        asm1 = row[8]
-        asm2 = row[9]
+        pseudo1 = row["pseudo1"]
+        pseudo2 = row["pseudo2"]
+        asm1 = row["asm1"]
+        asm2 = row["asm2"]
         ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
         if float(ratio) == 1.0:
           self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1, bb1, bb2))
@@ -2807,7 +2811,7 @@ class CBinDiff:
       cur.execute(sql, (name,))
       row = cur.fetchone()
       if row:
-        rid = row[0]
+        rid = row["id"]
     finally:
       cur.close()
     
@@ -2929,11 +2933,11 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-    sql = """select f.address, f.name, df.address, df.name,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'All attributes' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -2958,11 +2962,11 @@ class CBinDiff:
                 and f.tarjan_topological_sort = df.tarjan_topological_sort
                 and f.strongly_connected_spp = df.strongly_connected_spp """ + postfix + """
               union 
-             select f.address, f.name, df.address, df.name,
+             select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Most attributes' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -2986,10 +2990,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'All or most attributes'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Switch structures' description,
-                f.pseudocode, df.pseudocode,
-                f.assembly, df.assembly,
-                f.pseudocode_primes, df.pseudocode_primes,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Switch structures' description,
+                f.pseudocode pseudo1, df.pseudocode pseudo2,
+                f.assembly asm1, df.assembly asm2,
+                f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                 f.nodes bb1, df.nodes bb2
            from functions f,
                 diff.functions df
@@ -2998,11 +3002,11 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Switch structures'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
 
-    sql = """select f.address, f.name, df.address, df.name,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3016,10 +3020,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'Import names hash',
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     'Import names hash' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -3032,10 +3036,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'Nodes, edges, complexity, mnemonics, names, prototype2, in-degree and out-degree',
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     'Nodes, edges, complexity, mnemonics, names, prototype2, in-degree and out-degree' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -3053,9 +3057,9 @@ class CBinDiff:
                union
               select f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Nodes, edges, complexity, mnemonics, names and prototype2' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -3071,9 +3075,9 @@ class CBinDiff:
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Mnemonics and names' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -3086,9 +3090,9 @@ class CBinDiff:
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Mnemonics small-primes-product' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
@@ -3104,10 +3108,10 @@ class CBinDiff:
     self.search_small_differences(choose)
 
     if self.slow_heuristics:
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy hash' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy hash' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3117,10 +3121,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Pseudo-code fuzzy hashes'")
       self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
     else:
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy hash' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy hash' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3128,10 +3132,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Pseudo-code fuzzy hash'")
       self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
 
-    sql = """select distinct f.address, f.name, df.address, df.name, 'Similar pseudo-code and names' description,
-                    f.pseudocode, df.pseudocode,
-                    f.pseudocode, df.pseudocode,
-                    f.pseudocode_primes, df.pseudocode_primes,
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar pseudo-code and names' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3145,10 +3149,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     if self.slow_heuristics:
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Similar pseudo-code' description,
-                      f.pseudocode, df.pseudocode,
-                      f.pseudocode, df.pseudocode,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar pseudo-code' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3159,10 +3163,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
 
-    sql = """select distinct f.address, f.name, df.address, df.name, 'Pseudo-code fuzzy AST hash' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes,
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy AST hash' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3173,10 +3177,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
 
     if self.slow_heuristics:
-      sql = """  select distinct f.address, f.name, df.address, df.name, 'Partial pseudo-code fuzzy hash' description,
-                        f.pseudocode, df.pseudocode,
-                        f.assembly, df.assembly,
-                        f.pseudocode_primes, df.pseudocode_primes,
+      sql = """  select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Partial pseudo-code fuzzy hash' description,
+                        f.pseudocode pseudo1, df.pseudocode pseudo2,
+                        f.assembly asm1, df.assembly asm2,
+                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2
                    from functions f,
                         diff.functions df
@@ -3186,11 +3190,11 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Partial pseudo-code fuzzy hash'")
       self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
 
-    sql = """select f.address, f.name, df.address, df.name,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Topological sort hash' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3200,10 +3204,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Topological sort hash'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity, prototype and names' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3215,10 +3219,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same high complexity, prototype and names'")
     self.add_matches_from_query_ratio(sql, choose, choose)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity and names' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity and names' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3230,10 +3234,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
 
     if self.slow_heuristics:
-      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Strongly connected components' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3245,10 +3249,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Strongly connected components'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.80)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Strongly connected components small-primes-product' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Strongly connected components small-primes-product' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3258,10 +3262,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     if self.slow_heuristics:
-      sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
-                  f.pseudocode, df.pseudocode,
-                  f.assembly, df.assembly,
-                  f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Loop count' description,
+                  f.pseudocode pseudo1, df.pseudocode pseudo2,
+                  f.assembly asm1, df.assembly asm2,
+                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                   f.nodes bb1, df.nodes bb2
              from functions f,
                   diff.functions df
@@ -3271,11 +3275,11 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
 
-    sql = """select f.address, f.name, df.address, df.name,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Same nodes, edges and strongly connected components' description,
-                     f.pseudocode, df.pseudocode,
-                     f.assembly, df.assembly,
-                     f.pseudocode_primes, df.pseudocode_primes,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                      f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3298,10 +3302,10 @@ class CBinDiff:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
     # XXX: FIXME: This heuristic looks wrong. The order is not being verified any where!!!
-    sql = """  select f.address, f.name, df.address, df.name, 'Same names and order' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same names and order' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3311,10 +3315,10 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, choose, choose)
 
     if self.slow_heuristics:
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
-                      f.pseudocode, df.pseudocode,
-                      f.pseudocode, df.pseudocode,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3325,10 +3329,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.49)
 
-      sql = """select distinct f.address, f.name, df.address, df.name, 'Small pseudo-code fuzzy AST hash' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Small pseudo-code fuzzy AST hash' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3337,10 +3341,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Small pseudo-code fuzzy AST hash'")
       self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
-    sql = """select f.address, f.name, df.address, df.name, 'Equal small pseudo-code' description,
-                    f.pseudocode, df.pseudocode,
-                    f.assembly, df.assembly,
-                    f.pseudocode_primes, df.pseudocode_primes,
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal small pseudo-code' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
@@ -3350,10 +3354,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Equal small pseudo-code'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity, prototype and names' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity, prototype and names' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3365,10 +3369,10 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same low complexity, prototype and names'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
 
-    sql = """  select f.address, f.name, df.address, df.name, 'Same low complexity and names' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same low complexity and names' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3382,11 +3386,11 @@ class CBinDiff:
     if self.slow_heuristics:
       # For large databases (>25k functions) it may cause, for a reason,
       # the following error: OperationalError: database or disk is full
-      sql = """ select f.address, f.name, df.address, df.name,
+      sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
                  'Same graph' description,
-                 f.pseudocode, df.pseudocode,
-                 f.assembly, df.assembly,
-                 f.pseudocode_primes, df.pseudocode_primes,
+                 f.pseudocode pseudo1, df.pseudocode pseudo2,
+                 f.assembly asm1, df.assembly asm2,
+                 f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                  f.nodes bb1, df.nodes bb2
             from functions f,
                  diff.functions df
@@ -3422,10 +3426,10 @@ class CBinDiff:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
     if self.slow_heuristics:
-      sql = """select f.address, f.name, df.address, df.name, 'Strongly connected components' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Strongly connected components' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3434,10 +3438,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Strongly connected components'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.54)
 
-      sql = """select f.address, f.name, df.address, df.name, 'Loop count' description,
-                  f.pseudocode, df.pseudocode,
-                  f.assembly, df.assembly,
-                  f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Loop count' description,
+                  f.pseudocode pseudo1, df.pseudocode pseudo2,
+                  f.assembly asm1, df.assembly asm2,
+                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                   f.nodes bb1, df.nodes bb2
              from functions f,
                   diff.functions df
@@ -3448,9 +3452,9 @@ class CBinDiff:
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges, complexity and mnemonics' description,
-                       f.pseudocode, df.pseudocode,
-                       f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.pseudocode pseudo1, df.pseudocode pseudo2,
+                       f.assembly asm1, df.assembly asm2,
+                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                        f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
@@ -3464,9 +3468,9 @@ class CBinDiff:
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges, complexity and prototype' description,
-                       f.pseudocode, df.pseudocode,
-                       f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.pseudocode pseudo1, df.pseudocode pseudo2,
+                       f.assembly asm1, df.assembly asm2,
+                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                        f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
@@ -3480,9 +3484,9 @@ class CBinDiff:
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges, complexity, in-degree and out-degree' description,
-                       f.pseudocode, df.pseudocode,
-                       f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.pseudocode pseudo1, df.pseudocode pseudo2,
+                       f.assembly asm1, df.assembly asm2,
+                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                        f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
@@ -3497,9 +3501,9 @@ class CBinDiff:
 
       sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                        'Nodes, edges and complexity' description,
-                       f.pseudocode, df.pseudocode,
-                       f.assembly, df.assembly,
-                       f.pseudocode_primes, df.pseudocode_primes,
+                       f.pseudocode pseudo1, df.pseudocode pseudo2,
+                       f.assembly asm1, df.assembly asm2,
+                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                        f.nodes bb1, df.nodes bb2
                   from functions f,
                        diff.functions df
@@ -3510,10 +3514,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Nodes, edges and complexity'")
       self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
 
-      sql = """select f.address, f.name, df.address, df.name, 'Similar small pseudo-code' description,
-                      f.pseudocode, df.pseudocode,
-                      f.assembly, df.assembly,
-                      f.pseudocode_primes, df.pseudocode_primes,
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                       f.nodes bb1, df.nodes bb2
                  from functions f,
                       diff.functions df
@@ -3524,10 +3528,10 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar small pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
 
-      sql = """  select f.address, f.name, df.address, df.name, 'Same high complexity' description,
-                        f.pseudocode, df.pseudocode,
-                        f.assembly, df.assembly,
-                        f.pseudocode_primes, df.pseudocode_primes,
+      sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity' description,
+                        f.pseudocode pseudo1, df.pseudocode pseudo2,
+                        f.assembly asm1, df.assembly asm2,
+                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2
                    from functions f,
                         diff.functions df
@@ -3544,7 +3548,7 @@ class CBinDiff:
     if len(rows) > 0:
       choose = CChooser("Unmatched in secondary", self, False)
       for row in rows:
-        name = row[0]
+        name = row["name"]
         demangled_name = Demangle(str(name), INF_SHORT_DN)
         if demangled_name is not None:
           name = demangled_name
@@ -3560,12 +3564,12 @@ class CBinDiff:
     if len(rows) > 0:
       choose = CChooser("Unmatched in primary", self, False)
       for row in rows:
-        name = row[0]
+        name = row["name"]
         demangled_name = Demangle(str(name), INF_SHORT_DN)
         if demangled_name is not None:
           name = demangled_name
         if name not in self.matched2:
-          ea = row[1]
+          ea = row["address"]
           choose.add_item(CChooser.Item(ea, name))
       self.unmatched_primary = choose
 
@@ -3621,7 +3625,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       Warning("Invalid database!")
       return False
 
-    if row[0] != VERSION_VALUE:
+    if row["value"] != VERSION_VALUE:
       Warning("The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
       return False
 
