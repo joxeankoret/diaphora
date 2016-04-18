@@ -2372,7 +2372,7 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Bytes hash'")
     self.add_matches_from_query(sql, choose)
 
-    if not self.equal_callgraph and not self.ignore_all_names:
+    if not self.ignore_all_names:
       self.find_same_name(self.partial_chooser)
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
