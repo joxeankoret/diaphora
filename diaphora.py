@@ -1340,10 +1340,6 @@ class CBinDiff:
     return rowid
 
   def save_function(self, props):
-    # XXX: FIXME: TODO: Insert relations (xrefs) between instructions
-    # too. It will allow, in the future, to create the reader for some
-    # devices...
-
     cur = self.db_cursor()
     new_props = []
     for prop in props[:len(props)-2]:
