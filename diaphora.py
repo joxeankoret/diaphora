@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
+import re
 import sys
 import time
 import json
@@ -35,19 +36,20 @@ from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer
 from pygments.formatters import HtmlFormatter
 
-from idc import *
-from idaapi import *
-from idautils import *
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  from idc import *
+  from idaapi import *
+  from idautils import *
 
-if IDA_SDK_VERSION < 690:
-  # In versions prior to IDA 6.9 PySide is used...
-  from PySide import QtGui
-  QtWidgets = QtGui
-  is_pyqt5 = False
-else:
-  # ...while in IDA 6.9, they switched to PyQt5
-  from PyQt5 import QtCore, QtGui, QtWidgets
-  is_pyqt5 = True
+  if IDA_SDK_VERSION < 690:
+    # In versions prior to IDA 6.9 PySide is used...
+    from PySide import QtGui
+    QtWidgets = QtGui
+    is_pyqt5 = False
+  else:
+    # ...while in IDA 6.9, they switched to PyQt5
+    from PyQt5 import QtCore, QtGui, QtWidgets
+    is_pyqt5 = True
 
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 from jkutils.kfuzzy import CKoretFuzzyHashing
@@ -97,14 +99,18 @@ def result_iter(cursor, arraysize=1000):
 
 #-----------------------------------------------------------------------
 def log(msg):
-  Message("[%s] %s\n" % (time.asctime(), msg))
+  if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+    Message("[%s] %s\n" % (time.asctime(), msg))
+  else:
+    print "[%s] %s\n" % (time.asctime(), msg);
 
 #-----------------------------------------------------------------------
 def log_refresh(msg, show=False):
-  if show:
-    show_wait_box(msg)
-  else:
-    replace_wait_box(msg)
+  if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+    if show:
+      show_wait_box(msg)
+    else:
+      replace_wait_box(msg)
   log(msg)
 
 #-----------------------------------------------------------------------
@@ -138,305 +144,370 @@ def ast_ratio(ast1, ast2):
   return difference_ratio(decimal.Decimal(ast1), decimal.Decimal(ast2))
 
 #-----------------------------------------------------------------------
-class CHtmlViewer(PluginForm):
-  def OnCreate(self, form):
-    if is_pyqt5:
-      self.parent = self.FormToPyQtWidget(form)
-    else:
-      self.parent = self.FormToPySideWidget(form)
-    self.PopulateForm()
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  class CHtmlViewer(PluginForm):
+    def OnCreate(self, form):
+      if is_pyqt5:
+        self.parent = self.FormToPyQtWidget(form)
+      else:
+        self.parent = self.FormToPySideWidget(form)
+      self.PopulateForm()
+      
+      self.browser = None
+      self.layout = None
+      return 1
     
-    self.browser = None
-    self.layout = None
-    return 1
-  
-  def PopulateForm(self):
-    self.layout = QtWidgets.QVBoxLayout()
-    self.browser = QtWidgets.QTextBrowser()
-    # Commented for now
-    #self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
-    self.browser.setHtml(self.text)
-    self.browser.setReadOnly(True)
-    self.browser.setFontWeight(12)
-    self.layout.addWidget(self.browser)
-    self.parent.setLayout(self.layout)
+    def PopulateForm(self):
+      self.layout = QtWidgets.QVBoxLayout()
+      self.browser = QtWidgets.QTextBrowser()
+      # Commented for now
+      #self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+      self.browser.setHtml(self.text)
+      self.browser.setReadOnly(True)
+      self.browser.setFontWeight(12)
+      self.layout.addWidget(self.browser)
+      self.parent.setLayout(self.layout)
 
-  def Show(self, text, title):
-    self.text = text
-    return PluginForm.Show(self, title)
+    def Show(self, text, title):
+      self.text = text
+      return PluginForm.Show(self, title)
 
 #-----------------------------------------------------------------------
-class CChooser(Choose2):
-  class Item:
-    def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
-      self.ea = ea
-      self.vfname = name
-      self.ea2 = ea2
-      self.vfname2 = name2
-      self.description = desc
-      self.ratio = ratio
-      self.bb1 = bb1
-      self.bb2 = bb2
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  class CChooser(Choose2):
+    class Item:
+      def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
+        self.ea = ea
+        self.vfname = name
+        self.ea2 = ea2
+        self.vfname2 = name2
+        self.description = desc
+        self.ratio = ratio
+        self.bb1 = bb1
+        self.bb2 = bb2
+        self.cmd_import_selected = None
+        self.cmd_import_all = None
+        self.cmd_import_all_funcs = None
+
+      def __str__(self):
+        return '%08x' % self.ea
+
+    def __init__(self, title, bindiff, show_commands=True):
+      if title.startswith("Unmatched in"):
+        Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose2.CH_MULTI)
+      else:
+        Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
+                                        ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose2.CH_MULTI)
+
+      if title == "Unmatched in primary":
+        self.primary = False
+      else:
+        self.primary = True
+
+      self.n = 0
+      self.items = []
+      self.icon = 41
+      self.bindiff = bindiff
+      self.show_commands = show_commands
+
+      self.cmd_diff_asm = None
+      self.cmd_diff_graph = None
+      self.cmd_diff_c = None
       self.cmd_import_selected = None
       self.cmd_import_all = None
       self.cmd_import_all_funcs = None
+      self.cmd_show_asm = None
+      self.cmd_show_pseudo = None
+      self.cmd_highlight_functions = None
+      self.cmd_unhighlight_functions = None
+      
+      self.selected_items = []
 
-    def __str__(self):
-      return '%08x' % self.ea
+    def OnClose(self):
+      """space holder"""
+      return True
 
-  def __init__(self, title, bindiff, show_commands=True):
-    if title.startswith("Unmatched in"):
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose2.CH_MULTI)
-    else:
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
-                                      ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose2.CH_MULTI)
+    def OnEditLine(self, n):
+      """space holder"""
 
-    if title == "Unmatched in primary":
-      self.primary = False
-    else:
-      self.primary = True
-
-    self.n = 0
-    self.items = []
-    self.icon = 41
-    self.bindiff = bindiff
-    self.show_commands = show_commands
-
-    self.cmd_diff_asm = None
-    self.cmd_diff_graph = None
-    self.cmd_diff_c = None
-    self.cmd_import_selected = None
-    self.cmd_import_all = None
-    self.cmd_import_all_funcs = None
-    self.cmd_show_asm = None
-    self.cmd_show_pseudo = None
-    self.cmd_highlight_functions = None
-    self.cmd_unhighlight_functions = None
-    
-    self.selected_items = []
-
-  def OnClose(self):
-    """space holder"""
-    return True
-
-  def OnEditLine(self, n):
-    """space holder"""
-
-  def OnInsertLine(self):
-    pass
-
-  def OnSelectLine(self, n):
-    item = self.items[int(n)]
-    if self.primary:
-      try:
-        jump_ea = int(item[1], 16)
-        # Only jump for valid addresses
-        if isEnabled(jump_ea):
-          jumpto(jump_ea)
-      except:
-        print "OnSelectLine", sys.exc_info()[1]
-    else:
-      self.bindiff.show_asm(self.items[n], self.primary)
-
-  def OnGetLine(self, n):
-    try:
-      return self.items[n]
-    except:
-      print "OnGetLine", sys.exc_info()[1]
-
-  def OnGetSize(self):
-    return len(self.items)
-
-  def OnDeleteLine(self, n):
-    try:
-      del self.items[n]
-    except:
+    def OnInsertLine(self):
       pass
-    return True
 
-  def OnRefresh(self, n):
-    return n
-
-  def add_item(self, item):
-    if self.title.startswith("Unmatched in"):
-      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
-    else:
-      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
-                         "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio,
-                         "%d" % item.bb1, "%d" % item.bb2, item.description])
-    self.n += 1
-
-  def show(self, force=False):
-    t = self.Show()
-    if t < 0:
-        return False
-    
-    if self.show_commands and (self.cmd_diff_asm is None or force):
-      # create aditional actions handlers
-      self.cmd_diff_asm = self.AddCommand("Diff assembly")
-      self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
-      self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
-      self.cmd_import_selected = self.AddCommand("Import selected")
-      self.cmd_import_all = self.AddCommand("Import *all* functions")
-      self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
-      self.cmd_highlight_functions = self.AddCommand("Highlight matches")
-      self.cmd_unhighlight_functions = self.AddCommand("Unhighlight matches")
-      self.cmd_save_results = self.AddCommand("Save diffing results")
-    elif not self.show_commands and (self.cmd_show_asm is None or force):
-      self.cmd_show_asm = self.AddCommand("Show assembly")
-      self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
-
-    return True
-
-  def get_color(self):
-    if self.title.startswith("Best"):
-      return 0xffff99
-    elif self.title.startswith("Partial"):
-      return 0x99ff99
-    elif self.title.startswith("Unreliable"):
-      return 0x9999ff
-
-  def OnCommand(self, n, cmd_id):
-    # Aditional right-click-menu commands handles
-    if cmd_id == self.cmd_import_all:
-      if askyn_c(1, "HIDECANCEL\nDo you really want to import all matched functions, comments, prototypes and definitions?") == 1:
-        self.bindiff.import_all(self.items)
-    elif cmd_id == self.cmd_import_all_funcs:
-      if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
-        self.bindiff.import_all_auto(self.items)
-    elif cmd_id == self.cmd_import_selected:
-      if len(self.selected_items) <= 1:
-        self.bindiff.import_one(self.items[n])
+    def OnSelectLine(self, n):
+      item = self.items[int(n)]
+      if self.primary:
+        try:
+          jump_ea = int(item[1], 16)
+          # Only jump for valid addresses
+          if isEnabled(jump_ea):
+            jumpto(jump_ea)
+        except:
+          print "OnSelectLine", sys.exc_info()[1]
       else:
-        if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
-          self.bindiff.import_selected(self.items, self.selected_items)
-    elif cmd_id == self.cmd_diff_c:
-      self.bindiff.show_pseudo_diff(self.items[n])
-    elif cmd_id == self.cmd_diff_asm:
-      self.bindiff.show_asm_diff(self.items[n])
-    elif cmd_id == self.cmd_show_asm:
-      self.bindiff.show_asm(self.items[n], self.primary)
-    elif cmd_id == self.cmd_show_pseudo:
-      self.bindiff.show_pseudo(self.items[n], self.primary)
-    elif cmd_id == self.cmd_highlight_functions:
-      if askyn_c(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
-        color = self.get_color()
+        self.bindiff.show_asm(self.items[n], self.primary)
+
+    def OnGetLine(self, n):
+      try:
+        return self.items[n]
+      except:
+        print "OnGetLine", sys.exc_info()[1]
+
+    def OnGetSize(self):
+      return len(self.items)
+
+    def OnDeleteLine(self, n):
+      try:
+        del self.items[n]
+      except:
+        pass
+      return True
+
+    def OnRefresh(self, n):
+      return n
+
+    def add_item(self, item):
+      if self.title.startswith("Unmatched in"):
+        self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
+      else:
+        self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
+                           "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio,
+                           "%d" % item.bb1, "%d" % item.bb2, item.description])
+      self.n += 1
+
+    def show(self, force=False):
+      t = self.Show()
+      if t < 0:
+          return False
+      
+      if self.show_commands and (self.cmd_diff_asm is None or force):
+        # create aditional actions handlers
+        self.cmd_diff_asm = self.AddCommand("Diff assembly")
+        self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
+        self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
+        self.cmd_import_selected = self.AddCommand("Import selected")
+        self.cmd_import_all = self.AddCommand("Import *all* functions")
+        self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
+        self.cmd_highlight_functions = self.AddCommand("Highlight matches")
+        self.cmd_unhighlight_functions = self.AddCommand("Unhighlight matches")
+        self.cmd_save_results = self.AddCommand("Save diffing results")
+      elif not self.show_commands and (self.cmd_show_asm is None or force):
+        self.cmd_show_asm = self.AddCommand("Show assembly")
+        self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
+
+      return True
+
+    def get_color(self):
+      if self.title.startswith("Best"):
+        return 0xffff99
+      elif self.title.startswith("Partial"):
+        return 0x99ff99
+      elif self.title.startswith("Unreliable"):
+        return 0x9999ff
+
+    def OnCommand(self, n, cmd_id):
+      # Aditional right-click-menu commands handles
+      if cmd_id == self.cmd_import_all:
+        if askyn_c(1, "HIDECANCEL\nDo you really want to import all matched functions, comments, prototypes and definitions?") == 1:
+          self.bindiff.import_all(self.items)
+      elif cmd_id == self.cmd_import_all_funcs:
+        if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
+          self.bindiff.import_all_auto(self.items)
+      elif cmd_id == self.cmd_import_selected:
+        if len(self.selected_items) <= 1:
+          self.bindiff.import_one(self.items[n])
+        else:
+          if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
+            self.bindiff.import_selected(self.items, self.selected_items)
+      elif cmd_id == self.cmd_diff_c:
+        self.bindiff.show_pseudo_diff(self.items[n])
+      elif cmd_id == self.cmd_diff_asm:
+        self.bindiff.show_asm_diff(self.items[n])
+      elif cmd_id == self.cmd_show_asm:
+        self.bindiff.show_asm(self.items[n], self.primary)
+      elif cmd_id == self.cmd_show_pseudo:
+        self.bindiff.show_pseudo(self.items[n], self.primary)
+      elif cmd_id == self.cmd_highlight_functions:
+        if askyn_c(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
+          color = self.get_color()
+          for item in self.items:
+            ea = int(item[1], 16)
+            if not SetColor(ea, CIC_FUNC, color):
+              print "Error setting color for %x" % ea
+          Refresh()
+      elif cmd_id == self.cmd_unhighlight_functions:
         for item in self.items:
           ea = int(item[1], 16)
-          if not SetColor(ea, CIC_FUNC, color):
+          if not SetColor(ea, CIC_FUNC, 0xFFFFFF):
             print "Error setting color for %x" % ea
         Refresh()
-    elif cmd_id == self.cmd_unhighlight_functions:
-      for item in self.items:
-        ea = int(item[1], 16)
-        if not SetColor(ea, CIC_FUNC, 0xFFFFFF):
-          print "Error setting color for %x" % ea
-      Refresh()
-    elif cmd_id == self.cmd_diff_graph:
-      item = self.items[n]
-      ea1 = int(item[1], 16)
-      name1 = item[2]
-      ea2 = int(item[3], 16)
-      name2 = item[4]
-      log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
-      self.bindiff.graph_diff(ea1, name1, ea2, name2)
-    elif cmd_id == self.cmd_save_results:
-      filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
-      if filename is not None:
-        self.bindiff.save_results(filename)
+      elif cmd_id == self.cmd_diff_graph:
+        item = self.items[n]
+        ea1 = int(item[1], 16)
+        name1 = item[2]
+        ea2 = int(item[3], 16)
+        name2 = item[4]
+        log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
+        self.bindiff.graph_diff(ea1, name1, ea2, name2)
+      elif cmd_id == self.cmd_save_results:
+        filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
+        if filename is not None:
+          self.bindiff.save_results(filename)
 
-    return True
+      return True
 
-  def OnSelectionChange(self, sel_list):
-    self.selected_items = sel_list
-  
-  def OnGetLineAttr(self, n):
-    if not self.title.startswith("Unmatched"):
-      item = self.items[n]
-      ratio = float(item[5])
-      red = int(255 * (1 - ratio))
-      green = int(128 * ratio)
-      color = int("0x00%02x%02x" % (green, red), 16)
-      return [color, 0]
-    return [0xFFFFFF, 0]
+    def OnSelectionChange(self, sel_list):
+      self.selected_items = sel_list
+    
+    def OnGetLineAttr(self, n):
+      if not self.title.startswith("Unmatched"):
+        item = self.items[n]
+        ratio = float(item[5])
+        red = int(255 * (1 - ratio))
+        green = int(128 * ratio)
+        color = int("0x00%02x%02x" % (green, red), 16)
+        return [color, 0]
+      return [0xFFFFFF, 0]
+else:
+  class CChooser():
+    class Item:
+      def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
+        self.ea = ea
+        self.vfname = name
+        self.ea2 = ea2
+        self.vfname2 = name2
+        self.description = desc
+        self.ratio = ratio
+        self.bb1 = bb1
+        self.bb2 = bb2
+        self.cmd_import_selected = None
+        self.cmd_import_all = None
+        self.cmd_import_all_funcs = None
+
+      def __str__(self):
+        return '%08x' % self.ea
+
+    def __init__(self, title, bindiff, show_commands=True):
+      if title == "Unmatched in primary":
+        self.primary = False
+      else:
+        self.primary = True
+
+      self.title = title
+
+      self.n = 0
+      self.items = []
+      self.icon = 41
+      self.bindiff = bindiff
+      self.show_commands = show_commands
+
+      self.cmd_diff_asm = None
+      self.cmd_diff_graph = None
+      self.cmd_diff_c = None
+      self.cmd_import_selected = None
+      self.cmd_import_all = None
+      self.cmd_import_all_funcs = None
+      self.cmd_show_asm = None
+      self.cmd_show_pseudo = None
+      self.cmd_highlight_functions = None
+      self.cmd_unhighlight_functions = None
+      
+      self.selected_items = []
+
+    def add_item(self, item):
+      if self.title.startswith("Unmatched in"):
+        self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
+      else:
+        self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
+                           "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio,
+                           "%d" % item.bb1, "%d" % item.bb2, item.description])
+      self.n += 1
+
+    def get_color(self):
+      if self.title.startswith("Best"):
+        return 0xffff99
+      elif self.title.startswith("Partial"):
+        return 0x99ff99
+      elif self.title.startswith("Unreliable"):
+        return 0x9999ff
 
 #-----------------------------------------------------------------------
-class CBinDiffExporterSetup(Form):
-  def __init__(self):
-    s = r"""Diaphora BinDiff
-  Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
-  If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
-  exporting the first database.
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  class CBinDiffExporterSetup(Form):
+    def __init__(self):
+      s = r"""Diaphora BinDiff
+    Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
+    If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
+    exporting the first database.
 
-  SQLite databases:                                                                                                                    Export filter limits:  
-  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
-  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
+    SQLite databases:                                                                                                                    Export filter limits:  
+    <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
+    <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
-  <Use the decompiler if available:{rUseDecompiler}>
-  <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
-  <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
-  <Use probably unreliable methods:{rUnreliable}>
-  <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
-  <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
-  <Use experimental heuristics:{rExperimental}>
-  <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
-  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
-  <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
+    <Use the decompiler if available:{rUseDecompiler}>
+    <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
+    <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
+    <Use probably unreliable methods:{rUnreliable}>
+    <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
+    <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
+    <Use experimental heuristics:{rExperimental}>
+    <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
+    <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
+    <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
 
-  NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
-"""
-    args = {'iFileSave': Form.FileInput(save=True, swidth=40),
-            'iFileOpen': Form.FileInput(open=True, swidth=40),
-            'iMinEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-            'iMaxEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-            'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
-                                               "rUnreliable",
-                                               "rNonIdaSubs",
-                                               "rSlowHeuristics",
-                                               "rRelaxRatio",
-                                               "rExperimental",
-                                               "rFuncSummariesOnly",
-                                               "rIgnoreSubNames",
-                                               "rIgnoreAllNames",
-                                               "rIgnoreSmallFunctions"))}
-    Form.__init__(self, s, args)
+    NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
+  """
+      args = {'iFileSave': Form.FileInput(save=True, swidth=40),
+              'iFileOpen': Form.FileInput(open=True, swidth=40),
+              'iMinEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
+              'iMaxEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
+              'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
+                                                 "rUnreliable",
+                                                 "rNonIdaSubs",
+                                                 "rSlowHeuristics",
+                                                 "rRelaxRatio",
+                                                 "rExperimental",
+                                                 "rFuncSummariesOnly",
+                                                 "rIgnoreSubNames",
+                                                 "rIgnoreAllNames",
+                                                 "rIgnoreSmallFunctions"))}
+      Form.__init__(self, s, args)
+      
+    def set_options(self, opts):
+      if opts.file_out is not None:
+        self.iFileSave.value = opts.file_out
+      if opts.file_in is not None:
+        self.iFileOpen.value = opts.file_in
+      self.rUseDecompiler.checked = opts.use_decompiler
+      self.rUnreliable.checked = opts.unreliable
+      self.rSlowHeuristics.checked = opts.slow
+      self.rRelaxRatio.checked = opts.relax
+      self.rExperimental.checked = opts.experimental
+      self.iMinEA.value = opts.min_ea
+      self.iMaxEA.value = opts.max_ea
+      self.rNonIdaSubs.checked = opts.ida_subs == False
+      self.rIgnoreSubNames.checked = opts.ignore_sub_names
+      self.rIgnoreAllNames.checked = opts.ignore_all_names
+      self.rIgnoreSmallFunctions.checked = opts.ignore_small_functions
+      self.rFuncSummariesOnly.checked = opts.func_summaries_only
     
-  def set_options(self, opts):
-    if opts.file_out is not None:
-      self.iFileSave.value = opts.file_out
-    if opts.file_in is not None:
-      self.iFileOpen.value = opts.file_in
-    self.rUseDecompiler.checked = opts.use_decompiler
-    self.rUnreliable.checked = opts.unreliable
-    self.rSlowHeuristics.checked = opts.slow
-    self.rRelaxRatio.checked = opts.relax
-    self.rExperimental.checked = opts.experimental
-    self.iMinEA.value = opts.min_ea
-    self.iMaxEA.value = opts.max_ea
-    self.rNonIdaSubs.checked = opts.ida_subs == False
-    self.rIgnoreSubNames.checked = opts.ignore_sub_names
-    self.rIgnoreAllNames.checked = opts.ignore_all_names
-    self.rIgnoreSmallFunctions.checked = opts.ignore_small_functions
-    self.rFuncSummariesOnly.checked = opts.func_summaries_only
-  
-  def get_options(self):
-    opts = dict(
-      file_out = self.iFileSave.value,
-      file_in  = self.iFileOpen.value,
-      use_decompiler = self.rUseDecompiler.checked,
-      unreliable = self.rUnreliable.checked,
-      slow = self.rSlowHeuristics.checked,
-      relax = self.rRelaxRatio.checked,
-      experimental = self.rExperimental.checked,
-      min_ea = self.iMinEA.value,
-      max_ea = self.iMaxEA.value,
-      ida_subs = self.rNonIdaSubs.checked == False,
-      ignore_sub_names = self.rIgnoreSubNames.checked,
-      ignore_all_names = self.rIgnoreAllNames.checked,
-      ignore_small_functions = self.rIgnoreSmallFunctions.checked,
-      func_summaries_only = self.rFuncSummariesOnly.checked
-    )
-    return BinDiffOptions(**opts)
+    def get_options(self):
+      opts = dict(
+        file_out = self.iFileSave.value,
+        file_in  = self.iFileOpen.value,
+        use_decompiler = self.rUseDecompiler.checked,
+        unreliable = self.rUnreliable.checked,
+        slow = self.rSlowHeuristics.checked,
+        relax = self.rRelaxRatio.checked,
+        experimental = self.rExperimental.checked,
+        min_ea = self.iMinEA.value,
+        max_ea = self.iMaxEA.value,
+        ida_subs = self.rNonIdaSubs.checked == False,
+        ignore_sub_names = self.rIgnoreSubNames.checked,
+        ignore_all_names = self.rIgnoreAllNames.checked,
+        ignore_small_functions = self.rIgnoreSmallFunctions.checked,
+        func_summaries_only = self.rFuncSummariesOnly.checked
+      )
+      return BinDiffOptions(**opts)
 
 #-----------------------------------------------------------------------
 try:
@@ -504,58 +575,59 @@ class uitimercallback_t(object):
     return -1
 
 #-----------------------------------------------------------------------
-class CDiffGraphViewer(GraphViewer):
-  def __init__(self, title, g, colours):
-    try:
-      GraphViewer.__init__(self, title, False)
-      self.graph = g[0]
-      self.relations = g[1]
-      self.nodes = {}
-      self.colours = colours
-    except:
-      Warning("CDiffGraphViewer: OnInit!!! " + str(sys.exc_info()[1]))
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  class CDiffGraphViewer(GraphViewer):
+    def __init__(self, title, g, colours):
+      try:
+        GraphViewer.__init__(self, title, False)
+        self.graph = g[0]
+        self.relations = g[1]
+        self.nodes = {}
+        self.colours = colours
+      except:
+        Warning("CDiffGraphViewer: OnInit!!! " + str(sys.exc_info()[1]))
 
-  def OnRefresh(self):
-    try:
-      self.Clear()
-      self.nodes = {}
+    def OnRefresh(self):
+      try:
+        self.Clear()
+        self.nodes = {}
 
-      for key in self.graph:
-        self.nodes[key] = self.AddNode([key, self.graph[key]])
-        
-      for key in self.relations:
-        if not key in self.nodes:
-          self.nodes[key] = self.AddNode([key, [[0, 0, ""]]])
-        parent_node = self.nodes[key]
-        for child in self.relations[key]:
-          if not child in self.nodes:
-            self.nodes[child] = self.AddNode([child, [[0, 0, ""]]])
-          child_node = self.nodes[child]
-          self.AddEdge(parent_node, child_node)
+        for key in self.graph:
+          self.nodes[key] = self.AddNode([key, self.graph[key]])
+          
+        for key in self.relations:
+          if not key in self.nodes:
+            self.nodes[key] = self.AddNode([key, [[0, 0, ""]]])
+          parent_node = self.nodes[key]
+          for child in self.relations[key]:
+            if not child in self.nodes:
+              self.nodes[child] = self.AddNode([child, [[0, 0, ""]]])
+            child_node = self.nodes[child]
+            self.AddEdge(parent_node, child_node)
 
-      return True
-    except:
-      print "GraphViewer Error:", sys.exc_info()[1]
-      return True
+        return True
+      except:
+        print "GraphViewer Error:", sys.exc_info()[1]
+        return True
 
-  def OnGetText(self, node_id):
-    try:
-      ea, rows = self[node_id]
-      if ea in self.colours:
-        colour = self.colours[ea]
-      else:
-        colour = 0xFFFFFF
-      ret = []
-      for row in rows:
-        ret.append(row[2])
-      label = "\n".join(ret)
-      return (label, colour)
-    except:
-      print "GraphViewer.OnGetText:", sys.exc_info()[1]
-      return ("ERROR", 0x000000)
+    def OnGetText(self, node_id):
+      try:
+        ea, rows = self[node_id]
+        if ea in self.colours:
+          colour = self.colours[ea]
+        else:
+          colour = 0xFFFFFF
+        ret = []
+        for row in rows:
+          ret.append(row[2])
+        label = "\n".join(ret)
+        return (label, colour)
+      except:
+        print "GraphViewer.OnGetText:", sys.exc_info()[1]
+        return ("ERROR", 0x000000)
 
-  def Show(self):
-    return GraphViewer.Show(self)
+    def Show(self):
+      return GraphViewer.Show(self)
 
 #-----------------------------------------------------------------------
 g_bindiff = None
@@ -611,7 +683,10 @@ td.diff_header {text-align:right}
 #-----------------------------------------------------------------------
 class CBinDiff:
   def __init__(self, db_name):
-    self.names = dict(Names())
+    if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+      self.names = dict(Names())
+    else:
+      self.names = dict()
     self.primes = primes(2048*2048)
     self.db_name = db_name
     self.db = None
@@ -655,8 +730,12 @@ class CBinDiff:
     # value per each 20k functions.
     self.max_processed_rows = MAX_PROCESSED_ROWS
     # Limits to filter the functions to export
-    self.min_ea = MinEA()
-    self.max_ea = MaxEA()
+    if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+      self.min_ea = MinEA()
+      self.max_ea = MaxEA()
+    else:
+      self.min_ea = 0
+      self.max_ea = 0
     # Export only non IDA automatically generated function names? I.e.,
     # excluding these starting with sub_*
     self.ida_subs = True
@@ -3538,19 +3617,15 @@ class CBinDiff:
 
   def find_unmatched(self):
     cur = self.db_cursor()
-    sql = "select name from functions"
+    sql = "select name, address from functions"
     cur.execute(sql)
     rows = cur.fetchall()
     if len(rows) > 0:
       choose = CChooser("Unmatched in secondary", self, False)
       for row in rows:
         name = row[0]
-        demangled_name = Demangle(str(name), INF_SHORT_DN)
-        if demangled_name is not None:
-          name = demangled_name
-
         if name not in self.matched1:
-          ea = LocByName(str(name))
+          ea = row[1]
           choose.add_item(CChooser.Item(ea, name))
       self.unmatched_second = choose
 
@@ -3561,9 +3636,6 @@ class CBinDiff:
       choose = CChooser("Unmatched in primary", self, False)
       for row in rows:
         name = row[0]
-        demangled_name = Demangle(str(name), INF_SHORT_DN)
-        if demangled_name is not None:
-          name = demangled_name
         if name not in self.matched2:
           ea = row[1]
           choose.add_item(CChooser.Item(ea, name))
@@ -3663,14 +3735,17 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
 
-        # And, finally, show the list of best and partial matches and
-        # register the hotkey for re-opening results
-        self.show_choosers()
-        self.register_menu()
+        if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+          # And, finally, show the list of best and partial matches and
+          # register the hotkey for re-opening results
+          self.show_choosers()
+          self.register_menu()
+
         log("Done")
     finally:
       cur.close()
-      hide_wait_box()
+      if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+        hide_wait_box()
     return True
 
 #-----------------------------------------------------------------------
@@ -3849,5 +3924,25 @@ if __name__ == "__main__":
     bd.export()
 
     idaapi.qexit(0)
+  elif os.getenv("DIAPHORA_AUTO_DIFF") is not None: 
+    db1 = os.getenv("DIAPHORA_DB1")
+    if db1 is None:
+      raise Exception("No database file specified!")
+
+    db2 = os.getenv("DIAPHORA_DB2")
+    if db2 is None:
+      raise Exception("No database file to diff against specified!")
+
+    diff_out = os.getenv("DIAPHORA_DIFF_OUT")
+    if diff_out is None:
+      raise Exception("No output file for diff specified!")
+
+    bd = CBinDiff(db1)
+    bd.db = sqlite3.connect(db1)
+    bd.db.text_factory = str
+    bd.db.row_factory = sqlite3.Row
+    bd.diff(db2)
+
+    bd.save_results(diff_out)
   else:
     diff_or_export_ui()
