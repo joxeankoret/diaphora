@@ -1012,7 +1012,7 @@ class CBinDiff:
       sql = "insert into config values (?, ?, ?, ?)"
       cur.execute(sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime()))
 
-      sql = "create table results (type, line, address, name, address2, name2, ratio, description, bb1, bb2)"
+      sql = "create table results (type, line, address, name, address2, name2, ratio, bb1, bb2, description)"
       cur.execute(sql)
 
       sql = "create table unmatched (type, line, address, name)"
