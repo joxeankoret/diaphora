@@ -16,7 +16,7 @@ You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/d
 
 ## Screenshots
 
-This is a screenshot of Diaphora diffing PEGASUS iOS kernel Vulnerability:
+This is a screenshot of Diaphora diffing the PEGASUS iOS kernel Vulnerability fixed in iOS 9.3.5:
 
 ![Diffing iOS 9.3.5 diff](http://sektioneins.de/images/diaphora1.png)
 
