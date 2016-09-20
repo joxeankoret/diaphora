@@ -30,7 +30,8 @@ import traceback
 
 from hashlib import md5
 from cStringIO import StringIO
-from difflib import SequenceMatcher, HtmlDiff
+from difflib import SequenceMatcher
+from difflib import _mdiff as mdiff
 
 from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer
@@ -160,8 +161,7 @@ if os.getenv("DIAPHORA_AUTO_DIFF") is None:
     def PopulateForm(self):
       self.layout = QtWidgets.QVBoxLayout()
       self.browser = QtWidgets.QTextBrowser()
-      # Commented for now
-      #self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+      self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
       self.browser.setHtml(self.text)
       self.browser.setReadOnly(True)
       self.browser.setFontWeight(12)
@@ -430,6 +430,123 @@ else:
       elif self.title.startswith("Unreliable"):
         return 0x9999ff
 
+
+#-----------------------------------------------------------------------
+if os.getenv("DIAPHORA_AUTO_DIFF") is None:
+  class CHtmlDiff:
+    """A replacement for difflib.HtmlDiff that tries to enforce a max width
+
+    The main challenge is to do this given QTextBrowser's limitations. In
+    particular, QTextBrowser only implements a minimum of CSS.
+    """
+
+    _html_template = """
+    <html>
+    <head>
+    <style>%(style)s</style>
+    </head>
+    <body>
+    <table class="diff_tab" cellspacing=0>
+    %(rows)s
+    </table>
+    </body>
+    </html>
+    """
+
+    _style = """
+    table.diff_tab {
+      font-family: Courier, monospace;
+      table-layout: fixed;
+      width: 100%;
+    }
+    table td {
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .diff_add {
+      background-color: #aaffaa;
+    } 
+    .diff_chg {
+      background-color: #ffff77;
+    } 
+    .diff_sub {
+      background-color: #ffaaaa;
+    }
+    .diff_lineno {
+      text-align: right;
+      background-color: #e0e0e0;
+    }
+    """
+
+    _row_template = """
+    <tr>
+        <td class="diff_lineno" width="auto">%s</td>
+        <td class="diff_play" nowrap width="45%%">%s</td>
+        <td class="diff_lineno" width="auto">%s</td>
+        <td class="diff_play" nowrap width="45%%">%s</td>
+    </tr>
+    """
+
+    _rexp_too_much_space = re.compile("^\t[.\\w]+ {8}")
+
+    def make_file(self, lhs, rhs):
+      rows = []
+      for left, right, changed in mdiff(lhs, rhs):
+          lno, ltxt = left
+          rno, rtxt = right
+          ltxt = self._stop_wasting_space(ltxt)
+          rtxt = self._stop_wasting_space(rtxt)
+          ltxt = self._trunc(ltxt, changed).replace(" ", "&nbsp;")
+          rtxt = self._trunc(rtxt, changed).replace(" ", "&nbsp;")
+          row = self._row_template % (str(lno), ltxt, str(rno), rtxt)
+          rows.append(row)
+
+      all_the_rows = "\n".join(rows)
+      all_the_rows = all_the_rows.replace(
+            "\x00+", '<span class="diff_add">').replace(
+            "\x00-", '<span class="diff_sub">').replace(
+            "\x00^", '<span class="diff_chg">').replace(
+            "\x01", '</span>').replace(
+            "\t", 4 * "&nbsp;")
+
+      res = self._html_template % {"style": self._style, "rows": all_the_rows}
+      return res
+
+    def _stop_wasting_space(self, s):
+      """I never understood why you'd want to have 13 spaces between instruction and args'
+      """
+      m = self._rexp_too_much_space.search(s)
+      if m:
+        mlen = len(m.group(0))
+        return s[:mlen-4] + s[mlen:]
+      else:
+        return s
+
+    def _trunc(self, s, changed, max_col=120):
+      if not changed:
+          return s[:max_col]
+      
+      # Don't count markup towards the length.
+      outlen = 0
+      push = 0
+      for i, ch in enumerate(s):
+          if ch == "\x00": # Followed by an additional byte that should also not count
+              outlen -= 1
+              push = True 
+          elif ch == "\x01":
+              push = False
+          else: 
+              outlen += 1
+          if outlen == max_col:
+              break
+              
+      res = s[:i + 1]
+      if push:
+          res += "\x01"
+          
+      return res
+
 #-----------------------------------------------------------------------
 if os.getenv("DIAPHORA_AUTO_DIFF") is None:
   class CBinDiffExporterSetup(Form):
@@ -663,22 +780,6 @@ def import_definitions():
 MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
-#-----------------------------------------------------------------------
-# Fix for people using IDASkins with very h4x0r $tYl3z like the
-# Consonance color scheme
-HtmlDiff._styles = """ 
-table.diff {
-  font-family:Courier;
-  border:medium;
-  background-color:#ffffff;
-  color:#000000
-}
-.diff_header {background-color:#e0e0e0} 
-td.diff_header {text-align:right} 
-.diff_next {background-color:#c0c0c0} 
-.diff_add {background-color:#aaffaa} 
-.diff_chg {background-color:#ffff77} 
-.diff_sub {background-color:#ffaaaa}"""
 
 #-----------------------------------------------------------------------
 class CBinDiff:
@@ -1742,7 +1843,7 @@ class CBinDiff:
       row1 = rows[0]
       row2 = rows[1]
 
-      html_diff = HtmlDiff()
+      html_diff = CHtmlDiff()
       asm1 = self.prettify_asm(row1["assembly"])
       asm2 = self.prettify_asm(row2["assembly"])
       buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
