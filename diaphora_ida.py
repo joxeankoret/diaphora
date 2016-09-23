@@ -1022,7 +1022,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       traceback.print_exc()
 
   def decompile_and_get(self, ea):
-    if not init_hexrays_plugin():
+    if not init_hexrays_plugin() and not (load_plugin("hexrays") and init_hexrays_plugin()):
       return False
 
     f = get_func(ea)
