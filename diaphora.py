@@ -2223,11 +2223,24 @@ if __name__ == "__main__":
     diff_out = os.getenv("DIAPHORA_DIFF_OUT")
     if diff_out is None:
       raise Exception("No output file for diff specified!")
-
-    bd = CBinDiff(db1)
-    bd.db = sqlite3.connect(db1)
-    bd.db.text_factory = str
-    bd.db.row_factory = sqlite3.Row
-    bd.diff(db2)
-
-    bd.save_results(diff_out)
+  else:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("db1")
+    parser.add_argument("db2")
+    parser.add_argument("-o", "--outfile", help="Write output to <outfile>")
+    args = parser.parse_args()
+    db1 = args.db1
+    db2 = args.db2
+    if args.outfile:
+      diff_out = args.outfile
+    else:
+      diff_out = "{}_vs_{}.diaphora".format(
+              os.path.basename(os.path.splitext(db1)[0]),
+              os.path.basename(os.path.splitext(db2)[0]))
+  bd = CBinDiff(db1)
+  bd.db = sqlite3.connect(db1)
+  bd.db.text_factory = str
+  bd.db.row_factory = sqlite3.Row
+  bd.diff(db2)
+  bd.save_results(diff_out)
