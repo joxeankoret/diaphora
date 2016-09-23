@@ -470,10 +470,11 @@ class CBinDiff:
       sql = "select count(*) total from (select * from functions except select * from diff.functions) x"
       cur.execute(sql)
       row = cur.fetchone()
+      ret = row["total"] == 0
     else:
       log("Same MD5 in both databases")
     cur.close()
-    return row["total"] == 0
+    return ret
 
   def add_program_data(self, type_name, key, value):
     cur = self.db_cursor()
