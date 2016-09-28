@@ -1171,13 +1171,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         outdegree += len(list(CodeRefsFrom(x, 0)))
         mnems.append(mnem)
         op_value = GetOperandValue(x, 1)
-        if op_value == BADADDR:
+        if op_value == -1:
           op_value = GetOperandValue(x, 0)
 
         tmp_name = None
         if op_value != BADADDR and op_value in self.names:
           tmp_name = self.names[op_value]
-          demangled_name = Demangle(name, INF_SHORT_DN)
+          demangled_name = Demangle(tmp_name, INF_SHORT_DN)
           if demangled_name is not None:
             tmp_name = demangled_name
           if not tmp_name.startswith("sub_"):
