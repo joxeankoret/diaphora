@@ -1110,6 +1110,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_topo_num = {}
     bb_topological = {}
     switches = []
+    bb_degree = {}
+    bb_edges = []
 
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
@@ -1214,9 +1216,18 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       basic_blocks_data[block_ea] = instructions_data
       bb_relations[block_ea] = []
+      if block_ea not in bb_degree:
+        # bb in degree, out degree
+        bb_degree[block_ea] = [0, 0]
       for succ_block in block.succs():
         succ_base = succ_block.startEA - image_base
         bb_relations[block_ea].append(succ_base)
+        bb_degree[block_ea][1] += 1
+        bb_edges.append((block_ea, succ_base))
+        if succ_base not in bb_degree:
+          bb_degree[succ_base] = [0, 0]
+        bb_degree[succ_base][0] += 1
+
         edges += 1
         indegree += 1
         if not dones.has_key(succ_block.id):
@@ -1243,8 +1254,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     try:
       strongly_connected = strongly_connected_components(bb_relations)
-      bb_topological = robust_topological_sort(bb_topological)
-      bb_topological = json.dumps(bb_topological)
+      bb_topological_sorted = robust_topological_sort(bb_topological)
+      bb_topological = json.dumps(bb_topological_sorted)
       strongly_connected_spp = 1
       for item in strongly_connected:
         val = len(item)
@@ -1312,6 +1323,25 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     clean_assembly = self.get_cmp_asm_lines(asm)
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
+
+    md_index = 0
+    if bb_topological:
+      bb_topo_order = {}
+      for i, scc in enumerate(bb_topological_sorted):
+        for bb in scc:
+          bb_topo_order[bb] = i
+      tuples = []
+      for src, dst in bb_edges:
+        tuples.append((
+            bb_topo_order[bb_topo_num[src]],
+            bb_degree[src][0],
+            bb_degree[src][1],
+            bb_degree[dst][0],
+            bb_degree[dst][1],))
+      rt2, rt3, rt5, rt7 = (decimal.Decimal(p).sqrt() for p in (2, 3, 5, 7))
+      emb_tuples = (sum((z0, z1 * rt2, z2 * rt3, z3 * rt5, z4 * rt7))
+              for z0, z1, z2, z3, z4 in tuples)
+      md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
 
     rva = f - self.get_base_address()
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
