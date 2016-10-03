@@ -33,6 +33,12 @@ from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
 
+try:
+  import idaapi
+  is_ida = True
+except ImportError:
+  is_ida = False
+
 #-----------------------------------------------------------------------
 VERSION_VALUE = "1.0.8"
 COPYRIGHT_VALUE="Copyright(c) 2015-2016 Joxean Koret"
@@ -2209,8 +2215,8 @@ class CBinDiff:
       cur.close()
     return True
 
-
 if __name__ == "__main__":
+  do_diff = True
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
@@ -2223,8 +2229,14 @@ if __name__ == "__main__":
     diff_out = os.getenv("DIAPHORA_DIFF_OUT")
     if diff_out is None:
       raise Exception("No output file for diff specified!")
+  elif is_ida:
+    diaphora_dir = os.path.dirname(__file__)
+    script = os.path.join(diaphora_dir, "diaphora_ida.py")
+    execfile(script)
+    do_diff = False
   else:
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("db1")
     parser.add_argument("db2")
@@ -2238,9 +2250,11 @@ if __name__ == "__main__":
       diff_out = "{}_vs_{}.diaphora".format(
               os.path.basename(os.path.splitext(db1)[0]),
               os.path.basename(os.path.splitext(db2)[0]))
-  bd = CBinDiff(db1)
-  bd.db = sqlite3.connect(db1)
-  bd.db.text_factory = str
-  bd.db.row_factory = sqlite3.Row
-  bd.diff(db2)
-  bd.save_results(diff_out)
+
+  if do_diff:
+    bd = CBinDiff(db1)
+    bd.db = sqlite3.connect(db1)
+    bd.db.text_factory = str
+    bd.db.row_factory = sqlite3.Row
+    bd.diff(db2)
+    bd.save_results(diff_out)

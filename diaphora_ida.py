@@ -54,7 +54,7 @@ try:
 except ImportError:
   pass
 
-
+#-----------------------------------------------------------------------
 # Constants unexported in IDA Python
 PRTYPE_SEMI = 0x0008
 
@@ -75,11 +75,11 @@ more than 100,000 functions.<br><br>
 You can disable it by un-checking the 'Do not export basic blocks<br>
 or instructions' option."""
 
-
+#-----------------------------------------------------------------------
 def log(msg):
   Message("[%s] %s\n" % (time.asctime(), msg))
 
-
+#-----------------------------------------------------------------------
 def log_refresh(msg, show=False):
   if show:
     show_wait_box(msg)
@@ -87,19 +87,19 @@ def log_refresh(msg, show=False):
     replace_wait_box(msg)
   log(msg)
 
-
+#-----------------------------------------------------------------------
 # TODO: FIX hack
 diaphora.log = log
 diaphora.log_refresh = log_refresh
 
-
+#-----------------------------------------------------------------------
 g_bindiff = None
 def show_choosers():
   global g_bindiff
   if g_bindiff is not None:
     g_bindiff.show_choosers(True)
 
-
+#-----------------------------------------------------------------------
 def save_results():
   global g_bindiff
   if g_bindiff is not None:
@@ -107,14 +107,14 @@ def save_results():
     if filename is not None:
       g_bindiff.save_results(filename)
 
-
+#-----------------------------------------------------------------------
 def load_results():
   tmp_diff = CIDABinDiff(":memory:")
   filename = AskFile(0, "*.diaphora", "Select the file to load diffing results")
   if filename is not None:
     tmp_diff.load_results(filename)
 
-
+#-----------------------------------------------------------------------
 def import_definitions():
   tmp_diff = diaphora.CBinDiff(":memory:")
   filename = AskFile(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
@@ -122,7 +122,7 @@ def import_definitions():
     if askyn_c(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
       tmp_diff.import_definitions_only(filename)
 
-
+#-----------------------------------------------------------------------
 class CHtmlViewer(PluginForm):
   def OnCreate(self, form):
     if is_pyqt5:
@@ -149,7 +149,7 @@ class CHtmlViewer(PluginForm):
     self.text = text
     return PluginForm.Show(self, title)
 
-
+#-----------------------------------------------------------------------
 class CIDAChooser(diaphora.CChooser, Choose2):
 
   def __init__(self, title, bindiff, show_commands=True):
@@ -288,7 +288,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       return [color, 0]
     return [0xFFFFFF, 0]
 
-
+#-----------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
   def __init__(self):
     s = r"""Diaphora BinDiff
@@ -367,7 +367,7 @@ class CBinDiffExporterSetup(Form):
     )
     return BinDiffOptions(**opts)
 
-
+#-----------------------------------------------------------------------
 class timeraction_t(object):
   def __init__(self, func, args, interval):
     self.func = func
@@ -384,7 +384,7 @@ class timeraction_t(object):
       self.func()
     return -1
 
-
+#-----------------------------------------------------------------------
 class uitimercallback_t(object):
   def __init__(self, g, interval):
     self.interval = interval
@@ -403,7 +403,7 @@ class uitimercallback_t(object):
     process_ui_action("GraphZoomFit", 0)
     return -1
 
-
+#-----------------------------------------------------------------------
 class CDiffGraphViewer(GraphViewer):
   def __init__(self, title, g, colours):
     try:
@@ -457,9 +457,8 @@ class CDiffGraphViewer(GraphViewer):
   def Show(self):
     return GraphViewer.Show(self)
 
-
+#-----------------------------------------------------------------------
 class CIDABinDiff(diaphora.CBinDiff):
-
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
     self.names = dict(Names())
@@ -1485,7 +1484,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         self.do_continue = False
     return are_equal
 
-
+#-----------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
   global g_bindiff
 
@@ -1575,7 +1574,7 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
-
+#-----------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
     total_functions = len(list(Functions()))
@@ -1600,7 +1599,7 @@ class BinDiffOptions:
     # Enable, by default, exporting only function summaries for huge dbs.
     self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
 
-
+#-----------------------------------------------------------------------
 class CHtmlDiff:
   """A replacement for difflib.HtmlDiff that tries to enforce a max width
 
@@ -1715,7 +1714,7 @@ class CHtmlDiff:
 
     return res
 
-
+#-----------------------------------------------------------------------
 class CAstVisitor(ctree_visitor_t):
   def __init__(self, cfunc):
     self.primes = primes(4096)
@@ -1738,13 +1737,14 @@ class CAstVisitor(ctree_visitor_t):
       traceback.print_exc()
     return 0
 
-
+#-----------------------------------------------------------------------
 def is_ida_file(filename):
   filename = filename.lower()
   return filename.endswith(".idb") or filename.endswith(".i64") or \
          filename.endswith(".til") or filename.endswith(".id0") or \
          filename.endswith(".id1") or filename.endswith(".nam")
 
+#-----------------------------------------------------------------------
 def remove_file(filename):
   try:
     os.remove(filename)
@@ -1768,8 +1768,8 @@ def remove_file(filename):
       finally:
         cur.close()
 
-
-if __name__ == "__main__":
+#-----------------------------------------------------------------------
+def main():
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
     if file_out is None:
@@ -1795,3 +1795,6 @@ if __name__ == "__main__":
     idaapi.qexit(0)
   else:
     _diff_or_export(True)
+
+if __name__ == "__main__":
+  main()
