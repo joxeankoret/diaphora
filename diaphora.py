@@ -1578,39 +1578,39 @@ class CBinDiff:
     t = time.time()
 
     self.db.execute("PRAGMA synchronous = OFF")
-    with self.db as db:
-      for func in func_list:
-        i += 1
-        if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
-          line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
-          elapsed = time.time() - t
-          remaining = (elapsed / i) * (total_funcs - i)
+    self.db.execute("BEGIN transaction")
+    for func in func_list:
+      i += 1
+      if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
+        line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
+        elapsed = time.time() - t
+        remaining = (elapsed / i) * (total_funcs - i)
 
-          m, s = divmod(remaining, 60)
-          h, m = divmod(m, 60)
-          m_elapsed, s_elapsed = divmod(elapsed, 60)
-          h_elapsed, m_elapsed = divmod(m_elapsed, 60)
+        m, s = divmod(remaining, 60)
+        h, m = divmod(m, 60)
+        m_elapsed, s_elapsed = divmod(elapsed, 60)
+        h_elapsed, m_elapsed = divmod(m_elapsed, 60)
 
-          replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
+        replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
-        props = self.read_function(func)
-        if props == False:
-          continue
+      props = self.read_function(func)
+      if props == False:
+        continue
 
-        ret = props[11]
-        callgraph_primes *= decimal.Decimal(ret)
-        try:
-          callgraph_all_primes[ret] += 1
-        except KeyError:
-          callgraph_all_primes[ret] = 1
-        self.save_function(props)
+      ret = props[11]
+      callgraph_primes *= decimal.Decimal(ret)
+      try:
+        callgraph_all_primes[ret] += 1
+      except KeyError:
+        callgraph_all_primes[ret] = 1
+      self.save_function(props)
 
-        # Try to fix bug #30 and, also, try to speed up operations as
-        # doing a commit every 10 functions, as before, is overkill.
-        if total_funcs > 1000 and i % (total_funcs/1000) == 0:
-          db.commit()
-          db.execute("PRAGMA synchronous = OFF")
-          db.execute("BEGIN transaction")
+      # Try to fix bug #30 and, also, try to speed up operations as
+      # doing a commit every 10 functions, as before, is overkill.
+      if total_funcs > 1000 and i % (total_funcs/1000) == 0:
+        self.db.commit()
+        self.db.execute("PRAGMA synchronous = OFF")
+        self.db.execute("BEGIN transaction")
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
