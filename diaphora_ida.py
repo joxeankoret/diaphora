@@ -138,8 +138,7 @@ class CHtmlViewer(PluginForm):
   def PopulateForm(self):
     self.layout = QtWidgets.QVBoxLayout()
     self.browser = QtWidgets.QTextBrowser()
-    # Commented for now
-    #self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+    self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
     self.browser.setHtml(self.text)
     self.browser.setReadOnly(True)
     self.browser.setFontWeight(12)
@@ -335,6 +334,7 @@ class CBinDiffExporterSetup(Form):
       self.iFileSave.value = opts.file_out
     if opts.file_in is not None:
       self.iFileOpen.value = opts.file_in
+
     self.rUseDecompiler.checked = opts.use_decompiler
     self.rUnreliable.checked = opts.unreliable
     self.rSlowHeuristics.checked = opts.slow
@@ -458,23 +458,6 @@ class CDiffGraphViewer(GraphViewer):
     return GraphViewer.Show(self)
 
 
-# Fix for people using IDASkins with very h4x0r $tYl3z like the
-# Consonance color scheme
-difflib.HtmlDiff._styles = """
-table.diff {
-  font-family:Courier;
-  border:medium;
-  background-color:#ffffff;
-  color:#000000
-}
-.diff_header {background-color:#e0e0e0}
-td.diff_header {text-align:right}
-.diff_next {background-color:#c0c0c0}
-.diff_add {background-color:#aaffaa}
-.diff_chg {background-color:#ffff77}
-.diff_sub {background-color:#ffaaaa}"""
-
-
 class CIDABinDiff(diaphora.CBinDiff):
 
   def __init__(self, db_name):
@@ -514,39 +497,39 @@ class CIDABinDiff(diaphora.CBinDiff):
     t = time.time()
 
     self.db.execute("PRAGMA synchronous = OFF")
-    with self.db as db:
-      for func in func_list:
-        i += 1
-        if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
-          line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
-          elapsed = time.time() - t
-          remaining = (elapsed / i) * (total_funcs - i)
+    self.db.execute("BEGIN transaction")
+    for func in func_list:
+      i += 1
+      if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
+        line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
+        elapsed = time.time() - t
+        remaining = (elapsed / i) * (total_funcs - i)
 
-          m, s = divmod(remaining, 60)
-          h, m = divmod(m, 60)
-          m_elapsed, s_elapsed = divmod(elapsed, 60)
-          h_elapsed, m_elapsed = divmod(m_elapsed, 60)
+        m, s = divmod(remaining, 60)
+        h, m = divmod(m, 60)
+        m_elapsed, s_elapsed = divmod(elapsed, 60)
+        h_elapsed, m_elapsed = divmod(m_elapsed, 60)
 
-          replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
+        replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
-        props = self.read_function(func)
-        if props == False:
-          continue
+      props = self.read_function(func)
+      if props == False:
+        continue
 
-        ret = props[11]
-        callgraph_primes *= decimal.Decimal(ret)
-        try:
-          callgraph_all_primes[ret] += 1
-        except KeyError:
-          callgraph_all_primes[ret] = 1
-        self.save_function(props)
+      ret = props[11]
+      callgraph_primes *= decimal.Decimal(ret)
+      try:
+        callgraph_all_primes[ret] += 1
+      except KeyError:
+        callgraph_all_primes[ret] = 1
+      self.save_function(props)
 
-        # Try to fix bug #30 and, also, try to speed up operations as
-        # doing a commit every 10 functions, as before, is overkill.
-        if total_funcs > 1000 and i % (total_funcs/1000) == 0:
-          db.commit()
-          db.execute("PRAGMA synchronous = OFF")
-          db.execute("BEGIN transaction")
+      # Try to fix bug #30 and, also, try to speed up operations as
+      # doing a commit every 10 functions, as before, is overkill.
+      if total_funcs > 1000 and i % (total_funcs/1000) == 0:
+        self.db.commit()
+        self.db.execute("PRAGMA synchronous = OFF")
+        self.db.execute("BEGIN transaction")
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
@@ -655,7 +638,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       row1 = rows[0]
       row2 = rows[1]
 
-      html_diff = difflib.HtmlDiff()
+      html_diff = CHtmlDiff()
       asm1 = self.prettify_asm(row1["assembly"])
       asm2 = self.prettify_asm(row2["assembly"])
       buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
@@ -763,7 +746,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       row1 = rows[0]
       row2 = rows[1]
 
-      html_diff = difflib.HtmlDiff()
+      html_diff = CHtmlDiff()
       buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
@@ -1596,7 +1579,8 @@ def _diff_or_export(use_ui, **options):
 class BinDiffOptions:
   def __init__(self, **kwargs):
     total_functions = len(list(Functions()))
-    self.file_out = kwargs.get('file_out', os.path.splitext(GetIdbPath())[0] + ".sqlite")
+    sqlite_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
+    self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
     self.unreliable = kwargs.get('unreliable', True)
@@ -1615,6 +1599,121 @@ class BinDiffOptions:
     self.ignore_small_functions = kwargs.get('ignore_small_functions', False)
     # Enable, by default, exporting only function summaries for huge dbs.
     self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
+
+
+class CHtmlDiff:
+  """A replacement for difflib.HtmlDiff that tries to enforce a max width
+
+  The main challenge is to do this given QTextBrowser's limitations. In
+  particular, QTextBrowser only implements a minimum of CSS.
+  """
+
+  _html_template = """
+  <html>
+  <head>
+  <style>%(style)s</style>
+  </head>
+  <body>
+  <table class="diff_tab" cellspacing=0>
+  %(rows)s
+  </table>
+  </body>
+  </html>
+  """
+
+  _style = """
+  table.diff_tab {
+    font-family: Courier, monospace;
+    table-layout: fixed;
+    width: 100%;
+  }
+  table td {
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .diff_add {
+    background-color: #aaffaa;
+  }
+  .diff_chg {
+    background-color: #ffff77;
+  }
+  .diff_sub {
+    background-color: #ffaaaa;
+  }
+  .diff_lineno {
+    text-align: right;
+    background-color: #e0e0e0;
+  }
+  """
+
+  _row_template = """
+  <tr>
+      <td class="diff_lineno" width="auto">%s</td>
+      <td class="diff_play" nowrap width="45%%">%s</td>
+      <td class="diff_lineno" width="auto">%s</td>
+      <td class="diff_play" nowrap width="45%%">%s</td>
+  </tr>
+  """
+
+  _rexp_too_much_space = re.compile("^\t[.\\w]+ {8}")
+
+  def make_file(self, lhs, rhs):
+    rows = []
+    for left, right, changed in difflib._mdiff(lhs, rhs):
+        lno, ltxt = left
+        rno, rtxt = right
+        ltxt = self._stop_wasting_space(ltxt)
+        rtxt = self._stop_wasting_space(rtxt)
+        ltxt = self._trunc(ltxt, changed).replace(" ", "&nbsp;")
+        rtxt = self._trunc(rtxt, changed).replace(" ", "&nbsp;")
+        row = self._row_template % (str(lno), ltxt, str(rno), rtxt)
+        rows.append(row)
+
+    all_the_rows = "\n".join(rows)
+    all_the_rows = all_the_rows.replace(
+          "\x00+", '<span class="diff_add">').replace(
+          "\x00-", '<span class="diff_sub">').replace(
+          "\x00^", '<span class="diff_chg">').replace(
+          "\x01", '</span>').replace(
+          "\t", 4 * "&nbsp;")
+
+    res = self._html_template % {"style": self._style, "rows": all_the_rows}
+    return res
+
+  def _stop_wasting_space(self, s):
+    """I never understood why you'd want to have 13 spaces between instruction and args'
+    """
+    m = self._rexp_too_much_space.search(s)
+    if m:
+      mlen = len(m.group(0))
+      return s[:mlen-4] + s[mlen:]
+    else:
+      return s
+
+  def _trunc(self, s, changed, max_col=120):
+    if not changed:
+        return s[:max_col]
+
+    # Don't count markup towards the length.
+    outlen = 0
+    push = 0
+    for i, ch in enumerate(s):
+        if ch == "\x00": # Followed by an additional byte that should also not count
+            outlen -= 1
+            push = True
+        elif ch == "\x01":
+            push = False
+        else:
+            outlen += 1
+        if outlen == max_col:
+            break
+
+    res = s[:i + 1]
+    if push:
+        res += "\x01"
+
+    return res
 
 
 class CAstVisitor(ctree_visitor_t):
