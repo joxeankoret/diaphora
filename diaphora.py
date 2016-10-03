@@ -2149,7 +2149,7 @@ class CBinDiff:
       row1 = rows[0]
       row2 = rows[1]
 
-      html_diff = HtmlDiff()
+      html_diff = CHtmlDiff()
       buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
