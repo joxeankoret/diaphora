@@ -594,6 +594,7 @@ if os.getenv("DIAPHORA_AUTO_DIFF") is None:
         self.iFileSave.value = opts.file_out
       if opts.file_in is not None:
         self.iFileOpen.value = opts.file_in
+
       self.rUseDecompiler.checked = opts.use_decompiler
       self.rUnreliable.checked = opts.unreliable
       self.rSlowHeuristics.checked = opts.slow
@@ -3881,10 +3882,12 @@ def remove_file(filename):
       finally:
         cur.close()
 
+#-----------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
     total_functions = len(list(Functions()))
-    self.file_out = kwargs.get('file_out', os.path.splitext(GetIdbPath())[0] + ".sqlite")
+    sqlite_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
+    self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
     self.unreliable = kwargs.get('unreliable', True)
