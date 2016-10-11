@@ -194,6 +194,7 @@ class CBinDiff:
     self.experimental = False
     self.slow_heuristics = False
     self.use_decompiler_always = True
+    self.exclude_library_thunk = True
 
     # Create the choosers
     self.chooser = chooser

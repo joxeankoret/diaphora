@@ -301,6 +301,7 @@ class CBinDiffExporterSetup(Form):
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
   <Use the decompiler if available:{rUseDecompiler}>
+  <Do not export library and thunk functions:{rExcludeLibraryThunk}>
   <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
   <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
   <Use probably unreliable methods:{rUnreliable}>
@@ -318,6 +319,7 @@ class CBinDiffExporterSetup(Form):
             'iMinEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'iMaxEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
+                                               "rExcludeLibraryThunk",
                                                "rUnreliable",
                                                "rNonIdaSubs",
                                                "rSlowHeuristics",
@@ -336,6 +338,7 @@ class CBinDiffExporterSetup(Form):
       self.iFileOpen.value = opts.file_in
 
     self.rUseDecompiler.checked = opts.use_decompiler
+    self.rExcludeLibraryThunk.checked = opts.exclude_library_thunk
     self.rUnreliable.checked = opts.unreliable
     self.rSlowHeuristics.checked = opts.slow
     self.rRelaxRatio.checked = opts.relax
@@ -353,6 +356,7 @@ class CBinDiffExporterSetup(Form):
       file_out = self.iFileSave.value,
       file_in  = self.iFileOpen.value,
       use_decompiler = self.rUseDecompiler.checked,
+      exclude_library_thunk = self.rExcludeLibraryThunk.checked,
       unreliable = self.rUnreliable.checked,
       slow = self.rSlowHeuristics.checked,
       relax = self.rRelaxRatio.checked,
@@ -1083,6 +1087,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if flags & FUNC_LIB or flags == -1:
         return False
 
+    if self.exclude_library_thunk:
+      # Skip library and thunk functions
+      flags = GetFunctionFlags(f)
+      if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
+        return False
+
     nodes = 0
     edges = 0
     instructions = 0
@@ -1534,6 +1544,7 @@ def _diff_or_export(use_ui, **options):
   try:
     bd = CIDABinDiff(opts.file_out)
     bd.use_decompiler_always = opts.use_decompiler
+    bd.exclude_library_thunk = opts.exclude_library_thunk
     bd.unreliable = opts.unreliable
     bd.slow_heuristics = opts.slow
     bd.relaxed_ratio = opts.relax
@@ -1582,6 +1593,7 @@ class BinDiffOptions:
     self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
+    self.exclude_library_thunk = kwargs.get('exclude_library_thunk', True)
     self.unreliable = kwargs.get('unreliable', True)
     self.slow = kwargs.get('slow', True)
     # Enable, by default, relaxed calculations on difference ratios for
