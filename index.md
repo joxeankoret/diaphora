@@ -10,7 +10,7 @@ As with any open source project, any form of help for this project is highly app
 
 You can join the [mailing list](https://groups.google.com/forum/?hl=es#!forum/diaphora) to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the [issues tracker](https://github.com/joxeankoret/diaphora/issues).
 
-Please note that, officially, only the last 2 versions of IDA will be supported. As of today, however, both 6.7, 6.8 and 6.9 are supported. Version 6.6 "should work" (with all the last patches that were supplied to *customers*), but no support is offered for neither 6.6 nor 6.7. You can submit bugs for versions 6.6 and 6.7 and I will try to fix them in case it's possible (for example, when it isn't a bug in IDA).
+Please note that, officially, only the last 2 versions of IDA will be supported. As of today, however, both 6.8, 6.9 and 6.95 are supported. Versions 6.6 and 6.7 aren't supported any more and they are known not to work due to recent changes in IDAPython since version 6.9.
 
 ## Documentation
 
