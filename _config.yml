@@ -1,0 +1,8 @@
+title: Diaphora
+description: A Free and Open Source Program Diffing Tool
+google_analytics: 
+show_downloads: true
+theme: jekyll-theme-slate
+
+gems:
+  - jekyll-mentions
