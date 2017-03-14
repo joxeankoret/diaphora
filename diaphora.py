@@ -298,7 +298,8 @@ class CBinDiff:
                         mnemonics_spp text,
                         switches text,
                         function_hash text,
-                        bytes_sum integer) """
+                        bytes_sum integer,
+                        md_index text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -460,6 +461,9 @@ class CBinDiff:
     sql = "create index if not exists idx_bytes_sum on functions(bytes_sum)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_md_index on functions(md_index)"
+    cur.execute(sql)
+
     cur.close()
 
   def attach_database(self, diff_db):
@@ -534,10 +538,10 @@ class CBinDiff:
                                     pseudocode_hash3, strongly_connected, loops, rva,
                                     tarjan_topological_sort, strongly_connected_spp,
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
-                                    function_hash, bytes_sum)
+                                    function_hash, bytes_sum, md_index)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?)"""
     cur.execute(sql, new_props)
     func_id = cur.lastrowid
 
@@ -950,6 +954,17 @@ class CBinDiff:
                  and f.instructions > 5 and df.instructions > 5"""
     log_refresh("Finding with heuristic 'Bytes sum'")
     self.add_matches_from_query(sql, choose)
+
+    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'MD Index' description,
+                     f.nodes bb1, df.nodes bb2
+                from functions f,
+                     diff.functions df
+               where f.md_index = df.md_index
+                 and f.md_index > 0
+                 and bb1 > 5 and bb2 > 5"""
+    log_refresh("Finding with heuristic 'MD Index'")
+    self.add_matches_from_query(sql, self.partial_chooser)
 
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
                     f.nodes bb1, df.nodes bb2

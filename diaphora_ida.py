@@ -1342,6 +1342,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       emb_tuples = (sum((z0, z1 * rt2, z2 * rt3, z3 * rt5, z4 * rt7))
               for z0, z1, z2, z3, z4 in tuples)
       md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
+      md_index = str(md_index)
 
     rva = f - self.get_base_address()
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
@@ -1349,7 +1350,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             function_hash, bytes_sum,
+             function_hash, bytes_sum, md_index,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
