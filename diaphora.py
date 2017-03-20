@@ -40,7 +40,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0.8"
+VERSION_VALUE = "1.0.9"
 COPYRIGHT_VALUE="Copyright(c) 2015-2016 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -955,17 +955,6 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Bytes sum'")
     self.add_matches_from_query(sql, choose)
 
-    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'MD Index' description,
-                     f.nodes bb1, df.nodes bb2
-                from functions f,
-                     diff.functions df
-               where f.md_index = df.md_index
-                 and f.md_index > 0
-                 and bb1 > 5 and bb2 > 5"""
-    log_refresh("Finding with heuristic 'MD Index'")
-    self.add_matches_from_query(sql, self.partial_chooser)
-
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
                     f.nodes bb1, df.nodes bb2
                from functions f,
@@ -1636,6 +1625,17 @@ class CBinDiff:
                  and df.instructions > 5"""
     log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
     self.add_matches_from_query_ratio(sql, choose, choose)
+
+    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'MD Index' description,
+                     f.nodes bb1, df.nodes bb2
+                from functions f,
+                     diff.functions df
+               where f.md_index = df.md_index
+                 and f.md_index > 0
+                 and bb1 > 6 and bb2 > 6"""
+    log_refresh("Finding with heuristic 'MD Index'")
+    self.add_matches_from_query(sql, self.partial_chooser)
 
     # Search using some of the previous criterias but calculating the
     # edit distance
