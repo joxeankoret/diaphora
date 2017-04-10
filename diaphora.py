@@ -1698,7 +1698,6 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Similar pseudo-code'")
       self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
 
-    if self.slow_heuristics:
       sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy AST hash' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
@@ -1712,7 +1711,6 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Pseudo-code fuzzy AST hash'")
       self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
 
-    if self.slow_heuristics:
       sql = """  select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Partial pseudo-code fuzzy hash' description,
                         f.pseudocode pseudo1, df.pseudocode pseudo2,
                         f.assembly asm1, df.assembly asm2,
