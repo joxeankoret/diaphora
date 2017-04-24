@@ -1008,7 +1008,10 @@ class CIDABinDiff(diaphora.CBinDiff):
       traceback.print_exc()
 
   def decompile_and_get(self, ea):
-    if not init_hexrays_plugin() and not (load_plugin("hexrays") and init_hexrays_plugin()):
+    decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
+    if decompiler_plugin is None:
+      decompiler_plugin = "hexrays"
+    if not init_hexrays_plugin() and not (load_plugin(decompiler_plugin) and init_hexrays_plugin()):
       return False
 
     f = get_func(ea)
