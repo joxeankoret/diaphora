@@ -855,7 +855,7 @@ class CIDABinDiff(diaphora.CBinDiff):
                      and bbi.basic_block_id = bb.basic_block_id
                      and ins.id = bbi.instruction_id
                      and f.address = ?"""
-        cur.execute(sql, (ea1,))
+        cur.execute(sql, (str(ea1),))
         match_rows = cur.fetchall()
         if len(match_rows) > 0:
           matched_syms = {}
