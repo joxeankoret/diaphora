@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2016, Joxean Koret
+Copyright (c) 2015-2017, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -121,6 +121,22 @@ def import_definitions():
   if filename is not None:
     if askyn_c(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
       tmp_diff.import_definitions_only(filename)
+
+#-----------------------------------------------------------------------
+# Compatibility between IDA 6.X and 7.X
+#
+KERNEL_VERSION = get_kernel_version()
+def diaphora_decode(ea):
+  global KERNEL_VERSION
+  if KERNEL_VERSION.startswith("7."):
+    ins = idaapi.insn_t()
+    decoded_size = idaapi.decode_insn(ins, ea)
+    return decoded_size, ins
+  elif KERNEL_VERSION.startswith("6."):
+    decoded_size = idaapi.decode_insn(ea)
+    return decoded_size, idaapi.cmd
+  else:
+    raise Exception("Unsupported IDA kernel version!")
 
 #-----------------------------------------------------------------------
 class CHtmlViewer(PluginForm):
@@ -282,9 +298,10 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
       ratio = float(item[5])
-      red = int(255 * (1 - ratio))
+      red = int(164 * (1 - ratio))
       green = int(128 * ratio)
-      color = int("0x00%02x%02x" % (green, red), 16)
+      blue = int(255 * (1 - ratio))
+      color = int("0x%02x%02x%02x" % (blue, green, red), 16)
       return [color, 0]
     return [0xFFFFFF, 0]
 
@@ -399,10 +416,10 @@ class uitimercallback_t(object):
 
   def __call__(self):
     if not "GetTForm" in dir(self.g):
-      #log("Notice: IDA 6.6 doesn't support GetTForm, as so, it isn't possible to change the zoom.")
-      return -1
+      f = find_tform(self.g._title)
+    else:
+      f = self.g.GetTForm()
 
-    f = self.g.GetTForm()
     switchto_tform(f, 1)
     process_ui_action("GraphZoomFit", 0)
     return -1
@@ -462,6 +479,42 @@ class CDiffGraphViewer(GraphViewer):
     return GraphViewer.Show(self)
 
 #-----------------------------------------------------------------------
+class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
+  def __init__(self):
+    idaapi.action_handler_t.__init__(self)
+
+  def activate(self, ctx):
+    show_choosers()
+    return 1
+
+  def update(self, ctx):
+    return idaapi.AST_ENABLE_ALWAYS
+
+#-----------------------------------------------------------------------
+class CIdaMenuHandlerSaveResults(idaapi.action_handler_t):
+  def __init__(self):
+    idaapi.action_handler_t.__init__(self)
+
+  def activate(self, ctx):
+    save_results()
+    return 1
+
+  def update(self, ctx):
+    return idaapi.AST_ENABLE_ALWAYS
+
+#-----------------------------------------------------------------------
+class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
+  def __init__(self):
+    idaapi.action_handler_t.__init__(self)
+
+  def activate(self, ctx):
+    load_results()
+    return 1
+
+  def update(self, ctx):
+    return idaapi.AST_ENABLE_ALWAYS
+
+#-----------------------------------------------------------------------
 class CIDABinDiff(diaphora.CBinDiff):
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
@@ -472,6 +525,7 @@ class CIDABinDiff(diaphora.CBinDiff):
   def show_choosers(self, force=False):
     if len(self.best_chooser.items) > 0:
       self.best_chooser.show(force)
+
     if len(self.partial_chooser.items) > 0:
       self.partial_chooser.show(force)
 
@@ -778,8 +832,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     graph2.Show()
 
     set_dock_pos(title1, title2, DP_RIGHT)
-    uitimercallback_t(graph1, 100)
-    uitimercallback_t(graph2, 100)
+    uitimercallback_t(graph1, 10)
+    uitimercallback_t(graph2, 10)
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
@@ -1054,20 +1108,77 @@ class CIDABinDiff(diaphora.CBinDiff):
         log("Cannot decompile 0x%x: %s" % (ea, str(sys.exc_info()[1])))
     return t
 
+  def register_menu_action(self, action_name, action_desc, handler, hotkey = None):
+    show_choosers_action = idaapi.action_desc_t(
+      action_name,
+      action_desc,
+      handler,
+      hotkey,
+      None,
+      -1)
+    idaapi.register_action(show_choosers_action)
+    idaapi.attach_action_to_menu(
+        'Edit/Plugins/%s' % action_desc,
+        action_name,
+        idaapi.SETMENU_APP)
+
   def register_menu(self):
     global g_bindiff
     g_bindiff = self
 
-    idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Show results", "F3", 0, show_choosers, ())
-    idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Save results", None, 0, save_results, ())
-    idaapi.add_menu_item("Edit/Plugins/", "Diaphora - Load results", None, 0, load_results, ())
+    menu_items = [
+      ['diaphora:show_results', 'Diaphora - Show results', CIdaMenuHandlerShowChoosers(), "F3"],
+      ['diaphora:save_results', 'Diaphora - Save results', CIdaMenuHandlerSaveResults(), None],
+      ['diaphora:load_results', 'Diaphora - Load results', CIdaMenuHandlerLoadResults(), None]
+    ]
+    for item in menu_items:
+      action_name, action_desc, action_handler, hotkey = item
+      self.register_menu_action(action_name, action_desc, action_handler, hotkey)
+
     Warning("""AUTOHIDE REGISTRY\nIf you close one tab you can always re-open it by pressing F3
 or selecting Edit -> Plugins -> Diaphora - Show results""")
+
+  # Ripped out from REgoogle
+  def constant_filter(self, value):
+    """Filter for certain constants/immediate values. Not all values should be
+    taken into account for searching. Especially not very small values that
+    may just contain the stack frame size.
+
+    @param value: constant value
+    @type value: int
+    @return: C{True} if value should be included in query. C{False} otherwise
+    """
+    # no small values
+    if value < 0x10000:
+      return False
+      
+    if value & 0xFFFFFF00 == 0xFFFFFF00 or value & 0xFFFF00 == 0xFFFF00 or \
+       value & 0xFFFFFFFFFFFFFF00 == 0xFFFFFFFFFFFFFF00 or \
+       value & 0xFFFFFFFFFFFF00 == 0xFFFFFFFFFFFF00:
+      return False
+
+    #no single bits sets - mostly defines / flags
+    for i in xrange(64):
+      if value == (1 << i):
+        return False
+
+    return True
+
+  def is_constant(self, oper, ea):
+    value = oper.value
+    # make sure, its not a reference but really constant
+    if value in DataRefsFrom(ea):
+      return False
+
+    return True
 
   def read_function(self, f, discard=False):
     name = GetFunctionName(int(f))
     true_name = name
     demangled_name = Demangle(name, INF_SHORT_DN)
+    if demangled_name == "":
+      demangled_name = None
+
     if demangled_name is not None:
       name = demangled_name
 
@@ -1116,6 +1227,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_degree = {}
     bb_edges = []
 
+    constants = []
+
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
@@ -1147,16 +1260,28 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           else:
             assembly[block_ea] = ["loc_%x:" % x, disasm]
 
-
-        decoded_size = idaapi.decode_insn(x)
-        if idaapi.cmd.Operands[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= idaapi.cmd.Operands[0].offb
-        if idaapi.cmd.Operands[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= idaapi.cmd.Operands[1].offb
+        decoded_size, ins = diaphora_decode(x)
+        if ins.Operands[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+          decoded_size -= ins.Operands[0].offb
+        if ins.Operands[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+          decoded_size -= ins.Operands[1].offb
         if decoded_size <= 0:
           decoded_size = 1
 
-        curr_bytes = GetManyBytes(x, decoded_size)
+        for oper in ins.Operands:
+          if oper.type == o_imm:
+            if self.is_constant(oper, x) and self.constant_filter(oper.value):
+              constants.append(oper.value)
+          elif oper.type == o_mem or oper.type == o_idpspec0:
+            drefs = list(DataRefsFrom(x))
+            if len(drefs) > 0:
+              for dref in drefs:
+                if get_func(dref) is None:
+                  str_constant = GetString(dref, -1, -1)
+                  if str_constant is not None:
+                    constants.append(oper.value)
+
+        curr_bytes = GetManyBytes(x, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
             log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
             continue
@@ -1164,7 +1289,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         bytes_hash.append(curr_bytes)
         bytes_sum += sum(map(ord, curr_bytes))
 
-        function_hash.append(GetManyBytes(x, ItemSize(x)))
+        function_hash.append(GetManyBytes(x, ItemSize(x), False))
         outdegree += len(list(CodeRefsFrom(x, 0)))
         mnems.append(mnem)
         op_value = GetOperandValue(x, 1)
@@ -1222,6 +1347,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if block_ea not in bb_degree:
         # bb in degree, out degree
         bb_degree[block_ea] = [0, 0]
+        
       for succ_block in block.succs():
         succ_base = succ_block.startEA - image_base
         bb_relations[block_ea].append(succ_base)
@@ -1324,7 +1450,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         pseudo_hash3 = None
       pseudocode_primes = str(self.pseudo_hash[f])
 
-    clean_assembly = self.get_cmp_asm_lines(asm)
+    try:
+      clean_assembly = self.get_cmp_asm_lines(asm)
+    except:
+      clean_assembly = ""
+      print "Error getting assembly for 0x%x" % f
+
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
     md_index = 0
@@ -1347,13 +1478,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
       md_index = str(md_index)
 
+    seg_rva = x - SegStart(x)
+
     rva = f - self.get_base_address()
     return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             function_hash, bytes_sum, md_index,
+             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -1628,13 +1761,13 @@ class BinDiffOptions:
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
     self.exclude_library_thunk = kwargs.get('exclude_library_thunk', True)
-    self.unreliable = kwargs.get('unreliable', True)
-    self.slow = kwargs.get('slow', True)
     # Enable, by default, relaxed calculations on difference ratios for
     # 'big' databases (>20k functions)
     self.relax = kwargs.get('relax', total_functions > 20000)
     if self.relax:
       Warning(MSG_RELAXED_RATIO_ENABLED)
+    self.unreliable = kwargs.get('unreliable', False)
+    self.slow = kwargs.get('slow', False)
     self.experimental = kwargs.get('experimental', False)
     self.min_ea = kwargs.get('min_ea', MinEA())
     self.max_ea = kwargs.get('max_ea', MaxEA())

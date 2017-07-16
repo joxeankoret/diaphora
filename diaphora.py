@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2016, Joxean Koret
+Copyright (c) 2015-2017, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -40,8 +40,8 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.0.9"
-COPYRIGHT_VALUE="Copyright(c) 2015-2016 Joxean Koret"
+VERSION_VALUE = "1.1.0"
+COPYRIGHT_VALUE="Copyright(c) 2015-2017 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
@@ -299,7 +299,10 @@ class CBinDiff:
                         switches text,
                         function_hash text,
                         bytes_sum integer,
-                        md_index text) """
+                        md_index text,
+                        constants text,
+                        constants_count integer,
+                        segment_rva text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -538,11 +541,18 @@ class CBinDiff:
                                     pseudocode_hash3, strongly_connected, loops, rva,
                                     tarjan_topological_sort, strongly_connected_spp,
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
-                                    function_hash, bytes_sum, md_index)
+                                    function_hash, bytes_sum, md_index, constants,
+                                    constants_count, segment_rva)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?)"""
-    cur.execute(sql, new_props)
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+    try:
+      cur.execute(sql, new_props)
+    except:
+      print prop
+      raise
+
     func_id = cur.lastrowid
 
     if not self.function_summaries_only:
@@ -888,7 +898,8 @@ class CBinDiff:
                      f.nodes bb1, df.nodes bb2
                 from functions f,
                      diff.functions df
-               where df.rva = f.rva
+               where (df.rva = f.rva
+                   or df.segment_rva = f.segment_rva)
                  and df.bytes_hash = f.bytes_hash
                  and df.instructions = f.instructions
                  and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
@@ -933,7 +944,8 @@ class CBinDiff:
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Bytes hash' description,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.bytes_hash = df.bytes_hash
@@ -944,32 +956,44 @@ class CBinDiff:
     if not self.ignore_all_names:
       self.find_same_name(self.partial_chooser)
 
-    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'Bytes sum' description,
-                     f.nodes bb1, df.nodes bb2
-                from functions f,
-                     diff.functions df
-               where f.bytes_sum = df.bytes_sum
-                 and f.size = df.size
-                 and f.instructions > 5 and df.instructions > 5"""
-    log_refresh("Finding with heuristic 'Bytes sum'")
-    self.add_matches_from_query(sql, choose)
+    if self.unreliable:
+      sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                       'Bytes sum' description,
+                       f.nodes bb1, df.nodes bb2
+                  from functions f,
+                       diff.functions df
+                 where f.bytes_sum = df.bytes_sum
+                   and f.size = df.size
+                   and f.mnemonics = df.mnemonics
+                   and f.instructions > 5 and df.instructions > 5"""
+      log_refresh("Finding with heuristic 'Bytes sum'")
+      self.add_matches_from_query(sql, choose)
 
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.pseudocode = df.pseudocode
                 and df.pseudocode is not null
                 and f.pseudocode_lines >= 5 """ + postfix + """
+                and f.name not like 'nullsub%'
+                and df.name not like 'nullsub%'
               union
              select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2
                from functions f,
                     diff.functions df
               where f.assembly = df.assembly
                 and df.assembly is not null
-              """ + postfix
+                and f.instructions > 5 and df.instructions > 5 
+                and f.name not like 'nullsub%'
+                and df.name not like 'nullsub%' """
     log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
     self.add_matches_from_query(sql, choose)
 
@@ -978,11 +1002,15 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
-               where f.clean_assembly = df.clean_assembly
-                  or f.clean_pseudo = df.clean_pseudo""" + postfix
+               where (f.clean_assembly = df.clean_assembly
+                  or f.clean_pseudo = df.clean_pseudo) 
+                  and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
+                  and f.name not like 'nullsub%'
+                  and df.name not like 'nullsub%' """
     log_refresh("Finding with heuristic 'Same cleaned up assembly or pseudo-code'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
@@ -990,7 +1018,8 @@ class CBinDiff:
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.rva = df.rva
@@ -1008,7 +1037,7 @@ class CBinDiff:
       return 0
     return ast_ratio(ast1, ast2)
 
-  def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2):
+  def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2):
     fratio = quick_ratio
     decimal_values = "{0:.2f}"
     if self.relaxed_ratio:
@@ -1059,14 +1088,25 @@ class CBinDiff:
       if v3 == 1:
         return 1.0
 
-    r = max(v1, v2, v3)
+    v4 = 0.0
+    if md1 == md2 and md1 > 0.0:
+      # A MD-Index >= 10.0 is somehow rare
+      if self.relaxed_ratio or md1 > 10.0:
+        return 1.0
+      v4 = min((v1 + v2 + v3 + 3.0) / 4, 1.0)
+    elif md1 != 0 and md2 != 0 and False:
+      tmp1 = max(md1, md2)
+      tmp2 = min(md1, md2)
+      v4 = tmp2 * 1. / tmp1
+
+    r = max(v1, v2, v3, v4)
     return r
 
   def all_functions_matched(self):
     return len(self.matched1) == self.total_functions1 or \
            len(self.matched2) == self.total_functions2
 
-  def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None):
+  def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
     if self.all_functions_matched():
       return
 
@@ -1104,11 +1144,16 @@ class CBinDiff:
       ast2 = row["pseudo_primes2"]
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
+      md1 = row["md1"]
+      md2 = row["md2"]
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
+      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+      if debug:
+        print "0x%x 0x%x %d" % (int(ea), int(ea2), r)
+
       if r == 1:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
@@ -1166,11 +1211,13 @@ class CBinDiff:
       ast2 = row["pseudo_primes2"]
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
+      md1 = row["md1"]
+      md2 = row["md2"]
 
       if name1 in self.matched1 or name2 in self.matched2:
         continue
 
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
+      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
 
       if r == 1:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
@@ -1210,7 +1257,7 @@ class CBinDiff:
 
       ea = str(row["ea"])
       name1 = row["name1"]
-      ea2 = row["ea2"]
+      ea2 = str(row["ea2"])
       name2 = row["name2"]
       desc = row["description"]
       bb1 = int(row["bb1"])
@@ -1278,7 +1325,8 @@ class CBinDiff:
                     f.assembly asm1, d.assembly asm2,
                     f.pseudocode_primes primes1,
                     d.pseudocode_primes primes2,
-                    f.nodes bb1, d.nodes bb2
+                    f.nodes bb1, d.nodes bb2,
+                    cast(f.md_index as real) md1, cast(d.md_index as real) md2
                from functions f,
                     diff.functions d
               where d.mangled_function = f.mangled_function
@@ -1312,8 +1360,11 @@ class CBinDiff:
         pseudo2 = row["pseudo2"]
         asm1 = row["asm1"]
         asm2 = row["asm2"]
-        ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2)
-        if float(ratio) == 1.0:
+        md1 = row["md1"]
+        md2 = row["md2"]
+
+        ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+        if float(ratio) == 1.0 or (md1 != 0 and md1 == md2):
           self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1, bb1, bb2))
         else:
           choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio, bb1, bb2))
@@ -1376,7 +1427,8 @@ class CBinDiff:
 
             r = self.check_ratio(rows[0]["pseudocode_primes"], rows[1]["pseudocode_primes"], \
                                  rows[0]["pseudocode"], rows[1]["pseudocode"], \
-                                 rows[0]["assembly"], rows[1]["assembly"])
+                                 rows[0]["assembly"], rows[1]["assembly"], \
+                                 float(rows[0]["md_index"]), float(rows[1]["md_index"]))
             if r < 0.5:
               if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
                 r = 0.5001
@@ -1457,12 +1509,56 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
+    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare MD Index' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                 from functions f,
+                      diff.functions df,
+                      (select md_index
+                         from diff.functions
+                        where md_index != 0
+                        group by md_index
+                       having count(*) <= 2
+                        union 
+                       select md_index
+                         from main.functions
+                        where md_index != 0
+                        group by md_index
+                       having count(*) <= 2
+                      ) shared_mds
+                where f.md_index = df.md_index
+                  and df.md_index = shared_mds.md_index
+                  and f.nodes > 10 """ + postfix
+    log_refresh("Finding with heuristic 'Same rare MD Index'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
+
+    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'Same MD Index and constants' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2,
+                     df.tarjan_topological_sort, df.strongly_connected_spp
+                from functions f,
+                     diff.functions df
+               where f.md_index = df.md_index
+                 and f.md_index > 0
+                 and ((f.constants = df.constants
+                 and f.constants_count > 0)) """ + postfix
+    log_refresh("Finding with heuristic 'Same MD Index and constants'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
+
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'All attributes' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.nodes = df.nodes 
@@ -1491,7 +1587,8 @@ class CBinDiff:
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
                where f.nodes = df.nodes 
@@ -1514,24 +1611,42 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'All or most attributes'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
-    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Switch structures' description,
-                f.pseudocode pseudo1, df.pseudocode pseudo2,
-                f.assembly asm1, df.assembly asm2,
-                f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                f.nodes bb1, df.nodes bb2
-           from functions f,
-                diff.functions df
-          where f.switches = df.switches
-            and df.switches != '[]' """ + postfix
-    log_refresh("Finding with heuristic 'Switch structures'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
+    if self.slow_heuristics:
+      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Switch structures' description,
+                  f.pseudocode pseudo1, df.pseudocode pseudo2,
+                  f.assembly asm1, df.assembly asm2,
+                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                  f.nodes bb1, df.nodes bb2,
+                  cast(f.md_index as real) md1, cast(df.md_index as real) md2
+             from functions f,
+                  diff.functions df
+            where f.switches = df.switches
+              and df.switches != '[]' """ + postfix
+      log_refresh("Finding with heuristic 'Switch structures'")
+      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
 
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Same address, nodes, edges and primes (re-ordered instructions)' description,
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
+               from functions f,
+                    diff.functions df
+              where f.constants = df.constants
+                and f.constants_count = df.constants_count
+                and f.constants_count > 0 """ + postfix
+    log_refresh("Finding with heuristic 'Same constants'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
+
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Same address, nodes, edges and primes (re-ordered instructions)' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.rva = df.rva
@@ -1548,14 +1663,15 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.names = df.names
                  and f.names != '[]'
-                 and f.nodes = df.nodes
-                 and f.edges = df.edges
-                 and f.instructions = df.instructions""" + postfix
+                 and f.md_index = df.md_index
+                 and f.instructions = df.instructions
+                 and f.nodes > 5 and df.nodes > 5""" + postfix
     log_refresh("Finding with heuristic 'Import names hash'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
@@ -1564,7 +1680,8 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -1584,7 +1701,8 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -1602,7 +1720,8 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.mnemonics = df.mnemonics
@@ -1617,7 +1736,8 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.mnemonics_spp = df.mnemonics_spp
@@ -1625,17 +1745,6 @@ class CBinDiff:
                  and df.instructions > 5"""
     log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
     self.add_matches_from_query_ratio(sql, choose, choose)
-
-    sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'MD Index' description,
-                     f.nodes bb1, df.nodes bb2
-                from functions f,
-                     diff.functions df
-               where f.md_index = df.md_index
-                 and f.md_index > 0
-                 and bb1 > 6 and bb2 > 6"""
-    log_refresh("Finding with heuristic 'MD Index'")
-    self.add_matches_from_query(sql, self.partial_chooser)
 
     # Search using some of the previous criterias but calculating the
     # edit distance
@@ -1647,7 +1756,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_hash1 = f.pseudocode_hash1
@@ -1660,7 +1770,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_hash1 = f.pseudocode_hash1""" + postfix
@@ -1671,7 +1782,8 @@ class CBinDiff:
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.pseudocode_lines = df.pseudocode_lines
@@ -1688,7 +1800,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.pseudocode_lines = df.pseudocode_lines
@@ -1702,7 +1815,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_primes = f.pseudocode_primes
@@ -1715,7 +1829,8 @@ class CBinDiff:
                         f.pseudocode pseudo1, df.pseudocode pseudo2,
                         f.assembly asm1, df.assembly asm2,
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2
+                        f.nodes bb1, df.nodes bb2,
+                        cast(f.md_index as real) md1, cast(df.md_index as real) md2
                    from functions f,
                         diff.functions df
                   where substr(df.pseudocode_hash1, 1, 16) = substr(f.pseudocode_hash1, 1, 16)
@@ -1729,12 +1844,14 @@ class CBinDiff:
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.strongly_connected = df.strongly_connected
                 and f.tarjan_topological_sort = df.tarjan_topological_sort
-                and f.strongly_connected > 3""" + postfix
+                and f.strongly_connected > 3
+                and f.nodes > 10 """ + postfix
     log_refresh("Finding with heuristic 'Topological sort hash'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
@@ -1742,7 +1859,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -1753,26 +1871,28 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Same high complexity, prototype and names'")
     self.add_matches_from_query_ratio(sql, choose, choose)
 
-    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity and names' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
-                 from functions f,
-                      diff.functions df
-                where f.names = df.names
-                  and f.cyclomatic_complexity = df.cyclomatic_complexity
-                  and f.cyclomatic_complexity >= 15
-                  and df.names != '[]'""" + postfix
-    log_refresh("Finding with heuristic 'Same high complexity and names'")
-    self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
-
     if self.slow_heuristics:
+      sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity and names' description,
+                        f.pseudocode pseudo1, df.pseudocode pseudo2,
+                        f.assembly asm1, df.assembly asm2,
+                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                        f.nodes bb1, df.nodes bb2,
+                        cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                   from functions f,
+                        diff.functions df
+                  where f.names = df.names
+                    and f.cyclomatic_complexity = df.cyclomatic_complexity
+                    and f.cyclomatic_complexity >= 15
+                    and df.names != '[]'""" + postfix
+      log_refresh("Finding with heuristic 'Same high complexity and names'")
+      self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.5)
+
       sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Strongly connected components' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
@@ -1787,11 +1907,13 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected_spp = df.strongly_connected_spp
-                  and df.strongly_connected_spp > 1""" + postfix
+                  and df.strongly_connected_spp > 1
+                  and f.nodes > 10 and df.nodes > 10 """ + postfix
     log_refresh("Finding with heuristic 'Strongly connected components small-primes-product'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
@@ -1800,7 +1922,8 @@ class CBinDiff:
                   f.pseudocode pseudo1, df.pseudocode pseudo2,
                   f.assembly asm1, df.assembly asm2,
                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                  f.nodes bb1, df.nodes bb2
+                  f.nodes bb1, df.nodes bb2,
+                  cast(f.md_index as real) md1, cast(df.md_index as real) md2
              from functions f,
                   diff.functions df
             where f.loops = df.loops
@@ -1808,21 +1931,6 @@ class CBinDiff:
               and f.nodes > 3 and df.nodes > 3""" + postfix
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
-
-    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Same nodes, edges and strongly connected components' description,
-                     f.pseudocode pseudo1, df.pseudocode pseudo2,
-                     f.assembly asm1, df.assembly asm2,
-                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2
-               from functions f,
-                    diff.functions df
-              where f.nodes = df.nodes
-                and f.edges = df.edges
-                and f.strongly_connected = df.strongly_connected
-                and df.nodes > 4""" + postfix
-    log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
-    self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
@@ -1835,25 +1943,29 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-    # XXX: FIXME: This heuristic looks wrong. The order is not being verified any where!!!
-    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same names and order' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
-                 from functions f,
-                      diff.functions df
-                where f.names = df.names
-                  and df.names != '[]'""" + postfix
-    log_refresh("Finding with heuristic 'Same names and order'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
+    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Same nodes, edges and strongly connected components' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
+               from functions f,
+                    diff.functions df
+              where f.nodes = df.nodes
+                and f.edges = df.edges
+                and f.strongly_connected = df.strongly_connected
+                and df.nodes > 4""" + postfix
+    log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
+    self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
 
     if self.slow_heuristics:
       sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.pseudocode_lines = df.pseudocode_lines
@@ -1867,7 +1979,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where df.pseudocode_primes = f.pseudocode_primes
@@ -1879,7 +1992,8 @@ class CBinDiff:
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
                from functions f,
                     diff.functions df
               where f.pseudocode = df.pseudocode
@@ -1892,7 +2006,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -1907,7 +2022,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.names = df.names
@@ -1925,7 +2041,8 @@ class CBinDiff:
                  f.pseudocode pseudo1, df.pseudocode pseudo2,
                  f.assembly asm1, df.assembly asm2,
                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                 f.nodes bb1, df.nodes bb2
+                 f.nodes bb1, df.nodes bb2,
+                 cast(f.md_index as real) md1, cast(df.md_index as real) md2
             from functions f,
                  diff.functions df
            where f.nodes = df.nodes 
@@ -1937,6 +2054,7 @@ class CBinDiff:
              and f.loops = df.loops
              and f.tarjan_topological_sort = df.tarjan_topological_sort
              and f.strongly_connected_spp = df.strongly_connected_spp""" + postfix + """
+             and f.nodes > 5 and df.nodes > 5
            order by
                  case when f.size = df.size then 1 else 0 end +
                  case when f.instructions = df.instructions then 1 else 0 end +
@@ -1964,7 +2082,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where f.strongly_connected = df.strongly_connected
@@ -1976,7 +2095,8 @@ class CBinDiff:
                   f.pseudocode pseudo1, df.pseudocode pseudo2,
                   f.assembly asm1, df.assembly asm2,
                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                  f.nodes bb1, df.nodes bb2
+                  f.nodes bb1, df.nodes bb2,
+                  cast(f.md_index as real) md1, cast(df.md_index as real) md2
              from functions f,
                   diff.functions df
             where f.loops = df.loops
@@ -1989,7 +2109,8 @@ class CBinDiff:
                        f.pseudocode pseudo1, df.pseudocode pseudo2,
                        f.assembly asm1, df.assembly asm2,
                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2
+                       f.nodes bb1, df.nodes bb2,
+                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -2005,7 +2126,8 @@ class CBinDiff:
                        f.pseudocode pseudo1, df.pseudocode pseudo2,
                        f.assembly asm1, df.assembly asm2,
                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2
+                       f.nodes bb1, df.nodes bb2,
+                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -2021,7 +2143,8 @@ class CBinDiff:
                        f.pseudocode pseudo1, df.pseudocode pseudo2,
                        f.assembly asm1, df.assembly asm2,
                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2
+                       f.nodes bb1, df.nodes bb2,
+                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -2038,7 +2161,8 @@ class CBinDiff:
                        f.pseudocode pseudo1, df.pseudocode pseudo2,
                        f.assembly asm1, df.assembly asm2,
                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2
+                       f.nodes bb1, df.nodes bb2,
+                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
                   from functions f,
                        diff.functions df
                  where f.nodes = df.nodes
@@ -2052,7 +2176,8 @@ class CBinDiff:
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
                  from functions f,
                       diff.functions df
                 where df.pseudocode is not null 
@@ -2066,7 +2191,8 @@ class CBinDiff:
                         f.pseudocode pseudo1, df.pseudocode pseudo2,
                         f.assembly asm1, df.assembly asm2,
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2
+                        f.nodes bb1, df.nodes bb2,
+                        cast(f.md_index as real) md1, cast(df.md_index as real) md2
                    from functions f,
                         diff.functions df
                   where f.cyclomatic_complexity = df.cyclomatic_complexity
