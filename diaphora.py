@@ -1932,6 +1932,23 @@ class CBinDiff:
       log_refresh("Finding with heuristic 'Loop count'")
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
 
+    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
+                     'Strongly Connected Components SPP and Names' description,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                     f.nodes bb1, df.nodes bb2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                from functions f,
+                     diff.functions df
+               where f.names = df.names
+                 and f.names != '[]'
+                 and f.strongly_connected_spp = df.strongly_connected_spp
+                 and f.strongly_connected_spp > 0
+                 """ + postfix
+    log_refresh("Finding with heuristic 'Strongly Connected Components SPP and Names'")
+    self.add_matches_from_query_ratio(sql, choose, choose)
+
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
     
