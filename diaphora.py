@@ -1742,9 +1742,9 @@ class CBinDiff:
                      diff.functions df
                where f.mnemonics_spp = df.mnemonics_spp
                  and f.instructions = df.instructions
-                 and df.instructions > 5"""
+                 and df.instructions > 5 """ + postfix
     log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
+    self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
 
     # Search using some of the previous criterias but calculating the
     # edit distance
@@ -1947,7 +1947,7 @@ class CBinDiff:
                  and f.strongly_connected_spp > 0
                  """ + postfix
     log_refresh("Finding with heuristic 'Strongly Connected Components SPP and Names'")
-    self.add_matches_from_query_ratio(sql, choose, choose)
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
