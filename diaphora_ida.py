@@ -1707,7 +1707,7 @@ def _diff_or_export(use_ui, **options):
         g_bindiff = None
       remove_file(opts.file_out)
       log("Database %s removed" % repr(opts.file_out))
-
+  t0 = time.time()
   try:
     bd = CIDABinDiff(opts.file_out)
     bd.use_decompiler_always = opts.use_decompiler
@@ -1735,7 +1735,7 @@ def _diff_or_export(use_ui, **options):
         profiler.print_stats(sort="time")
       else:
         bd.export()
-      log("Database exported")
+      log("Database exported. Took {} seconds".format(time.time() - t0))
 
     if opts.file_in != "":
       if os.getenv("DIAPHORA_PROFILE") is not None:

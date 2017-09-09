@@ -2336,6 +2336,7 @@ class CBinDiff:
       return False
 
     try:
+      t0 = time.time()
       log_refresh("Performing diffing...", True)
       
       self.do_continue = True
@@ -2368,7 +2369,7 @@ class CBinDiff:
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
 
-        log("Done")
+        log("Done. Took {} seconds".format(time.time() - t0))
     finally:
       cur.close()
     return True
