@@ -1250,7 +1250,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         instructions += 1
 
         if mnem in cpu_ins_list:
-          mnemonics_spp += self.primes[cpu_ins_list.index(mnem)]
+          mnemonics_spp *= self.primes[cpu_ins_list.index(mnem)]
 
         try:
           assembly[block_ea].append(disasm)
