@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import sys
 import re
+import ntpath
 import time
 import json
 import decimal
@@ -1696,8 +1697,9 @@ def _diff_or_export(use_ui, **options):
 #-----------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
+    global file_out
     total_functions = len(list(Functions()))
-    sqlite_db = "output.sqlite" #os.path.splitext(GetIdbPath())[0] + ".sqlite"
+    sqlite_db = file_out  #os.path.splitext(GetIdbPath())[0] + ".sqlite"
     self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
@@ -1850,8 +1852,12 @@ def remove_file(filename):
   print "Remove file %s"%(filename)
 
 #-----------------------------------------------------------------------
+
+file_out = ''
+
 def main():
   global r2
+  global file_out
   filename = os.getenv("R2_FILE")
   in_r2 = os.getenv("R2PIPE_IN") is not None
     
@@ -1866,7 +1872,7 @@ def main():
         filename = sys.argv[1]
       else:
         print "Usage: diaphora-r2 [bin]"
-        print "Usage: r2 -qAc'!diaphora-r2' /bin/ls"
+        print "Usage: r2 -qAc '!diaphora-r2' /bin/ls"
         sys.exit(1)
     r2 = r2pipe.open(filename)
     #r2.cmd("aaa")
@@ -1881,7 +1887,7 @@ def main():
   r2.cmd("aeim")
   r2.cmd("e anal.hasnext=true")
 
-  file_out = "output.sqlite"
+  file_out = ntpath.basename(filename) + ".sqlite"
   # TODO parse arguments
   if bool(os.getenv("DIAPHORA_AUTO")):
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
