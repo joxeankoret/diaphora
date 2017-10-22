@@ -236,7 +236,7 @@ class CBinDiff:
     if self.db is not None:
       try:
         if self.last_diff_db is not None:
-          with self.db.cursor():
+          with self.db.cursor() as cur:
             cur.execute('detach "%s"' % self.last_diff_db)
       except:
         pass
