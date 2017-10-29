@@ -1162,7 +1162,7 @@ class CBinDiff:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif r < 5 and unreliable is not None:
+      elif r < 0.5 and unreliable is not None:
         unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
