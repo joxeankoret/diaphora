@@ -892,7 +892,7 @@ class CIDABinDiff(diaphora.CBinDiff):
                    and (ins.comment1 is not null
                      or ins.comment2 is not null
                      or ins.name is not null) """
-      cur.execute(sql, (ea2,))
+      cur.execute(sql, (str(ea2),))
       import_rows = cur.fetchall()
       if len(import_rows) > 0:
         import_syms = {}
@@ -928,7 +928,7 @@ class CIDABinDiff(diaphora.CBinDiff):
                     where address = ?
                       and assembly is not null)
                     order by 2 asc"""
-          cur.execute(sql, (ea1, ea2))
+          cur.execute(sql, (str(ea1), str(ea2)))
           diff_rows = cur.fetchall()
           if len(diff_rows) > 0:
             lines1 = diff_rows[0]["assembly"]
@@ -957,7 +957,7 @@ class CIDABinDiff(diaphora.CBinDiff):
   def do_import_one(self, ea1, ea2, force = False):
     cur = self.db_cursor()
     sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
-    cur.execute(sql, (ea2,))
+    cur.execute(sql, (str(ea2),))
     row = cur.fetchone()
     if row is not None:
       proto = row["prototype"]
