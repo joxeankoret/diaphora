@@ -520,6 +520,10 @@ class CBinDiff:
     return rowid
 
   def save_function(self, props):
+    if props == False:
+      log("WARNING: Trying to save a non resolved function?")
+      return
+
     cur = self.db_cursor()
     new_props = []
     for prop in props[:len(props)-2]:
@@ -583,7 +587,7 @@ class CBinDiff:
         ins_ea = str(key)
         last_bb_id = self_get_bb_id(ins_ea)
         if last_bb_id is None:
-          cur_execute(sql1, (num, ins_ea))
+          cur_execute(sql1, (num, str(ins_ea)))
           last_bb_id = cur.lastrowid
         bb_ids[ins_ea] = last_bb_id
 
@@ -775,7 +779,7 @@ class CBinDiff:
                  and f.id = fb.function_id
                  and f.address = ?
                order by bb.address asc""" % (db, db, db, db, db)
-    cur.execute(sql, (ea1,))
+    cur.execute(sql, (str(ea1),))
     bb_blocks = {}
     for row in result_iter(cur):
       bb_ea = str(int(row["bb_address"]))
@@ -807,7 +811,7 @@ class CBinDiff:
                and fbs.basic_block_id = bbr.child_id
                and f.address = ?
              order by 1 asc, 2 asc""" % (db, db, db, db, db, db)
-    cur.execute(sql, (ea1, ))
+    cur.execute(sql, (str(ea1), ))
     rows = result_iter(cur)
 
     bb_relations = {}
@@ -824,7 +828,7 @@ class CBinDiff:
 
   def delete_function(self, ea):
     cur = self.db_cursor()
-    cur.execute("delete from functions where address = ?", (ea, ))
+    cur.execute("delete from functions where address = ?", (str(ea), ))
     cur.close()
 
   def is_auto_generated(self, name):
@@ -855,8 +859,11 @@ class CBinDiff:
         FACTORS_CACHE[cg2] = cg_factors2
         diff = difference(cg1, cg2)
         total = sum(cg_factors1.values())
-        percent = diff * 100. / total
-        log("Callgraphs from both programs differ in %f%%" % percent)
+        if total == 0 or diff == 0:
+          log("Callgraphs are 100% equal")
+        else:
+          percent = diff * 100. / total
+          log("Callgraphs from both programs differ in %f%%" % percent)
 
     cur.close()
 
@@ -1456,9 +1463,9 @@ class CBinDiff:
 
   def find_from_matches(self, the_items):
     # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
-    # Rule 1: if a function A in program P is has id X and function B in
-    # the same program is has id + 1, then, in program P2, function B
-    # maybe the next function to A in P2.
+    # Rule 1: if a function A in program P has id X, and function B in
+    # the same program has id + 1, then, in program P2, function B maybe
+    # the next function to A in P2.
 
     log_refresh("Finding with heuristic 'Call address sequence'")
     cur = self.db_cursor()
@@ -1477,7 +1484,7 @@ class CBinDiff:
         id2 = self.get_function_id(name2, False)
         sql = """insert into best_matches (id, id1, ea1, name1, id2, ea2, name2)
                                    values (?, ?, ?, ?, ?, ?, ?)"""
-        cur.execute(sql, (i, id1, ea1, name1, id2, ea2, name2))
+        cur.execute(sql, (i, id1, str(ea1), name1, id2, str(ea2), name2))
         i += 1
 
       last = None
