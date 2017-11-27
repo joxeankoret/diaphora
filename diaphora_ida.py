@@ -957,7 +957,7 @@ class CIDABinDiff(diaphora.CBinDiff):
   def do_import_one(self, ea1, ea2, force = False):
     cur = self.db_cursor()
     sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
-    cur.execute(sql, (ea2,))
+    cur.execute(sql, (str(ea2),))
     row = cur.fetchone()
     if row is not None:
       proto = row["prototype"]
