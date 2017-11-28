@@ -1324,23 +1324,24 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           switch_cases = switch.get_jtable_size()
           results = calc_switch_cases(x, switch)
 
-          # It seems that IDAPython for idaq64 has some bug when reading
-          # switch's cases. Do not attempt to read them if the 'cur_case'
-          # returned object is not iterable.
-          can_iter = False
-          switch_cases_values = set()
-          for idx in xrange(len(results.cases)):
-            cur_case = results.cases[idx]
-            if not '__iter__' in dir(cur_case):
-              break
+          if results is not None:
+            # It seems that IDAPython for idaq64 has some bug when reading
+            # switch's cases. Do not attempt to read them if the 'cur_case'
+            # returned object is not iterable.
+            can_iter = False
+            switch_cases_values = set()
+            for idx in xrange(len(results.cases)):
+              cur_case = results.cases[idx]
+              if not '__iter__' in dir(cur_case):
+                break
 
-            can_iter |= True
-            for cidx in xrange(len(cur_case)):
-              case_id = cur_case[cidx]
-              switch_cases_values.add(case_id)
+              can_iter |= True
+              for cidx in xrange(len(cur_case)):
+                case_id = cur_case[cidx]
+                switch_cases_values.add(case_id)
 
-          if can_iter:
-            switches.append([switch_cases, list(switch_cases_values)])
+            if can_iter:
+              switches.append([switch_cases, list(switch_cases_values)])
 
       basic_blocks_data[block_ea] = instructions_data
       bb_relations[block_ea] = []
