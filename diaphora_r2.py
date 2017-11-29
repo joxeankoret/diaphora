@@ -136,7 +136,7 @@ def CodeRefsTo(x, y):
   return map(int16, r2.cmd('axtq.@ %s'%(x)).split('\n'))
 
 def CodeRefsFrom(x, y):
-  # ??? 
+  # ???
   return map(int16, r2.cmd('axfq.@ %s'%(x)).split('\n'))
 
 def GetOperandValue(x, y):
@@ -261,7 +261,7 @@ def GetManyBytes(ea, size, use_dbg=False):
   # optional parameter makes no sense in Diaphora.
   bytes = r2.cmdj('p8j %s @ %s'%(size, ea))
   return "".join(map(chr, bytes))
-  
+
 
 #-----------------------------------------------------------------------
 def GetInputFileMD5():
@@ -271,10 +271,15 @@ def GetInputFileMD5():
 
 #-----------------------------------------------------------------------
 def MinEA():
-  # TODO: Return the minimum address in the database.
-  # For example, if the first segment in the program being analysed is
-  # starting at 0x401000, then, that's the minimum address.
-  return int(r2.cmd('S~:[6]'),16)
+    addresses = []
+    r2_cmd_output = r2.cmd('S~:[6]')
+    r2_cmd_output = r2_cmd_output.splitlines()
+    if len(r2_cmd_output) > 1:
+        for i in range(0,len(r2_cmd_output)):
+            addresses.append(int(r2_cmd_output[i],16))
+        return min(addresses)
+    else:
+        return int(r2.cmd('S~:[6]'),16)
 
 #-----------------------------------------------------------------------
 def MaxEA():
@@ -1072,7 +1077,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     # no small values
     if value < 0x10000:
       return False
-      
+
     if value & 0xFFFFFF00 == 0xFFFFFF00 or value & 0xFFFF00 == 0xFFFF00 or \
        value & 0xFFFFFFFFFFFFFF00 == 0xFFFFFFFFFFFFFF00 or \
        value & 0xFFFFFFFFFFFF00 == 0xFFFFFFFFFFFF00:
@@ -1093,7 +1098,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     return True
 
-  # Most important function 
+  # Most important function
   def read_function(self, f, discard=False):
     print "READ F %s"%f
     fcns = r2.cmdj("afij @ %s"%(f))
@@ -1282,7 +1287,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if block_ea not in bb_degree:
         # bb in degree, out degree
         bb_degree[block_ea] = [0, 0]
-        
+
       #for succ_block in []: # TODO block.succs():
       for succ_block in block_succs(block_startEA):
         succ_base = succ_block - image_base #.startEA - image_base
@@ -1433,7 +1438,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
+             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):
@@ -1620,7 +1625,7 @@ def _diff_or_export(use_ui, **options):
     return
 
   opts = BinDiffOptions(**options)
- 
+
   if opts.file_out == opts.file_in:
     print("Both databases are the same file!")
     return
@@ -1860,7 +1865,7 @@ def main():
   global file_out
   filename = os.getenv("R2_FILE")
   in_r2 = os.getenv("R2PIPE_IN") is not None
-    
+
   if in_r2:
     print "Running from inside r2. Preserving the analysis information"
     r2 = r2pipe.open()
@@ -1878,7 +1883,7 @@ def main():
     #r2.cmd("aaa")
     r2.cmd("aab")
     #r2.cmd("aac")
-  
+
   # perform analysis
   r2.cmd("e asm.flags=false")
   r2.cmd("e asm.bytes=false")
