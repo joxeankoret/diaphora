@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""
+Exclusive for R2 stuff
+"""
+
 import sqlite3
 import sys
 import os
