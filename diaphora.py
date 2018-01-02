@@ -40,7 +40,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.2.0"
+VERSION_VALUE = "1.2.1"
 COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -190,6 +190,7 @@ class CBinDiff:
 
     self.pseudo = {}
     self.pseudo_hash = {}
+    self.pseudo_comments = {}
     self.unreliable = False
     self.relaxed_ratio = False
     self.experimental = False
@@ -335,7 +336,9 @@ class CBinDiff:
                 comment1 text,
                 comment2 text,
                 name text,
-                type text) """
+                type text,
+                pseudocomment text,
+                pseudoitp integer) """
     cur.execute(sql)
 
     sql = "create index if not exists idx_instructions_address on instructions (address)"
@@ -583,8 +586,11 @@ class CBinDiff:
       # The last 2 fields are basic_blocks_data & bb_relations
       bb_data, bb_relations = props[len(props)-2:]
       instructions_ids = {}
-      sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2, name, type)
-                                 values (?, ?, ?, ?, ?, ?, ?)"""
+      sql = """insert into main.instructions (address, mnemonic, disasm,
+                                              comment1, comment2, name,
+                                              type, pseudocomment,
+                                              pseudoitp)
+                                values (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
       self_get_instruction_id = self.get_instruction_id
       cur_execute = cur.execute
       for key in bb_data:
@@ -592,7 +598,12 @@ class CBinDiff:
           addr, mnem, disasm, cmt1, cmt2, name, mtype = insn
           db_id = self_get_instruction_id(str(addr))
           if db_id is None:
-            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name, mtype))
+            pseudocomment = None
+            pseudoitp = None
+            if addr in self.pseudo_comments:
+              pseudocomment, pseudoitp = self.pseudo_comments[addr]
+
+            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name, mtype, pseudocomment, pseudoitp))
             db_id = cur.lastrowid
           instructions_ids[addr] = db_id
 

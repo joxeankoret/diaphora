@@ -830,13 +830,23 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, name, mtype, mdis = ins_data2
+    ea2, cmt1, cmt2, name, mtype, mdis, mcmt, mitp = ins_data2
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
 
     if cmt2 is not None and get_cmt(ea1, 1) is None:
       set_cmt(ea1, cmt1, 1)
+
+    if mcmt is not None:
+      cfunc = decompile(ea1)
+      if cfunc is not None:
+        tl = idaapi.treeloc_t()
+        tl.ea = ea1
+        tl.itp = mitp
+        comment = mcmt
+        ret = cfunc.set_user_cmt(tl, comment)
+        cfunc.save_user_cmts()
 
     tmp_ea = None
     set_type = False
@@ -873,7 +883,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur = self.db_cursor()
     try:
       # Check first if we have any importable items
-      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
+      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                   from diff.function_bblocks bb,
                        diff.functions f,
                        diff.bb_instructions bbi,
@@ -884,16 +894,17 @@ class CIDABinDiff(diaphora.CBinDiff):
                    and f.address = ?
                    and (ins.comment1 is not null
                      or ins.comment2 is not null
-                     or ins.name is not null) """
+                     or ins.name is not null
+                     or pseudocomment is not null) """
       cur.execute(sql, (str(ea2),))
       import_rows = cur.fetchall()
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
-        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
+        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                     from function_bblocks bb,
                          functions f,
                          bb_instructions bbi,
@@ -907,7 +918,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"]]
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
@@ -946,8 +957,9 @@ class CIDABinDiff(diaphora.CBinDiff):
               # which another line number in both databases.
               ea1 = address1[int(left_line)-1]
               ea2 = address2[int(right_line)-1]
-
-              if left[1].startswith('\x00-') and right[1].startswith('\x00+'):
+              changed = left[1].startswith('\x00-') and right[1].startswith('\x00+')
+              has_comments = str(ea2) in import_syms and import_syms[str(ea2)][6] is not None
+              if changed or has_comments:
                 ea1 = str(ea1)
                 ea2 = str(ea2)
                 if ea1 in matched_syms and ea2 in import_syms:
@@ -1082,12 +1094,17 @@ class CIDABinDiff(diaphora.CBinDiff):
     visitor = CAstVisitor(cfunc)
     visitor.apply_to(cfunc.body, None)
     self.pseudo_hash[ea] = visitor.primes_hash
+    
+    cmts = idaapi.restore_user_cmts(cfunc.entry_ea)
+    if cmts is not None:
+      for tl, cmt in cmts.iteritems():
+        self.pseudo_comments[tl.ea - self.get_base_address()] = [str(cmt), tl.itp]
 
-    sv = cfunc.get_pseudocode();
+    sv = cfunc.get_pseudocode()
     self.pseudo[ea] = []
     first_line = None
     for sline in sv:
-      line = tag_remove(sline.line);
+      line = tag_remove(sline.line)
       if line.startswith("//"):
         continue
 
