@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2017, Joxean Koret
+Copyright (c) 2015-2018, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -207,13 +207,6 @@ class CIDAChooser(diaphora.CChooser, Choose2):
 
   def OnGetSize(self):
     return len(self.items)
-
-  def OnDeleteLine(self, n):
-    try:
-      del self.items[n]
-    except:
-      pass
-    return True
 
   def OnRefresh(self, n):
     return n
@@ -1207,6 +1200,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
         return False
 
+    image_base = self.get_base_address()
     nodes = 0
     edges = 0
     instructions = 0
@@ -1226,14 +1220,21 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     switches = []
     bb_degree = {}
     bb_edges = []
-
     constants = []
+    
+    # The callees will be calculated later
+    callees = list()
+    # Calculate the callers
+    callers = list()
+    for caller in list(CodeRefsTo(f, 0)):
+      caller_func = get_func(caller)
+      if caller_func and caller_func.startEA not in callers:
+        callers.append(caller_func.startEA)
 
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
-
-    image_base = self.get_base_address()
+    
     for block in flow:
       nodes += 1
       instructions_data = []
@@ -1279,7 +1280,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
                 if get_func(dref) is None:
                   str_constant = GetString(dref, -1, -1)
                   if str_constant is not None:
-                    constants.append(oper.value)
+                    constants.append(str_constant)
 
         curr_bytes = GetManyBytes(x, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
@@ -1305,7 +1306,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           if not tmp_name.startswith("sub_"):
             names.add(tmp_name)
 
+        # Calculate the callees
         l = list(CodeRefsFrom(x, 0))
+        for callee in l:
+          callee_func = get_func(callee)
+          if callee_func and callee_func.startEA != func.startEA:
+            if callee_func.startEA not in callees:
+              callees.append(callee_func.startEA)
+
         if len(l) == 0:
           l = DataRefsFrom(x)
 
@@ -1488,6 +1496,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
+             callers, callees,
              basic_blocks_data, bb_relations)
 
   def get_base_address(self):

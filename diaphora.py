@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2017, Joxean Koret
+Copyright (c) 2015-2018, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -40,14 +40,15 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.1.0"
-COPYRIGHT_VALUE="Copyright(c) 2015-2017 Joxean Koret"
+VERSION_VALUE = "1.2.0"
+COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
 # better comparison ratios
-CMP_REPS = ["loc_", "sub_", "qword_", "dword_", "byte_", "word_", "off_",
-            "unk_", "stru_", "dbl_", "locret_", "short"]
+CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
+  "qword_", "dword_", "byte_", "word_", "off_", "def_", "unk_", "asc_",
+  "stru_", "dbl_", "locret_"]
 CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
 
@@ -117,7 +118,7 @@ class CChooser():
       self.cmd_import_all_funcs = None
 
     def __str__(self):
-      return '%08x' % self.ea
+      return '%08x' % int(self.ea)
 
   def __init__(self, title, bindiff, show_commands=True):
     if title == "Unmatched in primary":
@@ -368,6 +369,13 @@ class CBinDiff:
                 function_id integer not null references functions(id) on delete cascade,
                 basic_block_id integer not null references basic_blocks(id) on delete cascade)"""
     cur.execute(sql)
+    
+    sql = """create table if not exists callgraph (
+                id integer primary key,
+                func_id integer not null references functions(id) on delete cascade,
+                address text not null,
+                type text not null)"""
+    cur.execute(sql)
 
     sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
     cur.execute(sql)
@@ -526,7 +534,8 @@ class CBinDiff:
 
     cur = self.db_cursor()
     new_props = []
-    for prop in props[:len(props)-2]:
+    # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
+    for prop in props[:len(props)-4]:
       # XXX: Fixme! This is a hack for 64 bit architectures kernels
       if type(prop) is long and prop > 0xFFFFFFFF:
         prop = str(prop)
@@ -559,7 +568,18 @@ class CBinDiff:
 
     func_id = cur.lastrowid
 
+    # Save the callers and callees of the function
+    callers, callees = props[len(props)-4:len(props)-2]
+    sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
+    for caller in callers:
+      cur.execute(sql, (func_id, caller, 'caller'))
+    
+    for callee in callees:
+      cur.execute(sql, (func_id, callee, 'callee'))
+
+    # Save the basic blocks relationships
     if not self.function_summaries_only:
+      # The last 2 fields are basic_blocks_data & bb_relations
       bb_data, bb_relations = props[len(props)-2:]
       instructions_ids = {}
       sql = """insert into main.instructions (address, mnemonic, disasm, comment1, comment2, name, type)
@@ -1241,6 +1261,70 @@ class CBinDiff:
 
     cur.close()
 
+  def add_matches_from_cursor_ratio_max(self, cur, best, partial, val):
+    if self.all_functions_matched():
+      return
+
+    matches = []
+    i = 0
+    t = time.time()
+    while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
+      if time.time() - t > self.timeout:
+        log("Timeout")
+        break
+
+      i += 1
+      if i % 50000 == 0:
+        log("Processed %d rows..." % i)
+      row = cur.fetchone()
+      if row is None:
+        break
+
+      ea = str(row["ea"])
+      name1 = row["name1"]
+      ea2 = row["ea2"]
+      name2 = row["name2"]
+      desc = row["description"]
+      pseudo1 = row["pseudo1"]
+      pseudo2 = row["pseudo2"]
+      asm1 = row["asm1"]
+      asm2 = row["asm2"]
+      ast1 = row["pseudo_primes1"]
+      ast2 = row["pseudo_primes2"]
+      bb1 = int(row["bb1"])
+      bb2 = int(row["bb2"])
+      md1 = row["md1"]
+      md2 = row["md2"]
+
+      if name1 in self.matched1 or name2 in self.matched2:
+        continue
+
+      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+      good_ratio = False
+      if r == 1:
+        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
+        good_ratio = True
+        self.best_chooser.add_item(item)
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif r > val:
+        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
+        good_ratio = True
+        best.add_item(item)
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif partial is not None:
+        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
+        good_ratio = True
+        partial.add_item(item)
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      
+      if good_ratio:
+        matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
+
+    return matches
+
   def add_matches_from_query(self, sql, choose):
     """ Warning: use this *only* if the ratio is known to be 1.00 """
     if self.all_functions_matched():
@@ -1503,11 +1587,63 @@ class CBinDiff:
     finally:
       cur.close()
 
-    # Rule 2: given a match for a function F in programs P & P2, find
-    # parents and children of the matched function using the parents and
-    # children of program P.
-    # TODO: Implement it.
-    pass
+  def find_callgraph_matches(self):
+    best_items = self.best_chooser.items
+    self.find_callgraph_matches_from(best_items)
+
+    partial_items = self.partial_chooser.items
+    self.find_callgraph_matches_from(best_items)
+
+  def find_callgraph_matches_from(self, the_items):
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Callgraph match (%s)' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
+                    df.tarjan_topological_sort, df.strongly_connected_spp
+               from functions f,
+                    diff.functions df
+              where f.address in (%s)
+                and df.address in (%s)
+                and abs(f.md_index - df.md_index) < 1"""
+
+    main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
+    diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
+    
+    cur = self.db.cursor()
+    dones = set()
+    while len(the_items) > 0:
+      match = the_items.pop()
+      ea1 = match[1]
+      name1 = match[2]
+      ea2 = match[3]
+      name2 = match[4]
+      
+      if ea1 in dones:
+        continue
+      dones.add(ea1)
+
+      id1 = self.get_function_id(name1)
+      id2 = self.get_function_id(name2, False)
+
+      for call_type in ['caller', 'callee']:
+        cur.execute(main_callers_sql, (id1, call_type))
+        main_address_set = set()
+        for row in cur.fetchall():
+          main_address_set.add(row[0])
+
+        cur.execute(diff_callers_sql, (id2, call_type))
+        diff_address_set = set()
+        for row in cur.fetchall():
+          diff_address_set.add(row[0])
+
+        if len(main_address_set) > 0 and len(diff_address_set) > 0:
+          cur.execute(sql % (call_type, ",".join(main_address_set), ",".join(diff_address_set)))
+          matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, 0.59)
+          if len(matches) > 0:
+            the_items.extend(matches)
 
   def find_matches(self):
     choose = self.partial_chooser
@@ -1940,7 +2076,7 @@ class CBinDiff:
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
-                     'Strongly Connected Components SPP and Names' description,
+                     'Strongly connected components SPP and names' description,
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -1953,8 +2089,59 @@ class CBinDiff:
                  and f.strongly_connected_spp = df.strongly_connected_spp
                  and f.strongly_connected_spp > 0
                  """ + postfix
-    log_refresh("Finding with heuristic 'Strongly Connected Components SPP and Names'")
+    log_refresh("Finding with heuristic 'Strongly connected components SPP and names'")
     self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
+
+  def find_brute_force(self):
+    cur = self.db_cursor()
+    sql = "create temp table unmatched(id integer null primary key, address, main)"
+    cur.execute(sql)
+
+    # Find functions not matched in the primary database
+    sql = "select name, address from functions"
+    cur.execute(sql)
+    rows = cur.fetchall()
+    if len(rows) > 0:
+      for row in rows:
+        name = row["name"]
+        if name not in self.matched1:
+          ea = row[1]
+          sql = "insert into unmatched(address,main) values(?,?)"
+          cur.execute(sql, (ea, 1))
+
+    # Find functions not matched in the secondary database
+    sql = "select name, address from diff.functions"
+    cur.execute(sql)
+    rows = cur.fetchall()
+    if len(rows) > 0:
+      for row in rows:
+        name = row["name"]
+        if name not in self.matched2:
+          ea = row[1]
+          sql = "insert into unmatched(address,main) values(?,?)"
+          cur.execute(sql, (ea, 0))
+    cur.close()
+
+    cur = self.db_cursor()
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Brute forcing' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
+                    df.tarjan_topological_sort, df.strongly_connected_spp
+               from functions f,
+                    diff.functions df,
+                    unmatched um
+              where ((f.address = um.address and um.main = 1)
+                 or (df.address = um.address and um.main = 0))
+                and f.md_index = df.md_index
+                and f.md_index > 1 and df.md_index > 1
+                and f.nodes > 7 and df.nodes > 7"""
+    cur.execute(sql)
+    log_refresh("Finding via brute-forcing...")
+    self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
 
   def find_experimental_matches(self):
     choose = self.unreliable_chooser
@@ -2093,6 +2280,10 @@ class CBinDiff:
                  case when f.pseudocode_hash3 = df.pseudocode_hash3 then 1 else 0 end DESC"""
       log_refresh("Finding with heuristic 'Same graph'")
       self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
+
+    # Find using brute-force
+    log_refresh("Brute-forcing...")
+    self.find_brute_force()
 
   def find_unreliable_matches(self):
     choose = self.unreliable_chooser
@@ -2318,7 +2509,6 @@ class CBinDiff:
       cur.close()
       results_db.close()
 
-
   def diff(self, db):
     self.last_diff_db = db
 
@@ -2361,6 +2551,10 @@ class CBinDiff:
         # Find the modified functions
         log_refresh("Finding partial matches")
         self.find_matches()
+
+        # Find the functions from the callgraph
+        log_refresh("Finding matches from the callgraph")
+        self.find_callgraph_matches()
 
         if self.unreliable:
           # Find using likely unreliable methods modified functions
