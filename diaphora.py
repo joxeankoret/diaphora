@@ -623,7 +623,12 @@ class CBinDiff:
         for bb in bb_relations[key]:
           bb = str(bb)
           key = str(key)
-          cur_execute(sql, (bb_ids[key], bb_ids[bb]))
+          try:
+            cur_execute(sql, (bb_ids[key], bb_ids[bb]))
+          except:
+            # key doesnt exist because it doesnt have forward references to any bb
+            log("Error: %s" % str(sys.exc_info()[1]))
+            pass
 
       # And finally insert the functions to basic blocks relations
       sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
