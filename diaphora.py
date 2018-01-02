@@ -303,7 +303,8 @@ class CBinDiff:
                         md_index text,
                         constants text,
                         constants_count integer,
-                        segment_rva text) """
+                        segment_rva text,
+                        assembly_addrs text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -555,10 +556,10 @@ class CBinDiff:
                                     tarjan_topological_sort, strongly_connected_spp,
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
                                     function_hash, bytes_sum, md_index, constants,
-                                    constants_count, segment_rva)
+                                    constants_count, segment_rva, assembly_addrs)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
     try:
       cur.execute(sql, new_props)
@@ -1588,10 +1589,10 @@ class CBinDiff:
       cur.close()
 
   def find_callgraph_matches(self):
-    best_items = self.best_chooser.items
+    best_items = list(self.best_chooser.items)
     self.find_callgraph_matches_from(best_items)
 
-    partial_items = self.partial_chooser.items
+    partial_items = list(self.partial_chooser.items)
     self.find_callgraph_matches_from(best_items)
 
   def find_callgraph_matches_from(self, the_items):

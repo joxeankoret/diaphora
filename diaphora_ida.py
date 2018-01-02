@@ -830,7 +830,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, name, mtype = ins_data2
+    ea2, cmt1, cmt2, name, mtype, mdis = ins_data2
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
@@ -890,10 +890,10 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"]]
 
         # Check in the current database
-        sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
+        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type
                     from function_bblocks bb,
                          functions f,
                          bb_instructions bbi,
@@ -907,16 +907,16 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["dis"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"]]
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
                      from (
-                   select assembly, 1
+                   select assembly, assembly_addrs, 1
                      from functions
                     where address = ?
                       and assembly is not null
-             union select assembly, 2
+             union select assembly, assembly_addrs, 2
                      from diff.functions
                     where address = ?
                       and assembly is not null)
@@ -927,23 +927,32 @@ class CIDABinDiff(diaphora.CBinDiff):
             lines1 = diff_rows[0]["assembly"]
             lines2 = diff_rows[1]["assembly"]
 
+            address1 = json.loads(diff_rows[0]["assembly_addrs"])
+            address2 = json.loads(diff_rows[1]["assembly_addrs"])
+
             matches = {}
             to_line = None
             change_line = None
-            diff_list = difflib.ndiff(lines1.splitlines(1), lines2.splitlines(1))
+            diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
             for x in diff_list:
-              if x[0] == '-':
-                change_line = x[1:].strip(" ").strip("\r").strip("\n")
-              elif x[0] == '+':
-                to_line = x[1:].strip(" ").strip("\r").strip("\n")
-              elif change_line is not None:
-                change_line = None
+              left, right, ignore = x
+              left_line  = left[0]
+              right_line = right[0]
 
-              if to_line is not None and change_line is not None:
-                matches[change_line] = to_line
-                if change_line in matched_syms and to_line in import_syms:
-                  self.import_instruction(matched_syms[change_line], import_syms[to_line])
-                change_line = to_line = None
+              if right_line == "" or left_line == "":
+                continue
+
+              # At this point, we know which line number matches with
+              # which another line number in both databases.
+              ea1 = address1[int(left_line)-1]
+              ea2 = address2[int(right_line)-1]
+
+              if left[1].startswith('\x00-') and right[1].startswith('\x00+'):
+                ea1 = str(ea1)
+                ea2 = str(ea2)
+                if ea1 in matched_syms and ea2 in import_syms:
+                  self.import_instruction(matched_syms[ea1], import_syms[ea2])
+
     finally:
       cur.close()
 
@@ -1254,12 +1263,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           mnemonics_spp *= self.primes[cpu_ins_list.index(mnem)]
 
         try:
-          assembly[block_ea].append(disasm)
+          assembly[block_ea].append([x - image_base, disasm])
         except KeyError:
           if nodes == 1:
-            assembly[block_ea] = [disasm]
+            assembly[block_ea] = [[x - image_base, disasm]]
           else:
-            assembly[block_ea] = ["loc_%x:" % x, disasm]
+            assembly[block_ea] = [[x - image_base, "loc_%x:" % x], [x - image_base, disasm]]
 
         decoded_size, ins = diaphora_decode(x)
         if ins.Operands[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
@@ -1418,13 +1427,20 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     keys = assembly.keys()
     keys.sort()
 
+    # Collect the ordered list of addresses, as shown in the assembly
+    # viewer (when diffing). It will be extremely useful for importing
+    # stuff later on.
+    assembly_addrs = []
+
     # After sorting our the addresses of basic blocks, be sure that the
     # very first address is always the entry point, no matter at what
     # address it is.
     keys.remove(f - image_base)
     keys.insert(0, f - image_base)
     for key in keys:
-      asm.extend(assembly[key])
+      for line in assembly[key]:
+        assembly_addrs.append(line[0])
+        asm.append(line[1])
     asm = "\n".join(asm)
 
     cc = edges - nodes + 2
@@ -1496,6 +1512,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
+             assembly_addrs,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -1881,25 +1898,25 @@ class CHtmlDiff:
 
   def _trunc(self, s, changed, max_col=120):
     if not changed:
-        return s[:max_col]
+      return s[:max_col]
 
     # Don't count markup towards the length.
     outlen = 0
     push = 0
     for i, ch in enumerate(s):
-        if ch == "\x00": # Followed by an additional byte that should also not count
-            outlen -= 1
-            push = True
-        elif ch == "\x01":
-            push = False
-        else:
-            outlen += 1
-        if outlen == max_col:
-            break
+      if ch == "\x00": # Followed by an additional byte that should also not count
+        outlen -= 1
+        push = True
+      elif ch == "\x01":
+        push = False
+      else:
+        outlen += 1
+      if outlen == max_col:
+        break
 
     res = s[:i + 1]
     if push:
-        res += "\x01"
+      res += "\x01"
 
     return res
 
