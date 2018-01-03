@@ -26,7 +26,11 @@ import json
 import decimal
 import sqlite3
 
-from cStringIO import StringIO
+try:
+  from cStringIO import StringIO
+except ImportError:
+  import io
+  StringIO = io.StringIO
 from difflib import SequenceMatcher
 
 from jkutils.kfuzzy import CKoretFuzzyHashing
@@ -70,7 +74,7 @@ def quick_ratio(buf1, buf2):
     s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
     return s.quick_ratio()
   except:
-    print "quick_ratio:", str(sys.exc_info()[1])
+    print("quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
 #-----------------------------------------------------------------------
@@ -81,7 +85,7 @@ def real_quick_ratio(buf1, buf2):
     s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
     return s.real_quick_ratio()
   except:
-    print "real_quick_ratio:", str(sys.exc_info()[1])
+    print("real_quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
 #-----------------------------------------------------------------------
@@ -95,8 +99,7 @@ def ast_ratio(ast1, ast2):
 #-----------------------------------------------------------------------
 
 def log(msg):
-  print "[%s] %s\n" % (time.asctime(), msg);
-
+  print("[%s] %s\n" % (time.asctime(), msg))
 
 def log_refresh(msg, show=False):
   log(msg)
@@ -567,7 +570,7 @@ class CBinDiff:
     try:
       cur.execute(sql, new_props)
     except:
-      print prop
+      print(prop)
       raise
 
     func_id = cur.lastrowid
@@ -1196,7 +1199,7 @@ class CBinDiff:
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
       if debug:
-        print "0x%x 0x%x %d" % (int(ea), int(ea2), r)
+        print("0x%x 0x%x %d" % (int(ea), int(ea2), r))
 
       if r == 1:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))

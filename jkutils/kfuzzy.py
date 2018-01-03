@@ -23,7 +23,10 @@ import os
 import sys
 import base64
 
-from itertools import imap
+try:
+  from itertools import imap
+except ImportError:
+  imap = map
 
 try:
     from fasttoad_wrap import modsum
@@ -275,7 +278,7 @@ class CKoretFuzzyHashing:
         
         if size > self.big_file_size:
             print
-            print "Warning! Support for big files (%d MB > %d MB) is broken!" % (size/1024/1024, self.big_file_size / 1024 / 1024)
+            print("Warning! Support for big files (%d MB > %d MB) is broken!" % (size/1024/1024, self.big_file_size / 1024 / 1024))
             fbytes = CFileStr(f)
         else:
             f.seek(0)
@@ -331,27 +334,27 @@ class ksha(kdha):
         self._kfd.algorithm = self._kfd.simplified
 
 def usage():
-    print "Usage:", sys.argv[0], "<filename>"
+    print("Usage:", sys.argv[0], "<filename>")
 
 def main(path):
     hash = CKoretFuzzyHashing()
     #hash.algorithm = hash._fast_hash
     
     if os.path.isdir(path):
-        print "Signature;Simple Signature;Reverse Signature;Filename"
+        print("Signature;Simple Signature;Reverse Signature;Filename")
         for root, dirs, files in os.walk(path):
             for name in files:
                 tmp = os.path.join(root, name)
                 try:
                     ret = hash.hash_file(tmp, True)
-                    print "%s;%s" % (ret, tmp)
+                    print("%s;%s" % (ret, tmp))
                 except:
-                    print "***ERROR with file %s" % tmp
-                    print sys.exc_info()[1]
+                    print("***ERROR with file %s" % tmp)
+                    print(sys.exc_info()[1])
     else:
         hash = CKoretFuzzyHashing()
         ret = hash.hash_file(path, True)
-        print "%s;%s" % (path, ret)
+        print("%s;%s" % (path, ret))
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
