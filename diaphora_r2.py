@@ -32,6 +32,9 @@ import sqlite3
 import traceback
 from hashlib import md5
 
+try: input = raw_input
+except NameError: pass
+
 import diaphora
 
 from pygments import highlight
@@ -122,7 +125,7 @@ def int16(x):
     return int(x, 16)
   except:
     if x != "":
-      print "ERROR converting %s"%x
+      print("ERROR converting %s"%(x))
     return 0
 
 def GetLocalTypeName(x):
@@ -147,7 +150,7 @@ def GetOperandValue(x, y):
 def r2_get_imagebase():
   #ep = ((int(r2.cmd("ieq"), 16) >> 24) << 24)
   ep = int(r2.cmd("S.~[0]"), 16)
-  print "IMAGE BASE %s"%ep
+  print("IMAGE BASE %s"%ep)
   return ep
 
 #-----------------------------------------------------------------------
@@ -304,11 +307,11 @@ def askyn_c(a, b):
 
 #-----------------------------------------------------------------------
 def Functions(min=0, max=0):
-  print "LIST OF FUNCTION"
+  print("LIST OF FUNCTION")
   ret = []
   fcns = r2.cmdj("aflj")
   if not fcns:
-    print "[ERROR] No functions found"
+    print("[ERROR] No functions found")
     return ret
   for fcn in fcns:
     print(fcn['name'])
@@ -375,7 +378,7 @@ class timeraction_t(object):
     self.interval = interval
     self.obj = None # idaapi.register_timer(self.interval, self)
     if self.obj is None:
-      raise RuntimeError, "Failed to register timer"
+      raise RuntimeError("Failed to register timer")
 
   def __call__(self):
     if self.args is not None:
@@ -390,7 +393,7 @@ class uitimercallback_t(object):
     self.interval = interval
     self.obj = None # idaapi.register_timer(self.interval, self)
     if self.obj is None:
-      raise RuntimeError, "Failed to register timer"
+      raise RuntimeError("Failed to register timer")
     self.g = g
 
   def __call__(self):
@@ -435,7 +438,7 @@ class CDiffGraphViewer():
 
       return True
     except:
-      print "GraphViewer Error:", sys.exc_info()[1]
+      print("GraphViewer Error:", sys.exc_info()[1])
       return True
 
   def OnGetText(self, node_id):
@@ -451,7 +454,7 @@ class CDiffGraphViewer():
       label = "\n".join(ret)
       return (label, colour)
     except:
-      print "GraphViewer.OnGetText:", sys.exc_info()[1]
+      print("GraphViewer.OnGetText:", sys.exc_info()[1])
       return ("ERROR", 0x000000)
 
   def Show(self):
@@ -499,7 +502,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("BEGIN transaction")
-    print "FUNC LISTING IS %s"%(func_list)
+    print("FUNC LISTING IS %s"%(func_list))
     for func in func_list:
       i += 1
       if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
@@ -514,7 +517,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
         replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
-      print "PROPS FOR FUNC cur %s"%(func)
+      print("PROPS FOR FUNC cur %s"%(func))
       props = self.read_function(func)
       if props == False:
         continue
@@ -544,7 +547,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       show_wait_box("Exporting database")
       self.do_export()
     finally:
-      print "Done"
+      print("Done")
       #hide_wait_box()
 
     self.db.commit()
@@ -671,7 +674,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     ea2 = str(int(item[3], 16))
     self.do_import_one(ea1, ea2, True)
 
-    print "IMPORT ONE"
+    print("IMPORT ONE")
     new_func = self.read_function(str(ea1))
     self.delete_function(ea1)
     self.save_function(new_func)
@@ -958,14 +961,14 @@ class CIDABinDiff(diaphora.CBinDiff):
       total = 0
       for ea in to_import:
         ea = str(ea)
-        print "FCN IMPORT %s"%ea
+        print("FCN IMPORT %s"%ea)
         new_func = self.read_function(ea)
         self.delete_function(ea)
         self.save_function(new_func)
         total += 1
       self.db.commit()
     finally:
-      print "Nothing"
+      print("Nothing")
       #hide_wait_box()
 
   def do_import_all(self, items):
@@ -1046,7 +1049,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     return t
 
   def register_menu_action(self, action_name, action_desc, handler, hotkey = None):
-    print "NOPE"
+    print("NOPE")
 
   def register_menu(self):
     global g_bindiff
@@ -1100,7 +1103,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   # Most important function
   def read_function(self, f, discard=False):
-    print "READ F %s"%f
+    print("READ F %s"%f)
     fcns = r2.cmdj("afij @ %s"%(f))
     if len(fcns) < 1:
       print("Cannot find function at %s"%(f))
@@ -1165,14 +1168,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     cpu_ins_list.sort()
 
     image_base = self.get_base_address()
-    print "FLOW %s"%(flow)
+    print("FLOW %s"%(flow))
     for block in flow:
       nodes += 1
       block_startEA = +block['addr'];
       block_endEA = +block['addr'] + +block['size'];
       block.update({'startEA': block_startEA})
       block.update({'endEA': block_endEA})
-      print "BB %s %s"%(block_startEA, block_endEA)
+      print("BB %s %s"%(block_startEA, block_endEA))
       instructions_data = []
 
       block_ea = block_startEA - image_base
@@ -1365,7 +1368,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       try:
         asm.extend(assembly[key])
       except:
-        print sys.exc_info()[0].message
+        print(sys.exc_info()[0].message)
         pass
     asm = "\n".join(asm)
 
@@ -1405,7 +1408,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       clean_assembly = self.get_cmp_asm_lines(asm)
     except:
       clean_assembly = ""
-      print "Error getting assembly for 0x%x" % f
+      print("Error getting assembly for 0x%x" % f)
 
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
@@ -1854,7 +1857,7 @@ def is_ida_file(filename):
 
 #-----------------------------------------------------------------------
 def remove_file(filename):
-  print "Remove file %s"%(filename)
+  print("Remove file %s"%(filename))
 
 #-----------------------------------------------------------------------
 
@@ -1867,7 +1870,7 @@ def main():
   in_r2 = os.getenv("R2PIPE_IN") is not None
 
   if in_r2:
-    print "Running from inside r2. Preserving the analysis information"
+    print("Running from inside r2. Preserving the analysis information")
     r2 = r2pipe.open()
     # TODO: #!pipe doesnt setups the R2_ env
     filename = r2.cmd("o~[4]")
@@ -1876,8 +1879,8 @@ def main():
       if len(sys.argv) > 1:
         filename = sys.argv[1]
       else:
-        print "Usage: diaphora-r2 [bin]"
-        print "Usage: r2 -qAc '!diaphora-r2' /bin/ls"
+        print("Usage: python diaphora_r2.py [bin]")
+        print("Usage: r2 -qAc '#!pipe python diaphora_r2.py' /bin/ls")
         sys.exit(1)
     r2 = r2pipe.open(filename)
     #r2.cmd("aaa")
@@ -1901,7 +1904,7 @@ def main():
 
   if os.path.exists(file_out):
     g_bindiff = None
-    if raw_input("Remove %s? "%(file_out))[0].lower() == "y":
+    if (input("Remove %s? "%(file_out))[0].lower() == "y"):
       os.unlink(file_out)
       _diff_or_export(True)
     else:

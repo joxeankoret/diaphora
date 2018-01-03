@@ -13,6 +13,9 @@ import sys
 import random
 import decimal
 
+if sys.version_info[0] > 2:
+  long = int
+
 #-----------------------------------------------------------------------
 def primesbelow(N):
   # http://stackoverflow.com/questions/2068372/fastest-way-to-list-all-primes-below-n-in-python/3035188#3035188
@@ -208,7 +211,7 @@ def difference_matrix(samples, debug=True):
   diff_matrix = {}
   for x in samples:
     if debug:
-      print "Calculating difference matrix for %s" % x
+      print("Calculating difference matrix for %s" % x)
     if not diff_matrix.has_key(x):
       diff_matrix[x] = {}
     for y in samples:
