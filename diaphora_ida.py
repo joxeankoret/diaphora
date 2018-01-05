@@ -208,6 +208,13 @@ class CIDAChooser(diaphora.CChooser, Choose2):
   def OnGetSize(self):
     return len(self.items)
 
+  def OnDeleteLine(self, n):
+    try:
+      del self.items[n]
+    except:
+      pass
+    return True
+
   def OnRefresh(self, n):
     return n
 
