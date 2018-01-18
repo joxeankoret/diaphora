@@ -843,7 +843,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       set_cmt(ea1, cmt1, 0)
 
     if cmt2 is not None and get_cmt(ea1, 1) is None:
-      set_cmt(ea1, cmt1, 1)
+      set_cmt(ea1, cmt2, 1)
 
     if mcmt is not None:
       cfunc = decompile(ea1)
@@ -885,6 +885,29 @@ class CIDABinDiff(diaphora.CBinDiff):
     if tmp_ea is not None and set_type:
       if mtype is not None and GetType(tmp_ea) != mtype:
         SetType(tmp_ea, mtype)
+
+  def row_is_importable(self, ea2, import_syms):
+    ea = str(ea2)
+    if not ea in import_syms:
+      return False
+
+    # Has cmt1
+    if import_syms[ea][1] is not None:
+      return True
+
+    # Has cmt2
+    if import_syms[ea][2] is not None:
+      return True
+
+    # Has a name
+    if import_syms[ea][2] is not None:
+      return True
+
+    # Has pseudocode comment
+    if import_syms[ea][6] is not None:
+      return True
+
+    return False
 
   def import_instruction_level(self, ea1, ea2, cur):
     cur = self.db_cursor()
@@ -965,8 +988,8 @@ class CIDABinDiff(diaphora.CBinDiff):
               ea1 = address1[int(left_line)-1]
               ea2 = address2[int(right_line)-1]
               changed = left[1].startswith('\x00-') and right[1].startswith('\x00+')
-              has_comments = str(ea2) in import_syms and import_syms[str(ea2)][6] is not None
-              if changed or has_comments:
+              is_importable = self.row_is_importable(ea2, import_syms)
+              if changed or is_importable:
                 ea1 = str(ea1)
                 ea2 = str(ea2)
                 if ea1 in matched_syms and ea2 in import_syms:

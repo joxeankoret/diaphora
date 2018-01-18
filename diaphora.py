@@ -576,10 +576,10 @@ class CBinDiff:
     callers, callees = props[len(props)-4:len(props)-2]
     sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
     for caller in callers:
-      cur.execute(sql, (func_id, caller, 'caller'))
+      cur.execute(sql, (func_id, str(caller), 'caller'))
     
     for callee in callees:
-      cur.execute(sql, (func_id, callee, 'callee'))
+      cur.execute(sql, (func_id, str(callee), 'callee'))
 
     # Save the basic blocks relationships
     if not self.function_summaries_only:
@@ -2570,7 +2570,7 @@ class CBinDiff:
         self.find_matches()
 
         # Find the functions from the callgraph
-        log_refresh("Finding matches from the callgraph")
+        log_refresh("Finding with heuristic 'Callgraph matches'")
         self.find_callgraph_matches()
 
         if self.unreliable:
