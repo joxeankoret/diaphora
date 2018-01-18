@@ -545,7 +545,7 @@ class CBinDiff:
         prop = str(prop)
 
       if type(prop) is list or type(prop) is set:
-        new_props.append(json.dumps(list(prop)))
+        new_props.append(json.dumps(list(prop), ensure_ascii=False))
       else:
         new_props.append(prop)
 

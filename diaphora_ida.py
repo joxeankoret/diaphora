@@ -308,7 +308,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
 #-----------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
   def __init__(self):
-    s = r"""Diaphora BinDiff
+    s = r"""Diaphora
   Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
