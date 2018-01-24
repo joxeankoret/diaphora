@@ -10,7 +10,7 @@ As with any open source project, any form of help for this project is highly app
 
 ## Getting help and asking for features
 
-You can join the [mailing list](https://groups.google.com/forum/?hl=es#!forum/diaphora) to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the [issues tracker](https://github.com/joxeankoret/diaphora/issues). You can also check the (Wiki)[https://github.com/joxeankoret/diaphora/wiki] that answers some of the most common questions.
+You can join the [mailing list](https://groups.google.com/forum/?hl=es#!forum/diaphora) to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the [issues tracker](https://github.com/joxeankoret/diaphora/issues). You can also check the [Wiki](https://github.com/joxeankoret/diaphora/wiki) that answers some of the most common questions.
 
 Please note that, officially, only the last 2 versions of IDA will be supported. As of today, however, 6.9, 6.95 and 7.0 are supported. Version 6.8 isn't supported any more but is known to work.
 
