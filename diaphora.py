@@ -1299,6 +1299,7 @@ class CBinDiff:
       i += 1
       if i % 50000 == 0:
         log("Processed %d rows..." % i)
+
       row = cur.fetchone()
       if row is None:
         break
@@ -1616,7 +1617,7 @@ class CBinDiff:
     self.find_callgraph_matches_from(best_items)
 
     partial_items = list(self.partial_chooser.items)
-    self.find_callgraph_matches_from(best_items)
+    self.find_callgraph_matches_from(partial_items)
 
   def find_callgraph_matches_from(self, the_items):
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
@@ -1635,16 +1636,17 @@ class CBinDiff:
 
     main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
     diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
-    
+
     cur = self.db.cursor()
     dones = set()
+
     while len(the_items) > 0:
       match = the_items.pop()
       ea1 = match[1]
       name1 = match[2]
       ea2 = match[3]
       name2 = match[4]
-      
+
       if ea1 in dones:
         continue
       dones.add(ea1)
@@ -1656,12 +1658,12 @@ class CBinDiff:
         cur.execute(main_callers_sql, (id1, call_type))
         main_address_set = set()
         for row in cur.fetchall():
-          main_address_set.add(row[0])
+          main_address_set.add("'%s'" % row[0])
 
         cur.execute(diff_callers_sql, (id2, call_type))
         diff_address_set = set()
         for row in cur.fetchall():
-          diff_address_set.add(row[0])
+          diff_address_set.add("'%s'" % row[0])
 
         if len(main_address_set) > 0 and len(diff_address_set) > 0:
           cur.execute(sql % (call_type, ",".join(main_address_set), ",".join(diff_address_set)))
