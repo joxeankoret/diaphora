@@ -479,6 +479,12 @@ class CBinDiff:
     sql = "create index if not exists idx_md_index on functions(md_index)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_constants on functions(constants_count, constants)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_mdindex_constants on functions(md_index, constants_count, constants)"
+    cur.execute(sql)
+
     cur.close()
 
   def attach_database(self, diff_db):
@@ -1437,8 +1443,9 @@ class CBinDiff:
                     cast(f.md_index as real) md1, cast(d.md_index as real) md2
                from functions f,
                     diff.functions d
-              where d.mangled_function = f.mangled_function
-                 or d.name = f.name"""
+              where (d.mangled_function = f.mangled_function
+                 or d.name = f.name)
+                and f.name not like 'nullsub_%'"""
     log_refresh("Finding with heuristic 'Same name'")
     cur.execute(sql)
     rows = cur.fetchall()
@@ -1659,7 +1666,7 @@ class CBinDiff:
         if len(main_address_set) > 0 and len(diff_address_set) > 0:
           cur.execute(sql % (call_type, ",".join(main_address_set), ",".join(diff_address_set)))
           matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, 0.59)
-          if len(matches) > 0:
+          if matches is not None and len(matches) > 0:
             the_items.extend(matches)
 
   def find_matches(self):
@@ -1786,7 +1793,7 @@ class CBinDiff:
       self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.2)
 
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Same address, nodes, edges and primes (re-ordered instructions)' description,
+                    'Same constants' description,
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
                      f.assembly asm1, df.assembly asm2,
                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -1902,6 +1909,7 @@ class CBinDiff:
                      diff.functions df
                where f.mnemonics_spp = df.mnemonics_spp
                  and f.instructions = df.instructions
+                 and f.nodes > 1 and df.nodes > 1
                  and df.instructions > 5 """ + postfix
     log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
     self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)

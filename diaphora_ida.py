@@ -59,11 +59,11 @@ except ImportError:
 PRTYPE_SEMI = 0x0008
 
 # Messages
-MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n<b>Relaxed ratio calculations</b> will be enabled. It will ignore many small
+MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n<b>Relaxed ratio calculations</b> can be enabled. It will ignore many small
 modifications to functions and will match more functions with higher ratios. Enable this option if you're only interested in the
 new functionality. Disable it for patch diffing if you're interested in small modifications (like buffer sizes).
 <br><br>
-This is automatically done for diffing big databases (more than 20,000 functions in the database).<br><br>
+This is recommended for diffing big databases (more than 20,000 functions in the database).<br><br>
 You can disable it by un-checking the 'Relaxed calculations of differences ratios' option."""
 
 MSG_FUNCTION_SUMMARIES_ONLY = """AUTOHIDE DATABASE\n<b>Do not export basic blocks or instructions</b> will be enabled.<br>
@@ -992,8 +992,8 @@ class CIDABinDiff(diaphora.CBinDiff):
               if changed or is_importable:
                 ea1 = str(ea1)
                 ea2 = str(ea2)
-                if ea1 in matched_syms and ea2 in import_syms:
-                  self.import_instruction(matched_syms[ea1], import_syms[ea2])
+                if ea2 in matched_syms and ea1 in import_syms:
+                  self.import_instruction(matched_syms[ea2], import_syms[ea1])
 
     finally:
       cur.close()
@@ -1242,7 +1242,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     if not self.ida_subs:
       # Unnamed function, ignore it...
-      if name.startswith("sub_") or name.startswith("j_") or name.startswith("unknown"):
+      if name.startswith("sub_") or name.startswith("j_") or name.startswith("unknown") or name.startswith("nullsub_"):
         return False
 
       # Already recognized runtime's function?
@@ -1359,7 +1359,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           demangled_name = Demangle(tmp_name, INF_SHORT_DN)
           if demangled_name is not None:
             tmp_name = demangled_name
-          if not tmp_name.startswith("sub_"):
+          if not tmp_name.startswith("sub_") and not tmp_name.startswith("nullsub_"):
             names.add(tmp_name)
 
         # Calculate the callees
@@ -1837,7 +1837,7 @@ class BinDiffOptions:
     self.exclude_library_thunk = kwargs.get('exclude_library_thunk', True)
     # Enable, by default, relaxed calculations on difference ratios for
     # 'big' databases (>20k functions)
-    self.relax = kwargs.get('relax', total_functions > 20000)
+    self.relax = kwargs.get('relax')
     if self.relax:
       Warning(MSG_RELAXED_RATIO_ENABLED)
     self.unreliable = kwargs.get('unreliable', False)
