@@ -229,6 +229,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_import_selected = self.AddCommand("Import selected")
+      self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
       self.cmd_import_all = self.AddCommand("Import *all* functions")
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
       self.cmd_highlight_functions = self.AddCommand("Highlight matches")
@@ -248,12 +249,12 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     elif cmd_id == self.cmd_import_all_funcs:
       if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all_auto(self.items)
-    elif cmd_id == self.cmd_import_selected:
+    elif cmd_id == self.cmd_import_selected or cmd_id == self.cmd_import_selected_auto:
       if len(self.selected_items) <= 1:
         self.bindiff.import_one(self.items[n])
       else:
         if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
-          self.bindiff.import_selected(self.items, self.selected_items)
+          self.bindiff.import_selected(self.items, self.selected_items, cmd_id == self.cmd_import_selected_auto)
     elif cmd_id == self.cmd_diff_c:
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_asm:
@@ -1029,15 +1030,18 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     cur.close()
 
-  def import_selected(self, items, selected):
+  def import_selected(self, items, selected, only_auto):
     # Import all the type libraries from the diff database
     self.import_til()
     # Import all the struct and enum definitions
     self.import_definitions()
 
     new_items = []
-    for item in selected:
-      new_items.append(items[item-1])
+    for index in selected:
+      item = items[index-1]
+      name1 = item[2]
+      if not only_auto or name1.startswith("sub_"):
+        new_items.append(item)
     self.import_items(new_items)
 
   def import_items(self, items):
