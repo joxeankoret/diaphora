@@ -313,7 +313,7 @@ class CBinDiffExporterSetup(Form):
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
 
-  SQLite databases:                                                                                                                    Export filter limits:  
+  SQLite databases:                                                                                                                    Export filter limits:
   <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
@@ -1124,7 +1124,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     visitor = CAstVisitor(cfunc)
     visitor.apply_to(cfunc.body, None)
     self.pseudo_hash[ea] = visitor.primes_hash
-    
+
     cmts = idaapi.restore_user_cmts(cfunc.entry_ea)
     if cmts is not None:
       for tl, cmt in cmts.iteritems():
@@ -1200,7 +1200,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     # no small values
     if value < 0x10000:
       return False
-      
+
     if value & 0xFFFFFF00 == 0xFFFFFF00 or value & 0xFFFF00 == 0xFFFF00 or \
        value & 0xFFFFFFFFFFFFFF00 == 0xFFFFFFFFFFFFFF00 or \
        value & 0xFFFFFFFFFFFF00 == 0xFFFFFFFFFFFF00:
@@ -1277,7 +1277,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_degree = {}
     bb_edges = []
     constants = []
-    
+
     # The callees will be calculated later
     callees = list()
     # Calculate the callers
@@ -1290,7 +1290,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
-    
+
     for block in flow:
       nodes += 1
       instructions_data = []
@@ -1412,7 +1412,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if block_ea not in bb_degree:
         # bb in degree, out degree
         bb_degree[block_ea] = [0, 0]
-        
+
       for succ_block in block.succs():
         succ_base = succ_block.startEA - image_base
         bb_relations[block_ea].append(succ_base)
@@ -1558,7 +1558,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
+             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
              assembly_addrs,
              callers, callees,
              basic_blocks_data, bb_relations)
@@ -1745,7 +1745,7 @@ def _diff_or_export(use_ui, **options):
     return
 
   opts = BinDiffOptions(**options)
- 
+
   if use_ui:
     x = CBinDiffExporterSetup()
     x.Compile()
