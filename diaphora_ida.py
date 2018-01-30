@@ -229,6 +229,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_import_selected = self.AddCommand("Import selected")
+      self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
       self.cmd_import_all = self.AddCommand("Import *all* functions")
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
       self.cmd_highlight_functions = self.AddCommand("Highlight matches")
@@ -248,12 +249,12 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     elif cmd_id == self.cmd_import_all_funcs:
       if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all_auto(self.items)
-    elif cmd_id == self.cmd_import_selected:
+    elif cmd_id == self.cmd_import_selected or cmd_id == self.cmd_import_selected_auto:
       if len(self.selected_items) <= 1:
         self.bindiff.import_one(self.items[n])
       else:
         if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
-          self.bindiff.import_selected(self.items, self.selected_items)
+          self.bindiff.import_selected(self.items, self.selected_items, cmd_id == self.cmd_import_selected_auto)
     elif cmd_id == self.cmd_diff_c:
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_asm:
@@ -313,7 +314,7 @@ class CBinDiffExporterSetup(Form):
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
 
-  SQLite databases:                                                                                                                    Export filter limits:  
+  SQLite databases:                                                                                                                    Export filter limits:
   <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
@@ -1029,15 +1030,18 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     cur.close()
 
-  def import_selected(self, items, selected):
+  def import_selected(self, items, selected, only_auto):
     # Import all the type libraries from the diff database
     self.import_til()
     # Import all the struct and enum definitions
     self.import_definitions()
 
     new_items = []
-    for item in selected:
-      new_items.append(items[item-1])
+    for index in selected:
+      item = items[index-1]
+      name1 = item[2]
+      if not only_auto or name1.startswith("sub_"):
+        new_items.append(item)
     self.import_items(new_items)
 
   def import_items(self, items):
@@ -1124,7 +1128,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     visitor = CAstVisitor(cfunc)
     visitor.apply_to(cfunc.body, None)
     self.pseudo_hash[ea] = visitor.primes_hash
-    
+
     cmts = idaapi.restore_user_cmts(cfunc.entry_ea)
     if cmts is not None:
       for tl, cmt in cmts.iteritems():
@@ -1200,7 +1204,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     # no small values
     if value < 0x10000:
       return False
-      
+
     if value & 0xFFFFFF00 == 0xFFFFFF00 or value & 0xFFFF00 == 0xFFFF00 or \
        value & 0xFFFFFFFFFFFFFF00 == 0xFFFFFFFFFFFFFF00 or \
        value & 0xFFFFFFFFFFFF00 == 0xFFFFFFFFFFFF00:
@@ -1277,7 +1281,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_degree = {}
     bb_edges = []
     constants = []
-    
+
     # The callees will be calculated later
     callees = list()
     # Calculate the callers
@@ -1290,7 +1294,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
-    
+
     for block in flow:
       nodes += 1
       instructions_data = []
@@ -1412,7 +1416,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if block_ea not in bb_degree:
         # bb in degree, out degree
         bb_degree[block_ea] = [0, 0]
-        
+
       for succ_block in block.succs():
         succ_base = succ_block.startEA - image_base
         bb_relations[block_ea].append(succ_base)
@@ -1558,7 +1562,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
-             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva, 
+             function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
              assembly_addrs,
              callers, callees,
              basic_blocks_data, bb_relations)
@@ -1745,7 +1749,7 @@ def _diff_or_export(use_ui, **options):
     return
 
   opts = BinDiffOptions(**options)
- 
+
   if use_ui:
     x = CBinDiffExporterSetup()
     x.Compile()
