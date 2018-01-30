@@ -966,7 +966,10 @@ class CBinDiff:
                  and df.bytes_hash = f.bytes_hash
                  and df.instructions = f.instructions
                  and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                   or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
+                   or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                 and ((f.nodes > 1 and df.nodes > 1
+                   and f.instructions > 5 and df.instructions > 5)
+                    or f.instructions > 10 and df.instructions > 10)"""
     log_refresh("Finding with heuristic 'Same order and hash'")
     self.add_matches_from_query(sql, choose)
 
@@ -976,7 +979,9 @@ class CBinDiff:
                 from functions f,
                      diff.functions df
                where f.function_hash = df.function_hash 
-                 and f.instructions > 5 and df.instructions > 5 """
+                 and ((f.nodes > 1 and df.nodes > 1
+                   and f.instructions > 5 and df.instructions > 5)
+                    or f.instructions > 10 and df.instructions > 10)"""
     log_refresh("Finding with heuristic 'Function hash'")
     self.add_matches_from_query(sql, choose)
 
@@ -1149,7 +1154,7 @@ class CBinDiff:
       tmp2 = min(md1, md2)
       v4 = tmp2 * 1. / tmp1
 
-    r = max(v1, v2, v3, v4)
+    r = (v1 + v2 + v3 + v4) / 4
     return r
 
   def all_functions_matched(self):
@@ -1614,12 +1619,12 @@ class CBinDiff:
 
   def find_callgraph_matches(self):
     best_items = list(self.best_chooser.items)
-    self.find_callgraph_matches_from(best_items)
+    self.find_callgraph_matches_from(best_items, 0.60)
 
     partial_items = list(self.partial_chooser.items)
-    self.find_callgraph_matches_from(partial_items)
+    self.find_callgraph_matches_from(partial_items, 0.80)
 
-  def find_callgraph_matches_from(self, the_items):
+  def find_callgraph_matches_from(self, the_items, min_value):
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Callgraph match (%s)' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -1630,9 +1635,13 @@ class CBinDiff:
                     df.tarjan_topological_sort, df.strongly_connected_spp
                from functions f,
                     diff.functions df
-              where f.address in (%s)
+              where  f.address in (%s)
                 and df.address in (%s)
-                and abs(f.md_index - df.md_index) < 1"""
+                and  f.name not like 'nullsub_%%'
+                and df.name not like 'nullsub_%%'
+                and abs(f.md_index - df.md_index) < 1
+                and ((f.nodes > 1 and df.nodes > 1) 
+                  or (f.instructions > 10 and df.instructions > 10))"""
 
     main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
     diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
@@ -1640,7 +1649,20 @@ class CBinDiff:
     cur = self.db.cursor()
     dones = set()
 
+    prev_best_matches = len(self.best_chooser.items)
+    prev_part_matches = len(self.partial_chooser.items)
+
+    total_dones = 0
     while len(the_items) > 0:
+      total_dones += 1
+      if total_dones % 1000 == 0:
+        log("Processed %d callgraph matches..." % total_dones)
+
+        curr_best_matches = len(self.best_chooser.items)
+        curr_part_matches = len(self.partial_chooser.items)
+        fmt = "Queued item(s) %d, Best matches %d, Partial Matches %d (Previously %d and %d)"
+        log(fmt % (len(the_items), curr_best_matches, curr_part_matches, prev_best_matches, prev_part_matches))
+
       match = the_items.pop()
       ea1 = match[1]
       name1 = match[2]
@@ -1666,9 +1688,9 @@ class CBinDiff:
           diff_address_set.add("'%s'" % row[0])
 
         if len(main_address_set) > 0 and len(diff_address_set) > 0:
-          cur.execute(sql % (call_type, ",".join(main_address_set), ",".join(diff_address_set)))
-          matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, 0.59)
-          if matches is not None and len(matches) > 0:
+          cur.execute(sql % (("%s of %s/%s" % (call_type, name1, name2)), ",".join(main_address_set), ",".join(diff_address_set)))
+          matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
+          if matches is not None and len(matches) > 0 and self.unreliable:
             the_items.extend(matches)
 
   def find_matches(self):
@@ -2579,9 +2601,10 @@ class CBinDiff:
         log_refresh("Finding partial matches")
         self.find_matches()
 
-        # Find the functions from the callgraph
-        log_refresh("Finding with heuristic 'Callgraph matches'")
-        self.find_callgraph_matches()
+        if self.slow_heuristics:
+          # Find the functions from the callgraph
+          log_refresh("Finding with heuristic 'Callgraph matches'")
+          self.find_callgraph_matches()
 
         if self.unreliable:
           # Find using likely unreliable methods modified functions
