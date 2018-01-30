@@ -1154,7 +1154,7 @@ class CBinDiff:
       tmp2 = min(md1, md2)
       v4 = tmp2 * 1. / tmp1
 
-    r = (v1 + v2 + v3 + v4) / 4
+    r = max(v1, v2, v3, v4)
     return r
 
   def all_functions_matched(self):
