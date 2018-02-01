@@ -1988,21 +1988,6 @@ class CBinDiff:
     self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
 
     if self.slow_heuristics:
-      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar pseudo-code' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where f.pseudocode_lines = df.pseudocode_lines
-                  and df.pseudocode_lines > 5
-                  and df.pseudocode is not null 
-                  and f.pseudocode is not null""" + postfix
-      log_refresh("Finding with heuristic 'Similar pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
-
       sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy AST hash' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
@@ -2202,6 +2187,21 @@ class CBinDiff:
     postfix = ""
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
+
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar pseudo-code' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
+               from functions f,
+                    diff.functions df
+              where f.pseudocode_lines = df.pseudocode_lines
+                and df.pseudocode_lines > 5
+                and df.pseudocode is not null 
+                and f.pseudocode is not null""" + postfix
+    log_refresh("Finding with heuristic 'Similar pseudo-code'")
+    self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
 
     sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Same nodes, edges and strongly connected components' description,
