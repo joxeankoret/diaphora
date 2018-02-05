@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import sys
+import imp
 import time
 import json
 import decimal
@@ -330,12 +331,15 @@ class CBinDiffExporterSetup(Form):
   <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
   <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
 
+  Project specific rules:
+  <#Select the project specific Python script rules#Python script:{iProjectSpecificRules}>
+
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
     args = {'iFileSave': Form.FileInput(save=True, swidth=40),
             'iFileOpen': Form.FileInput(open=True, swidth=40),
-            'iMinEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-            'iMaxEA': Form.NumericInput(tp=Form.FT_HEX, swidth=22),
+            'iMinEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
+            'iMaxEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
                                                "rExcludeLibraryThunk",
                                                "rUnreliable",
@@ -346,7 +350,9 @@ class CBinDiffExporterSetup(Form):
                                                "rFuncSummariesOnly",
                                                "rIgnoreSubNames",
                                                "rIgnoreAllNames",
-                                               "rIgnoreSmallFunctions"))}
+                                               "rIgnoreSmallFunctions")),
+            'iProjectSpecificRules' : Form.FileInput(open=True)}
+
     Form.__init__(self, s, args)
 
   def set_options(self, opts):
@@ -354,6 +360,8 @@ class CBinDiffExporterSetup(Form):
       self.iFileSave.value = opts.file_out
     if opts.file_in is not None:
       self.iFileOpen.value = opts.file_in
+    if opts.project_script is not None:
+      self.iProjectSpecificRules.value = opts.project_script
 
     self.rUseDecompiler.checked = opts.use_decompiler
     self.rExcludeLibraryThunk.checked = opts.exclude_library_thunk
@@ -385,7 +393,8 @@ class CBinDiffExporterSetup(Form):
       ignore_sub_names = self.rIgnoreSubNames.checked,
       ignore_all_names = self.rIgnoreAllNames.checked,
       ignore_small_functions = self.rIgnoreSmallFunctions.checked,
-      func_summaries_only = self.rFuncSummariesOnly.checked
+      func_summaries_only = self.rFuncSummariesOnly.checked,
+      project_script = self.iProjectSpecificRules.value
     )
     return BinDiffOptions(**opts)
 
@@ -523,6 +532,39 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.min_ea = MinEA()
     self.max_ea = MaxEA()
 
+    self.project_script = None
+    self.hooks = None
+
+  def load_hooks(self):
+    if self.project_script is None:
+      return False
+
+    try:
+      log("Loading project specific Python script %s" % self.project_script)
+      module = imp.load_source("diaphora_hooks", self.project_script)
+    except:
+      print "Error loading project specific Python script: %s" % str(sys.exc_info()[1])
+      return False
+
+    if module is None:
+      # How can it be?
+      return False
+
+    keys = dir(module)
+    if 'HOOKS' not in keys:
+      log("Error: The project specific script doesn't export the HOOKS dictionary")
+      return False
+
+    hooks = module.HOOKS
+    if 'DiaphoraHooks' not in hooks:
+      log("Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry.")
+      return False
+
+    hook_class = hooks["DiaphoraHooks"]
+    self.hooks = hook_class(self)
+
+    return True
+
   def show_choosers(self, force=False):
     if len(self.best_chooser.items) > 0:
       self.best_chooser.show(force)
@@ -595,6 +637,11 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.export_til()
 
   def export(self):
+    if self.project_script is not None:
+      log("Loading project specific Python script...")
+      if not self.load_hooks():
+        return False
+
     try:
       show_wait_box("Exporting database")
       self.do_export()
@@ -1235,6 +1282,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if demangled_name is not None:
       name = demangled_name
 
+    if self.hooks is not None:
+      ret = self.hooks.before_export_function(f, name)
+      if not ret:
+        return ret
+
     f = int(f)
     func = get_func(f)
     if not func:
@@ -1333,13 +1385,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           if oper.type == o_imm:
             if self.is_constant(oper, x) and self.constant_filter(oper.value):
               constants.append(oper.value)
-          elif oper.type == o_mem or oper.type == o_idpspec0:
-            drefs = list(DataRefsFrom(x))
-            if len(drefs) > 0:
-              for dref in drefs:
-                if get_func(dref) is None:
-                  str_constant = GetString(dref, -1, -1)
-                  if str_constant is not None:
+
+          drefs = list(DataRefsFrom(x))
+          if len(drefs) > 0:
+            for dref in drefs:
+              if get_func(dref) is None:
+                str_constant = GetString(dref, -1, -1)
+                if str_constant is not None:
+                  if str_constant not in constants:
                     constants.append(str_constant)
 
         curr_bytes = GetManyBytes(x, decoded_size, False)
@@ -1557,7 +1610,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     seg_rva = x - SegStart(x)
 
     rva = f - self.get_base_address()
-    return (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
+    l = (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
@@ -1566,6 +1619,118 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              assembly_addrs,
              callers, callees,
              basic_blocks_data, bb_relations)
+
+    if self.hooks is not None:
+      d = self.create_function_dictionary(l)
+      d = self.hooks.after_export_function(d)
+      l = self.get_function_from_dictionary(d)
+
+    return l
+
+  def get_function_from_dictionary(self, d):
+    l = (
+      d["name"],
+      d["nodes"],
+      d["edges"],
+      d["indegree"],
+      d["outdegree"],
+      d["size"],
+      d["instructions"],
+      d["mnems"],
+      d["names"],
+      d["proto"],
+      d["cc"],
+      d["prime"],
+      d["f"],
+      d["comment"],
+      d["true_name"],
+      d["bytes_hash"],
+      d["pseudo"],
+      d["pseudo_lines"],
+      d["pseudo_hash1"],
+      d["pseudocode_primes"],
+      d["function_flags"],
+      d["asm"],
+      d["proto2"],
+      d["pseudo_hash2"],
+      d["pseudo_hash3"],
+      d["strongly_connected_size"],
+      d["loops"],
+      d["rva"],
+      d["bb_topological"],
+      d["strongly_connected_spp"],
+      d["clean_assembly"],
+      d["clean_pseudo"],
+      d["mnemonics_spp"],
+      d["switches"],
+      d["function_hash"],
+      d["bytes_sum"],
+      d["md_index"],
+      d["constants"],
+      d["constants_size"],
+      d["seg_rva"],
+      d["assembly_addrs"],
+      d["callers"],
+      d["callees"],
+      d["basic_blocks_data"],
+      d["bb_relations"])
+    return l
+
+  def create_function_dictionary(self, l):
+    (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
+    proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
+    pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
+    pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
+    strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
+    function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
+    assembly_addrs, callers, callees, basic_blocks_data, bb_relations) = l
+    d = dict(
+          name = name,
+          nodes = nodes,
+          edges = edges,
+          indegree = indegree,
+          outdegree = outdegree,
+          size = size,
+          instructions = instructions,
+          mnems = mnems,
+          names = names,
+          proto = proto,
+          cc = cc,
+          prime = prime,
+          f = f,
+          comment = comment,
+          true_name = true_name,
+          bytes_hash = bytes_hash,
+          pseudo = pseudo,
+          pseudo_lines = pseudo_lines,
+          pseudo_hash1 = pseudo_hash1,
+          pseudocode_primes = pseudocode_primes,
+          function_flags = function_flags,
+          asm = asm,
+          proto2 = proto2,
+          pseudo_hash2 = pseudo_hash2,
+          pseudo_hash3 = pseudo_hash3,
+          strongly_connected_size = strongly_connected_size,
+          loops = loops,
+          rva = rva,
+          bb_topological = bb_topological,
+          strongly_connected_spp = strongly_connected_spp,
+          clean_assembly = clean_assembly,
+          clean_pseudo = clean_pseudo,
+          mnemonics_spp = mnemonics_spp,
+          switches = switches,
+          function_hash = function_hash,
+          bytes_sum = bytes_sum,
+          md_index = md_index,
+          constants = constants,
+          constants_size = constants_size,
+          seg_rva = seg_rva,
+          assembly_addrs = assembly_addrs,
+          callers = callers,
+          callees = callees,
+          basic_blocks_data = basic_blocks_data,
+          bb_relations = bb_relations)
+    return d
 
   def get_base_address(self):
     return idaapi.get_imagebase()
@@ -1803,6 +1968,7 @@ def _diff_or_export(use_ui, **options):
     bd.function_summaries_only = opts.func_summaries_only
     bd.max_processed_rows = diaphora.MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
     bd.timeout = diaphora.TIMEOUT_LIMIT * max(total_functions / 20000, 1)
+    bd.project_script = opts.project_script
 
     if export:
       if os.getenv("DIAPHORA_PROFILE") is not None:
@@ -1839,11 +2005,11 @@ class BinDiffOptions:
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
     self.exclude_library_thunk = kwargs.get('exclude_library_thunk', True)
-    # Enable, by default, relaxed calculations on difference ratios for
-    # 'big' databases (>20k functions)
+
     self.relax = kwargs.get('relax')
     if self.relax:
       Warning(MSG_RELAXED_RATIO_ENABLED)
+
     self.unreliable = kwargs.get('unreliable', False)
     self.slow = kwargs.get('slow', False)
     self.experimental = kwargs.get('experimental', False)
@@ -1853,8 +2019,12 @@ class BinDiffOptions:
     self.ignore_sub_names = kwargs.get('ignore_sub_names', True)
     self.ignore_all_names = kwargs.get('ignore_all_names', False)
     self.ignore_small_functions = kwargs.get('ignore_small_functions', False)
+
     # Enable, by default, exporting only function summaries for huge dbs.
     self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
+
+    # Python script to run for both the export and diffing process
+    self.project_script = kwargs.get('project_script')
 
 #-----------------------------------------------------------------------
 class CHtmlDiff:
