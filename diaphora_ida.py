@@ -2217,6 +2217,9 @@ def main():
       log("Database %s removed" % repr(file_out))
 
     bd = CIDABinDiff(file_out)
+    project_script = os.getenv("DIAPHORA_PROJECT_SCRIPT")
+    if project_script is not None:
+      bd.project_script = project_script
     bd.use_decompiler_always = use_decompiler
     bd.export()
 
