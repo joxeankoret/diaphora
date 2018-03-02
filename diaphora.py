@@ -547,7 +547,7 @@ class CBinDiff:
     # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
     for prop in props[:len(props)-4]:
       # XXX: Fixme! This is a hack for 64 bit architectures kernels
-      if type(prop) is long and prop > 0xFFFFFFFF:
+      if type(prop) is long and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
         prop = str(prop)
 
       if type(prop) is list or type(prop) is set:
