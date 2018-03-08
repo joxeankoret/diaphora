@@ -1688,7 +1688,9 @@ class CBinDiff:
           diff_address_set.add("'%s'" % row[0])
 
         if len(main_address_set) > 0 and len(diff_address_set) > 0:
-          cur.execute(sql % (("%s of %s/%s" % (call_type, name1, name2)), ",".join(main_address_set), ",".join(diff_address_set)))
+          tname1 = name1.replace("'", "''")
+          tname2 = name2.replace("'", "''")
+          cur.execute(sql % (("%s of %s/%s" % (call_type, tname1, tname2)), ",".join(main_address_set), ",".join(diff_address_set)))
           matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
           if matches is not None and len(matches) > 0 and self.unreliable:
             the_items.extend(matches)
