@@ -536,8 +536,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.hooks = None
 
   def load_hooks(self):
-    if self.project_script is None:
-      return False
+    if self.project_script is None or self.project_script == "":
+      return True
 
     try:
       log("Loading project specific Python script %s" % self.project_script)
