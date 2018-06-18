@@ -588,13 +588,54 @@ class CIDABinDiff(diaphora.CBinDiff):
     hide_wait_box()
     return res
 
-  def do_export(self):
+  def get_last_crash_func(self):
+    sql = "select address from functions order by id desc limit 1"
+    cur = self.db_cursor()
+    cur.execute(sql)
+
+    row = cur.fetchone()
+    if not row:
+      return None
+
+    address = long(row[0])
+    cur.close()
+
+    return address
+
+  def recalculate_primes(self):
+    sql = "select primes_value from functions"
+
+    callgraph_primes = 1
+    callgraph_all_primes = {}
+
+    cur = self.db_cursor()
+    cur.execute(sql)
+    for row in cur.fetchall():
+      ret = row[0]
+      callgraph_primes *= decimal.Decimal(row[0])
+      try:
+        callgraph_all_primes[ret] += 1
+      except KeyError:
+        callgraph_all_primes[ret] = 1
+
+    cur.close()
+    return callgraph_primes, callgraph_all_primes
+
+  def do_export(self, crashed_before = False):
     i = 0
     callgraph_primes = 1
     callgraph_all_primes = {}
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
     t = time.time()
+
+    if crashed_before:
+      start_func = self.get_last_crash_func()
+      if start_func is None:
+        Warning("Diaphora cannot resume the previous crashed session, the export process will start from scratch.")
+        crashed_before = False
+      else:
+        callgraph_primes, callgraph_all_primes = self.recalculate_primes()
 
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("BEGIN transaction")
@@ -612,6 +653,16 @@ class CIDABinDiff(diaphora.CBinDiff):
 
         replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
+      if crashed_before:
+        rva = func - self.get_base_address()
+        if rva != start_func:
+          continue
+
+        # When we get to the last function that was previously exported, switch
+        # off the 'crash' flag and continue with the next row.
+        crashed_before = False
+        continue
+
       props = self.read_function(func)
       if props == False:
         continue
@@ -626,7 +677,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
       # Try to fix bug #30 and, also, try to speed up operations as
       # doing a commit every 10 functions, as before, is overkill.
-      if total_funcs > 1000 and i % (total_funcs/1000) == 0:
+      if total_funcs > 1000 and i % (total_funcs/10) == 0:
         self.db.commit()
         self.db.execute("PRAGMA synchronous = OFF")
         self.db.execute("BEGIN transaction")
@@ -642,13 +693,25 @@ class CIDABinDiff(diaphora.CBinDiff):
       if not self.load_hooks():
         return False
 
+    crashed_before = False
+    crash_file = "%s-crash" % self.db_name
+    if os.path.exists(crash_file):
+      log("Resuming a previously crashed session...")
+      crashed_before = True
+
+    log("Creating crash file %s..." % crash_file)
+    with open(crash_file, "wb") as f:
+      f.close()
+
     try:
       show_wait_box("Exporting database")
-      self.do_export()
+      self.do_export(crashed_before)
     finally:
       hide_wait_box()
 
     self.db.commit()
+    log("Removing crash file %s-crash..." % self.db_name)
+    os.remove("%s-crash" % self.db_name)
 
     cur = self.db_cursor()
     cur.execute("analyze")
@@ -1937,19 +2000,37 @@ def _diff_or_export(use_ui, **options):
 
   export = True
   if os.path.exists(opts.file_out):
-    ret = askyn_c(0, "Export database already exists. Do you want to overwrite it?")
-    if ret == -1:
-      log("Cancelled")
-      return
+    crash_file = "%s-crash" % opts.file_out
+    resume_crashed = False
+    crashed_before = False
+    if os.path.exists(crash_file):
+      crashed_before = True
+      ret = askyn_c(1, "The previous export session crashed. Do you want to resume the previous crashed session?")
+      if ret == -1:
+        log("Cancelled")
+        return
+      elif ret == 1:
+        resume_crashed = True
 
-    if ret == 0:
-      export = False
+    if not resume_crashed and not crashed_before:
+      ret = askyn_c(0, "Export database already exists. Do you want to overwrite it?")
+      if ret == -1:
+        log("Cancelled")
+        return
+
+      if ret == 0:
+        export = False
 
     if export:
       if g_bindiff is not None:
         g_bindiff = None
-      remove_file(opts.file_out)
-      log("Database %s removed" % repr(opts.file_out))
+
+      if not resume_crashed:
+        remove_file(opts.file_out)
+        log("Database %s removed" % repr(opts.file_out))
+        if os.path.exists(crash_file):
+          os.remove(crash_file)
+
   t0 = time.time()
   try:
     bd = CIDABinDiff(opts.file_out)
@@ -1971,15 +2052,24 @@ def _diff_or_export(use_ui, **options):
     bd.project_script = opts.project_script
 
     if export:
+      exported = False
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling export ***")
         import cProfile
         profiler = cProfile.Profile()
         profiler.runcall(bd.export)
+        exported = True
         profiler.print_stats(sort="time")
       else:
-        bd.export()
-      log("Database exported. Took {} seconds".format(time.time() - t0))
+        try:
+          bd.export()
+          exported = True
+        except KeyboardInterrupt:
+          log("Aborted by user, removing crash file %s-crash..." % opts.file_out)
+          os.remove("%s-crash" % opts.file_out)
+
+      if exported:
+        log("Database exported. Took {} seconds".format(time.time() - t0))
 
     if opts.file_in != "":
       if os.getenv("DIAPHORA_PROFILE") is not None:
@@ -2221,7 +2311,12 @@ def main():
     if project_script is not None:
       bd.project_script = project_script
     bd.use_decompiler_always = use_decompiler
-    bd.export()
+
+    try:
+      bd.export()
+    except KeyboardInterrupt:
+      log("Aborted by user, removing crash file %s-crash..." % file_out)
+      os.remove("%s-crash" % file_out)
 
     idaapi.qexit(0)
   else:
