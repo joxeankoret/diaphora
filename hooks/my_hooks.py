@@ -42,9 +42,10 @@ class CMyHooks:
     # Otherwise, it's the kernel-land IDB for which we only want to export the
     # syscall functions.
     if func_name:
-      # It is a syscall
-      if "syscall_%s" % func_name in SYSCALL_NAMES:
-        return True
+      # Is it a syscall?
+      for prefix in FUNC_PREFIXES:
+        if func_name.startswith(prefix):
+          return True
 
     return False
 
