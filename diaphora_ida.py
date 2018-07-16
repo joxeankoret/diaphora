@@ -1148,7 +1148,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     new_items = []
     for index in selected:
-      item = items[index-1]
+      item = items[index]
       name1 = item[2]
       if not only_auto or name1.startswith("sub_"):
         new_items.append(item)
