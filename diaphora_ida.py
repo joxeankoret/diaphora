@@ -220,6 +220,9 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     return n
 
   def show(self, force=False):
+    if self.show_commands:
+      self.items = sorted(self.items, key=lambda x: decimal.Decimal(x[5]), reverse=True)
+
     t = self.Show()
     if t < 0:
       return False
