@@ -640,7 +640,9 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         callgraph_primes, callgraph_all_primes = self.recalculate_primes()
 
+    self.db.commit()
     self.db.execute("PRAGMA synchronous = OFF")
+    self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
     for func in func_list:
       i += 1
@@ -683,12 +685,16 @@ class CIDABinDiff(diaphora.CBinDiff):
       if total_funcs > 1000 and i % (total_funcs/10) == 0:
         self.db.commit()
         self.db.execute("PRAGMA synchronous = OFF")
+        self.db.execute("PRAGMA journal_mode = MEMORY")
         self.db.execute("BEGIN transaction")
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
     self.export_structures()
     self.export_til()
+
+    replace_wait_box("Creating indexes...")
+    self.create_indexes()
 
   def export(self):
     if self.project_script is not None:

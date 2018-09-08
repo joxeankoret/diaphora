@@ -342,9 +342,6 @@ class CBinDiff:
                 pseudoitp integer) """
     cur.execute(sql)
 
-    sql = "create index if not exists idx_instructions_address on instructions (address)"
-    cur.execute(sql)
-
     sql = """ create table if not exists basic_blocks (
                 id integer primary key,
                 num integer,
@@ -357,16 +354,10 @@ class CBinDiff:
                 child_id integer not null references basic_blocks(id) ON DELETE CASCADE)"""
     cur.execute(sql)
 
-    sql = "create index if not exists idx_bb_relations on bb_relations(parent_id, child_id)"
-    cur.execute(sql)
-
     sql = """ create table if not exists bb_instructions (
                 id integer primary key,
                 basic_block_id integer references basic_blocks(id) on delete cascade,
                 instruction_id integer references instructions(id) on delete cascade)"""
-    cur.execute(sql)
-
-    sql = "create index if not exists idx_bb_instructions on bb_instructions (basic_block_id, instruction_id)"
     cur.execute(sql)
 
     sql = """ create table if not exists function_bblocks (
@@ -382,14 +373,16 @@ class CBinDiff:
                 type text not null)"""
     cur.execute(sql)
 
-    sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
-    cur.execute(sql)
-
     cur.execute("select 1 from version")
     row = cur.fetchone()
     if not row:
       cur.execute("insert into main.version values ('%s')" % VERSION_VALUE)
 
+    cur.close()
+
+  def create_indexes(self):
+    cur = self.db_cursor()
+    
     sql = "create index if not exists idx_assembly on functions(assembly)"
     cur.execute(sql)
 
@@ -484,6 +477,18 @@ class CBinDiff:
     cur.execute(sql)
 
     sql = "create index if not exists idx_mdindex_constants on functions(md_index, constants_count, constants)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_instructions_address on instructions (address)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_bb_relations on bb_relations(parent_id, child_id)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_bb_instructions on bb_instructions (basic_block_id, instruction_id)"
+    cur.execute(sql)
+
+    sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
     cur.execute(sql)
 
     cur.close()
