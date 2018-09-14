@@ -625,7 +625,6 @@ class CIDABinDiff(diaphora.CBinDiff):
     return callgraph_primes, callgraph_all_primes
 
   def do_export(self, crashed_before = False):
-    i = 0
     callgraph_primes = 1
     callgraph_all_primes = {}
     func_list = list(Functions(self.min_ea, self.max_ea))
@@ -644,6 +643,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
+    i = 0
     for func in func_list:
       i += 1
       if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
@@ -1488,6 +1488,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           demangled_name = Demangle(tmp_name, INF_SHORT_DN)
           if demangled_name is not None:
             tmp_name = demangled_name
+            pos = tmp_name.find("(")
+            if pos > -1:
+              tmp_name = tmp_name[:pos]
+
           if not tmp_name.startswith("sub_") and not tmp_name.startswith("nullsub_"):
             names.add(tmp_name)
 

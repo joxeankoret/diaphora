@@ -40,7 +40,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.2.1"
+VERSION_VALUE = "1.2.2"
 COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -373,6 +373,12 @@ class CBinDiff:
                 type text not null)"""
     cur.execute(sql)
 
+    sql = """create table if not exists constants (
+                id integer primary key,
+                func_id integer not null references functions(id) on delete cascade,
+                constant text not null)"""
+    cur.execute(sql)
+
     cur.execute("select 1 from version")
     row = cur.fetchone()
     if not row:
@@ -491,6 +497,9 @@ class CBinDiff:
     sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_constants on constants (constant)"
+    cur.execute(sql)
+
     cur.close()
 
   def attach_database(self, diff_db):
@@ -548,6 +557,7 @@ class CBinDiff:
       log("WARNING: Trying to save a non resolved function?")
       return
 
+    # Phase 1: Fix data types and insert the function row.
     cur = self.db_cursor()
     new_props = []
     # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
@@ -584,7 +594,7 @@ class CBinDiff:
 
     func_id = cur.lastrowid
 
-    # Save the callers and callees of the function
+    # Phase 2: Save the callers and callees of the function
     callers, callees = props[len(props)-4:len(props)-2]
     sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
     for caller in callers:
@@ -593,7 +603,14 @@ class CBinDiff:
     for callee in callees:
       cur.execute(sql, (func_id, str(callee), 'callee'))
 
-    # Save the basic blocks relationships
+    # Phase 3: Insert the constants of the function
+    sql = "insert into constants (func_id, constant) values (?, ?)"
+    props_dict = self.create_function_dictionary(props)
+    for constant in props_dict["constants"]:
+      if type(constant) is str and len(constant) > 4:
+        cur.execute(sql, (func_id, constant))
+
+    # Phase 4: Save the basic blocks relationships
     if not self.function_summaries_only:
       # The last 2 fields are basic_blocks_data & bb_relations
       bb_data, bb_relations = props[len(props)-2:]
@@ -1733,6 +1750,22 @@ class CBinDiff:
                   and f.nodes > 10 """ + postfix
     log_refresh("Finding with heuristic 'Same rare MD Index'")
     self.add_matches_from_query_ratio(sql, self.best_chooser, choose)
+
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare constant' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
+               from main.constants mc,
+                    diff.constants dc,
+                    main.functions  f,
+                    diff.functions df
+              where mc.constant = dc.constant
+                and  f.id = mc.func_id
+                and df.id = dc.func_id"""
+    log_refresh("Finding with heuristic 'Same rare constant'")
+    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.5)
 
     sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                      'Same MD Index and constants' description,
