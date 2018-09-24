@@ -210,10 +210,8 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     return len(self.items)
 
   def OnDeleteLine(self, n):
-    try:
+    if n >= 0:
       del self.items[n]
-    except:
-      pass
     return True
 
   def OnRefresh(self, n):
