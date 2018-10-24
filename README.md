@@ -1,7 +1,7 @@
 # Diaphora
-Diaphora (διαφορά, Greek for 'difference') is a program diffing plugin for IDA Pro and Radare2, similar to Zynamics Bindiff or the FOSS counterparts DarunGrim, TurboDiff, etc... It was released during SyScan 2015.
+Diaphora (διαφορά, Greek for 'difference') is a program diffing plugin for IDA, similar to Zynamics Bindiff or other FOSS counterparts like YaDiff, DarunGrim, TurboDiff, etc... It was released during SyScan 2015.
 
-It works with IDA Pro 6.9, 6.95 and 7.0. In batch mode, it supports Radare2 too ([check this fork](https://github.com/radare/diaphora)). In the future, adding support for Binary Ninja is also planned.
+It works with IDA 6.9 to 7.1. If you are looking for Radare2 support you can [check this fork](https://github.com/radare/diaphora)). In the future, adding support for Binary Ninja is also planned.
 
 For more details, please check the tutorial in the "doc" directory.
 
@@ -9,7 +9,7 @@ For more details, please check the tutorial in the "doc" directory.
 
 You can join the mailing list https://groups.google.com/forum/?hl=es#!forum/diaphora to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the issues tracker:  https://github.com/joxeankoret/diaphora/issues
 
-Please note that only the last 2 versions of IDA will be supported. As of today, it means that only IDA 6.95 and 7.0 are supported. Versions 6.8 and 6.9 do work (with all the last patches that were supplied to *customers*), but no support is offered for them.
+Please note that only the last 2 versions of IDA are officially be supported. As of today, it means that only IDA 7.0 and 7.1 are supported. Versions 6.8, 6.9 and 6.95 do work (with all the last patches that were supplied to *customers*), but no support is offered for them.
 
 ## Documentation
 

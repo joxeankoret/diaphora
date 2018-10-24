@@ -93,15 +93,14 @@ def ast_ratio(ast1, ast2):
   return difference_ratio(decimal.Decimal(ast1), decimal.Decimal(ast2))
 
 #-----------------------------------------------------------------------
-
 def log(msg):
   print "[%s] %s\n" % (time.asctime(), msg);
 
-
+#-----------------------------------------------------------------------
 def log_refresh(msg, show=False):
   log(msg)
 
-
+#-----------------------------------------------------------------------
 class CChooser():
   class Item:
     def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
