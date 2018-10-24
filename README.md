@@ -1,7 +1,7 @@
 # Diaphora
 Diaphora (διαφορά, Greek for 'difference') is a program diffing plugin for IDA, similar to Zynamics Bindiff or other FOSS counterparts like YaDiff, DarunGrim, TurboDiff, etc... It was released during SyScan 2015.
 
-It works with IDA 6.9 to 7.1. If you are looking for Radare2 support you can [check this fork](https://github.com/radare/diaphora)). In the future, adding support for Binary Ninja is also planned.
+It works with IDA 6.9 to 7.2. If you are looking for Radare2 support you can [check this fork](https://github.com/radare/diaphora). Support for Binary Ninja is also planned (as soon as they finish adding support for GUI based plugins).
 
 For more details, please check the tutorial in the "doc" directory.
 
@@ -9,7 +9,7 @@ For more details, please check the tutorial in the "doc" directory.
 
 You can join the mailing list https://groups.google.com/forum/?hl=es#!forum/diaphora to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the issues tracker:  https://github.com/joxeankoret/diaphora/issues
 
-Please note that only the last 2 versions of IDA are officially be supported. As of today, it means that only IDA 7.0 and 7.1 are supported. Versions 6.8, 6.9 and 6.95 do work (with all the last patches that were supplied to *customers*), but no support is offered for them.
+Please note that only the last 3 versions of IDA are officially supported. As of today, it means that only IDA 7.0, 7.1 and 7.2 are supported. Versions 6.8, 6.9 and 6.95 do work (with all the last patches that were supplied to *customers*), but no official support is offered for them. However, if you run into any problem with these versions, ping me and I will do my best.
 
 ## Documentation
 
@@ -31,3 +31,8 @@ These are some screenshots of Diaphora diffing the [Microsoft bulletin MS15-050]
 ![Diaphora diffing MS15-050, partial matches](http://www.alex-ionescu.com/wp-content/uploads/diaphora3.png)
 ![Diaphora diffing MS15-050, diffing pseudo-code](http://www.alex-ionescu.com/wp-content/uploads/diaphora1.png)
 
+![Diaphora diffing a LuaBot, matches and pseudo-code](https://1.bp.blogspot.com/-O5UjSOyjCgg/V5byA-ozXVI/AAAAAAAABaY/yRTMDTSD9zI0mSy4AsHN21ZYf_YvctnkwCLcB/s1600/evs-compile.png)
+
+Here is a screenshot of Diaphora diffing [iBoot from iOS 10.3.3 against iOS 11.0](http://matteyeux.me/hacking/2018/04/04/diaphora-diff-and-ida.html):
+
+![Diaphora diffing iBoot from iOS 10.3.3 against iOS 11.0](http://matteyeux.me/images/newgraph.PNG)
