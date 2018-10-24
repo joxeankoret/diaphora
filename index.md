@@ -8,6 +8,28 @@ For more details, please check the tutorial in the "doc" directory.
 
 As with any open source project, any form of help for this project is highly appreciated. You can submit your own patches, make feature requests, report bugs or <a href="#donate">donate</a> to support the development of Diaphora.
 
+## Features
+
+Diaphora has support for several unique features not available in other program diffing tools, namely:
+
+ * Exporting and importing structures and enumerations.
+ * Exporting and importing pseudo-code comments.
+ * Generic matching heuristics based on the pseudo-code and its AST (Abstract Syntax Tree).
+ * Visually diffing pseudo-codes.
+ * Support for directly matching and diffing from source codes (using the, for now, independent tool [Pigaios](https://github.com/joxeankoret/pigaios) until it's integrated into Diaphora).
+
+It also supports all of the most common features that one might expect from a program diffing tool:
+
+ * Support for diffing patches.
+ * Support for exporting and import symbols (function names, prototypes, global names, etc...).
+ * Support for diffing assembler.
+ * Support for diffing control flow graphs.
+ * Rudimentary support for matching call graphs.
+ * Support for graph based heuristics.
+ * Support for constants based heuristics.
+
+...and a long-long number of other features.
+
 ## Getting help and asking for features
 
 You can join the [mailing list](https://groups.google.com/forum/?hl=es#!forum/diaphora) to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the [issues tracker](https://github.com/joxeankoret/diaphora/issues). You can also check the [Wiki](https://github.com/joxeankoret/diaphora/wiki) that answers some of the most common questions.
