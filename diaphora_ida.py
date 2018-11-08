@@ -36,6 +36,7 @@ from pygments.formatters import HtmlFormatter
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 
 from jkutils.factor import primesbelow as primes
+from jkutils.graph_hashes import CGraphSppHash
 
 import idaapi
 from idc import *
@@ -1683,6 +1684,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     seg_rva = x - SegStart(x)
 
+    kgh = CGraphSppHash()
+    kgh_hash = kgh.calculate(f)
+
     rva = f - self.get_base_address()
     l = (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
@@ -1690,7 +1694,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
-             assembly_addrs,
+             assembly_addrs, kgh_hash,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -1744,6 +1748,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["constants_size"],
       d["seg_rva"],
       d["assembly_addrs"],
+      d["kgh_hash"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
@@ -1757,7 +1762,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
-    assembly_addrs, callers, callees, basic_blocks_data, bb_relations) = l
+    assembly_addrs, kgh_hash, callers, callees, basic_blocks_data, bb_relations) = l
     d = dict(
           name = name,
           nodes = nodes,

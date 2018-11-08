@@ -40,7 +40,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.2.2"
+VERSION_VALUE = "1.2.3"
 COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -305,7 +305,8 @@ class CBinDiff:
                         constants text,
                         constants_count integer,
                         segment_rva text,
-                        assembly_addrs text) """
+                        assembly_addrs text,
+                        kgh_hash text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -478,6 +479,9 @@ class CBinDiff:
     sql = "create index if not exists idx_md_index on functions(md_index)"
     cur.execute(sql)
 
+    sql = "create index if not exists idx_kgh_hash on functions(kgh_hash)"
+    cur.execute(sql)
+
     sql = "create index if not exists idx_constants on functions(constants_count, constants)"
     cur.execute(sql)
 
@@ -580,10 +584,10 @@ class CBinDiff:
                                     tarjan_topological_sort, strongly_connected_spp,
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
                                     function_hash, bytes_sum, md_index, constants,
-                                    constants_count, segment_rva, assembly_addrs)
+                                    constants_count, segment_rva, assembly_addrs, kgh_hash)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
     try:
       cur.execute(sql, new_props)
@@ -1068,7 +1072,7 @@ class CBinDiff:
                     diff.functions df
               where f.assembly = df.assembly
                 and df.assembly is not null
-                and f.instructions > 5 and df.instructions > 5 
+                and f.instructions >= 4 and df.instructions >= 4
                 and f.name not like 'nullsub%'
                 and df.name not like 'nullsub%' """
     log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
@@ -1724,6 +1728,32 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
+    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare SPP Graph Hash' description,
+                      f.pseudocode pseudo1, df.pseudocode pseudo2,
+                      f.assembly asm1, df.assembly asm2,
+                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                      f.nodes bb1, df.nodes bb2,
+                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                 from functions f,
+                      diff.functions df,
+                      (select kgh_hash
+                         from diff.functions
+                        where kgh_hash != 0
+                        group by kgh_hash
+                       having count(*) <= 2
+                        union 
+                       select kgh_hash
+                         from main.functions
+                        where kgh_hash != 0
+                        group by kgh_hash
+                       having count(*) <= 2
+                      ) shared_hashes
+                where f.kgh_hash = df.kgh_hash
+                  and df.kgh_hash = shared_hashes.kgh_hash
+                  and f.nodes > 3 """ + postfix
+    log_refresh("Finding with heuristic 'Same rare SPP Graph Hash'")
+    self.add_matches_from_query_ratio_max(sql, self.best_chooser, choose, 0.5)
+
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare MD Index' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
@@ -1978,12 +2008,12 @@ class CBinDiff:
     log_refresh("Finding with heuristic 'Mnemonics small-primes-product'")
     self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
 
-    # Search using some of the previous criterias but calculating the
-    # edit distance
-    log_refresh("Finding with heuristic 'Small names difference'")
-    self.search_small_differences(choose)
-
     if self.slow_heuristics:
+      # Search using some of the previous criterias but calculating the
+      # edit distance
+      log_refresh("Finding with heuristic 'Small names difference'")
+      self.search_small_differences(choose)
+
       sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy hash' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
