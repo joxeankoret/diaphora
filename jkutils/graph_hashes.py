@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
-Yet another Directed Graph hash using small-primes-product.
+Yet another Control Flow Graph hash using small-primes-product.
 
 Based on the paper Efficient Features for Function Matching between Binary
 Executables by Huku (Chariton Karamitas, CENSUS S.A., huku@census-labs.com).
