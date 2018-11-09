@@ -36,7 +36,7 @@ from pygments.formatters import HtmlFormatter
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 
 from jkutils.factor import primesbelow as primes
-from jkutils.graph_hashes import CGraphSppHash
+from jkutils.graph_hashes import CKoretKaramitasHash
 
 import idaapi
 from idc import *
@@ -1684,7 +1684,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     seg_rva = x - SegStart(x)
 
-    kgh = CGraphSppHash()
+    kgh = CKoretKaramitasHash()
     kgh_hash = kgh.calculate(f)
 
     rva = f - self.get_base_address()

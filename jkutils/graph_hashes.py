@@ -2,6 +2,7 @@
 
 """
 Yet another Control Flow Graph hash using small-primes-product.
+An implementation of the Koret-Karamitas (KOKA) CFGs hashing algorithm.
 
 Based on the paper Efficient Features for Function Matching between Binary
 Executables by Huku (Chariton Karamitas, CENSUS S.A., huku@census-labs.com).
@@ -64,7 +65,8 @@ FEATURE_FUNC_LIB = 43
 FEATURE_FUNC_THUNK = 47
 
 #-------------------------------------------------------------------------------
-class CGraphSppHash:
+# Implementation of the KOKA (Koret-Karamitas) hashing algorithm for IDA
+class CKoretKaramitasHash:
   def __init__(self):
     pass
 
@@ -171,8 +173,8 @@ class CGraphSppHash:
 
 #-------------------------------------------------------------------------------
 def main():
-  kgh = CGraphSppHash()
-  
+  kgh = CKoretKaramitasHash()
+
   d = {}
   for f in Functions():
     hash = kgh.calculate(f)

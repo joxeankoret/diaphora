@@ -1728,7 +1728,7 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare SPP Graph Hash' description,
+    sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare KOKA hash' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,
                       f.assembly asm1, df.assembly asm2,
                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -1751,7 +1751,7 @@ class CBinDiff:
                 where f.kgh_hash = df.kgh_hash
                   and df.kgh_hash = shared_hashes.kgh_hash
                   and f.nodes > 3 """ + postfix
-    log_refresh("Finding with heuristic 'Same rare SPP Graph Hash'")
+    log_refresh("Finding with heuristic 'Same rare KOKA hash'")
     self.add_matches_from_query_ratio_max(sql, self.best_chooser, choose, 0.5)
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare MD Index' description,
