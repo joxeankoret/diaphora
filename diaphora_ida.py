@@ -1805,6 +1805,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           constants_size = constants_size,
           seg_rva = seg_rva,
           assembly_addrs = assembly_addrs,
+          kgh_hash = kgh_hash,
           callers = callers,
           callees = callees,
           basic_blocks_data = basic_blocks_data,
