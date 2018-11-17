@@ -932,7 +932,10 @@ class CBinDiff:
           log("Callgraphs are 100% equal")
         else:
           percent = diff * 100. / total
-          log("Callgraphs from both programs differ in %f%%" % percent)
+          if percent >= 100:
+            log("Callgraphs are absolutely different")
+          else:
+            log("Callgraphs from both programs differ in %f%%" % percent)
 
     cur.close()
 
@@ -1752,7 +1755,7 @@ class CBinDiff:
                   and df.kgh_hash = shared_hashes.kgh_hash
                   and f.nodes > 3 """ + postfix
     log_refresh("Finding with heuristic 'Same rare KOKA hash'")
-    self.add_matches_from_query_ratio_max(sql, self.best_chooser, choose, 0.5)
+    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
 
     sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare MD Index' description,
                       f.pseudocode pseudo1, df.pseudocode pseudo2,

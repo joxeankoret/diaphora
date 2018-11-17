@@ -302,10 +302,13 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
       ratio = float(item[5])
-      red = int(164 * (1 - ratio))
-      green = int(128 * ratio)
-      blue = int(255 * (1 - ratio))
-      color = int("0x%02x%02x%02x" % (blue, green, red), 16)
+      if not item[2].startswith("sub_") and not item[4].startswith("sub_") and item[2] != item[4]:
+        return [0x0000FF, 0]
+      else:
+        red = int(164 * (1 - ratio))
+        green = int(128 * ratio)
+        blue = int(255 * (1 - ratio))
+        color = int("0x%02x%02x%02x" % (blue, green, red), 16)
       return [color, 0]
     return [0xFFFFFF, 0]
 
