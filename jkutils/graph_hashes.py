@@ -157,7 +157,7 @@ class CKoretKaramitasHash:
 
       # And, also, use the number of strongly connected components
       # to calculate another part of the hash.
-      hash *= (FEATURE_STRONGLY_CONNECTED * len(strongly_connected))
+      hash *= (FEATURE_STRONGLY_CONNECTED ** len(strongly_connected))
     except:
       print("Exception:", str(sys.exc_info()[1]))
 
