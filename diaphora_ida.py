@@ -118,7 +118,7 @@ def load_results():
 
 #-----------------------------------------------------------------------
 def import_definitions():
-  tmp_diff = diaphora.CBinDiff(":memory:")
+  tmp_diff = diaphora.CIDABinDiff(":memory:")
   filename = AskFile(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
   if filename is not None:
     if askyn_c(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
@@ -298,11 +298,19 @@ class CIDAChooser(diaphora.CChooser, Choose2):
   def OnSelectionChange(self, sel_list):
     self.selected_items = sel_list
 
+  def seems_false_positive(self, item):
+    if not item[2].startswith("sub_") and not item[4].startswith("sub_"):
+      if item[2] != item[4]:
+        if not item[4].startswith(item[2]) and not item[2].startswith(item[4]):
+          return True
+
+    return False
+
   def OnGetLineAttr(self, n):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
       ratio = float(item[5])
-      if not item[2].startswith("sub_") and not item[4].startswith("sub_") and item[2] != item[4]:
+      if self.seems_false_positive(item):
         return [0x0000FF, 0]
       else:
         red = int(164 * (1 - ratio))
@@ -1355,6 +1363,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     if demangled_name is not None:
       name = demangled_name
+      true_name = name
 
     if self.hooks is not None:
       ret = self.hooks.before_export_function(f, name)

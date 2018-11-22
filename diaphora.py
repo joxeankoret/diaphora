@@ -40,7 +40,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.2.3"
+VERSION_VALUE = "1.2.4"
 COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -685,7 +685,7 @@ class CBinDiff:
     """ Try to get a valid structure definition by removing (yes) the 
         invalid characters typically found in IDA's generated structs."""
     ret = defs.replace("?", "_").replace("@", "_")
-    ret = ret.replace("$", "_").replace("#", "_")
+    ret = ret.replace("$", "_")
     return ret
 
   def prettify_asm(self, asm_source):
