@@ -77,6 +77,8 @@ more than 100,000 functions.<br><br>
 You can disable it by un-checking the 'Do not export basic blocks<br>
 or instructions' option."""
 
+LITTLE_ORANGE = 0x026AFD
+
 #-----------------------------------------------------------------------
 def log(msg):
   Message("[%s] %s\n" % (time.asctime(), msg))
@@ -301,7 +303,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
   def seems_false_positive(self, item):
     if not item[2].startswith("sub_") and not item[4].startswith("sub_"):
       if item[2] != item[4]:
-        if not item[4].startswith(item[2]) and not item[2].startswith(item[4]):
+        if item[4].find(item[2]) == -1 and not item[2].find(item[4]) == -1:
           return True
 
     return False
@@ -311,7 +313,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       item = self.items[n]
       ratio = float(item[5])
       if self.seems_false_positive(item):
-        return [0x0000FF, 0]
+        return [LITTLE_ORANGE, 0]
       else:
         red = int(164 * (1 - ratio))
         green = int(128 * ratio)
