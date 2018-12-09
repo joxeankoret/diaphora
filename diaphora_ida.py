@@ -543,6 +543,7 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 class CIDABinDiff(diaphora.CBinDiff):
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
+    self.decompiler_available = True
     self.names = dict(Names())
     self.min_ea = MinEA()
     self.max_ea = MaxEA()
@@ -1241,10 +1242,14 @@ class CIDABinDiff(diaphora.CBinDiff):
       traceback.print_exc()
 
   def decompile_and_get(self, ea):
+    if not self.decompiler_available:
+      return False
+
     decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
     if decompiler_plugin is None:
       decompiler_plugin = "hexrays"
     if not init_hexrays_plugin() and not (load_plugin(decompiler_plugin) and init_hexrays_plugin()):
+      self.decompiler_available = False
       return False
 
     f = get_func(ea)

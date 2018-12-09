@@ -110,8 +110,8 @@ class CChooser():
       self.vfname2 = name2
       self.description = desc
       self.ratio = ratio
-      self.bb1 = bb1
-      self.bb2 = bb2
+      self.bb1 = int(bb1)
+      self.bb2 = int(bb2)
       self.cmd_import_selected = None
       self.cmd_import_all = None
       self.cmd_import_all_funcs = None
@@ -1503,8 +1503,8 @@ class CBinDiff:
 
         ast1 = row["primes1"]
         ast2 = row["primes2"]
-        bb1 = row["bb1"]
-        bb2 = row["bb2"]
+        bb1 = int(row["bb1"])
+        bb2 = int(row["bb2"])
 
         pseudo1 = row["pseudo1"]
         pseudo2 = row["pseudo2"]
