@@ -11,6 +11,10 @@ You can join the mailing list https://groups.google.com/forum/?hl=es#!forum/diap
 
 Please note that only the last 3 versions of IDA are officially supported. As of today, it means that only IDA 7.0, 7.1 and 7.2 are supported. Versions 6.8, 6.9 and 6.95 do work (with all the last patches that were supplied to *customers*), but no official support is offered for them. However, if you run into any problem with these versions, ping me and I will do my best.
 
+## Donations
+
+You can help (or thank) the author of Diaphora by making a donation, if you feel like doing so: [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
+
 ## Documentation
 
 You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/doc/diaphora_help.pdf
