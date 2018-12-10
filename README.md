@@ -5,6 +5,8 @@ It works with IDA 6.9 to 7.2. If you are looking for Radare2 support you can [ch
 
 For more details, please check the tutorial in the "doc" directory.
 
+NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
+
 ## Getting help and asking for features
 
 You can join the mailing list https://groups.google.com/forum/?hl=es#!forum/diaphora to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the issues tracker:  https://github.com/joxeankoret/diaphora/issues
