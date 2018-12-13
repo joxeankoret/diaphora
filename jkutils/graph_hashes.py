@@ -109,6 +109,8 @@ class CKoretKaramitasHash:
     # Iterate through each basic block
     for block in flow:
       block_ea = block.startEA
+      if block.endEA == 0:
+        continue
 
       succs = list(block.succs())
       preds = list(block.preds())
