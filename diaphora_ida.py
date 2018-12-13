@@ -1438,6 +1438,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     cpu_ins_list.sort()
 
     for block in flow:
+      if block.endEA == 0 or block.endEA == BADADDR:
+        continue
+
       nodes += 1
       instructions_data = []
 
@@ -1487,8 +1490,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         curr_bytes = GetManyBytes(x, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
-            log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
-            continue
+          log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
+          continue
 
         bytes_hash.append(curr_bytes)
         bytes_sum += sum(map(ord, curr_bytes))
@@ -1579,6 +1582,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           dones[succ_block] = 1
 
       for pred_block in block.preds():
+        if pred_block.endEA == 0:
+          continue
+
         try:
           bb_relations[pred_block.startEA - image_base].append(block.startEA - image_base)
         except KeyError:
@@ -1590,8 +1596,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           dones[succ_block] = 1
 
     for block in flow:
+      if block.endEA == 0:
+        continue
+
       block_ea = block.startEA - image_base
       for succ_block in block.succs():
+        if succ_block.endEA == 0:
+          continue
         succ_base = succ_block.startEA - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
