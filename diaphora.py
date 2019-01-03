@@ -26,8 +26,12 @@ import json
 import decimal
 import sqlite3
 
+from threading import Thread
 from cStringIO import StringIO
 from difflib import SequenceMatcher
+from multiprocessing import cpu_count
+
+from diaphora_heuristics import *
 
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
@@ -205,6 +209,8 @@ class CBinDiff:
 
     self.last_diff_db = None
     self.re_cache = {}
+    self.re_cache_repl = {}
+    self.cmp_asm_cache = {}
     
     ####################################################################
     # LIMITS
@@ -245,7 +251,7 @@ class CBinDiff:
       self.db_close()
 
   def open_db(self):
-    self.db = sqlite3.connect(self.db_name)
+    self.db = sqlite3.connect(self.db_name, check_same_thread=False)
     self.db.text_factory = str
     self.db.row_factory = sqlite3.Row
     self.create_schema()
@@ -698,11 +704,17 @@ class CBinDiff:
     return "\n".join(asm)
 
   def re_sub(self, text, repl, string):
+    key = text + str(repl)
+    if key in self.re_cache_repl:
+      return self.re_cache_repl[key]
+
     if text not in self.re_cache:
       self.re_cache[text] = re.compile(text, flags=re.IGNORECASE)
 
     re_obj = self.re_cache[text]
-    return re_obj.sub(repl, string)
+    ret = re_obj.sub(repl, string)
+    self.re_cache_repl[key] = ret
+    return ret
 
   def get_cmp_asm_lines(self, asm):
     sio = StringIO(asm)
@@ -732,6 +744,9 @@ class CBinDiff:
     if asm is None:
       return asm
 
+    if asm in self.cmp_asm_cache:
+      return self.cmp_asm_cache[asm]
+
     # Ignore the comments in the assembly dump
     tmp = asm.split(";")[0]
     tmp = tmp.split(" # ")[0]
@@ -756,6 +771,7 @@ class CBinDiff:
     # offsets created to strings
     tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
 
+    self.cmp_asm_cache[asm] = tmp
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
@@ -938,6 +954,104 @@ class CBinDiff:
             log("Callgraphs from both programs differ in %f%%" % percent)
 
     cur.close()
+
+  def find_equal_matches_parallel(self):
+    cur = self.db_cursor()
+    # Start by calculating the total number of functions in both databases
+    sql = """select count(*) total from functions
+             union all
+             select count(*) total from diff.functions"""
+    cur.execute(sql)
+    rows = cur.fetchall()
+    if len(rows) != 2:
+      Warning("Malformed database, only %d rows!" % len(rows))
+      raise Exception("Malformed database!")
+
+    self.total_functions1 = rows[0]["total"]
+    self.total_functions2 = rows[1]["total"]
+
+    sql = "select address ea, mangled_function, nodes from (select * from functions intersect select * from diff.functions) x"
+    cur.execute(sql)
+    rows = cur.fetchall()
+    if len(rows) > 0:
+      for row in rows:
+        name = row["mangled_function"]
+        ea = row["ea"]
+        nodes = int(row["nodes"])
+
+        self.best_chooser.add_item(CChooser.Item(ea, name, ea, name, "100% equal", 1, nodes, nodes))
+        self.matched1.add(name)
+        self.matched2.add(name)
+    cur.close()
+
+    if not self.ignore_all_names:
+      self.find_same_name(self.partial_chooser)
+
+    self.run_heuristics_for_category("Best")
+
+  def run_heuristics_for_category(self, arg_category):
+    postfix = ""
+    if self.ignore_small_functions:
+      postfix = " and f.instructions > 5 and df.instructions > 5 "
+
+    threads_list = []
+    for heur in HEURISTICS:
+      category = heur["category"]
+      if category != arg_category:
+        continue
+
+      name  = heur["name"]
+      sql   = heur["sql"]
+      ratio = heur["ratio"]
+      min_value = 0.0
+      if ratio == HEUR_TYPE_RATIO_MAX:
+        min_value = heur["min"]
+
+      flags = heur["flags"]
+      if flags & HEUR_FLAG_UNRELIABLE == HEUR_FLAG_UNRELIABLE and not self.unreliable:
+        log_refresh("Skipping unreliable heuristic '%s'" % name)
+        continue
+
+      if flags & HEUR_FLAG_SLOW == HEUR_FLAG_SLOW and not self.slow_heuristics:
+        log_refresh("Skipping slow heuristic '%s'" % name)
+        continue
+
+      if arg_category == "Unreliable":
+        best = self.partial_chooser
+        partial = self.unreliable_chooser
+      else:
+        best = self.best_chooser
+        partial = self.partial_chooser
+
+      log_refresh("[Parallel] Finding with heuristic '%s'" % name)
+      sql = sql.replace("%POSTFIX%", postfix)
+      if ratio == HEUR_TYPE_NO_FPS:
+        t = Thread(target=self.add_matches_from_query, args=(sql, best))
+      elif ratio == HEUR_TYPE_RATIO:
+        t = Thread(target=self.add_matches_from_query_ratio, args=(sql, best, partial))
+      elif ratio == HEUR_TYPE_RATIO_MAX:
+        if category == "Partial":
+          best = self.partial_chooser
+          partial = self.unreliable_chooser
+
+        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, best, partial, min_value))
+      else:
+        raise Exception("Invalid heuristic ratio calculation value!")
+
+      t.start()
+      threads_list.append(t)
+      
+      while len(threads_list) >= cpu_count():
+        for i, t in enumerate(threads_list):
+          if not t.is_alive():
+            del threads_list[i]
+            break
+          else:
+            t.join(0.1)
+
+    log_refresh("[Parallel] Waiting for %d thread(s) to finish..." % len(threads_list))
+    for t in threads_list:
+      t.join()
 
   def find_equal_matches(self):
     cur = self.db_cursor()
@@ -1669,7 +1783,7 @@ class CBinDiff:
                 and  f.name not like 'nullsub_%%'
                 and df.name not like 'nullsub_%%'
                 and abs(f.md_index - df.md_index) < 1
-                and ((f.nodes > 1 and df.nodes > 1) 
+                and ((f.nodes > 5 and df.nodes > 5) 
                   or (f.instructions > 10 and df.instructions > 10))"""
 
     main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
@@ -1723,6 +1837,14 @@ class CBinDiff:
           matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
           if matches is not None and len(matches) > 0 and self.unreliable:
             the_items.extend(matches)
+
+  def find_matches_parallel(self):
+    self.run_heuristics_for_category("Partial")
+
+    # Search using some of the previous criterias but calculating the
+    # edit distance
+    log_refresh("Finding with heuristic 'Small names difference'")
+    self.search_small_differences(self.partial_chooser)
 
   def find_matches(self):
     choose = self.partial_chooser
@@ -2243,299 +2365,27 @@ class CBinDiff:
                     unmatched um
               where ((f.address = um.address and um.main = 1)
                  or (df.address = um.address and um.main = 0))
-                and f.md_index = df.md_index
-                and f.md_index > 1 and df.md_index > 1
-                and f.nodes > 7 and df.nodes > 7"""
+                and ((f.md_index = df.md_index
+                and f.md_index > 1 and df.md_index > 1)
+                or (f.kgh_hash = df.kgh_hash
+                and f.kgh_hash > 7 and df.kgh_hash > 7))"""
     cur.execute(sql)
     log_refresh("Finding via brute-forcing...")
     self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
 
   def find_experimental_matches(self):
-    choose = self.unreliable_chooser
-    
     # Call address sequence heuristic
     self.find_from_matches(self.best_chooser.items)
     self.find_from_matches(self.partial_chooser.items)
-    
-    postfix = ""
-    if self.ignore_small_functions:
-      postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar pseudo-code' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
-               from functions f,
-                    diff.functions df
-              where f.pseudocode_lines = df.pseudocode_lines
-                and df.pseudocode_lines > 5
-                and df.pseudocode is not null 
-                and f.pseudocode is not null""" + postfix
-    log_refresh("Finding with heuristic 'Similar pseudo-code'")
-    self.add_matches_from_query_ratio_max(sql, choose, self.unreliable_chooser, 0.6)
-
-    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Same nodes, edges and strongly connected components' description,
-                     f.pseudocode pseudo1, df.pseudocode pseudo2,
-                     f.assembly asm1, df.assembly asm2,
-                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     f.nodes bb1, df.nodes bb2,
-                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
-               from functions f,
-                    diff.functions df
-              where f.nodes = df.nodes
-                and f.edges = df.edges
-                and f.strongly_connected = df.strongly_connected
-                and df.nodes > 4""" + postfix
-    log_refresh("Finding with heuristic 'Same nodes, edges and strongly connected components'")
-    self.add_matches_from_query_ratio(sql, self.best_chooser, choose, self.unreliable_chooser)
-
-    if self.slow_heuristics:
-      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where f.pseudocode_lines = df.pseudocode_lines
-                  and df.pseudocode_lines <= 5
-                  and df.pseudocode is not null 
-                  and f.pseudocode is not null""" + postfix
-      log_refresh("Finding with heuristic 'Similar small pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.49)
-
-      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Small pseudo-code fuzzy AST hash' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where df.pseudocode_primes = f.pseudocode_primes
-                  and f.pseudocode_lines <= 5""" + postfix
-      log_refresh("Finding with heuristic 'Small pseudo-code fuzzy AST hash'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-    sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal small pseudo-code' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
-               from functions f,
-                    diff.functions df
-              where f.pseudocode = df.pseudocode
-                and df.pseudocode is not null
-                and f.pseudocode_lines < 5""" + postfix
-    log_refresh("Finding with heuristic 'Equal small pseudo-code'")
-    self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
-
-    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity, prototype and names' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where f.names = df.names
-                  and f.cyclomatic_complexity = df.cyclomatic_complexity
-                  and f.cyclomatic_complexity < 20
-                  and f.prototype2 = df.prototype2
-                  and df.names != '[]'""" + postfix
-    log_refresh("Finding with heuristic 'Same low complexity, prototype and names'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
-
-    sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same low complexity and names' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where f.names = df.names
-                  and f.cyclomatic_complexity = df.cyclomatic_complexity
-                  and f.cyclomatic_complexity < 15
-                  and df.names != '[]'""" + postfix
-    log_refresh("Finding with heuristic 'Same low complexity and names'")
-    self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.5)
-  
-    if self.slow_heuristics:
-      # For large databases (>25k functions) it may cause, for a reason,
-      # the following error: OperationalError: database or disk is full
-      sql = """ select f.address ea, f.name name1, df.address ea2, df.name name2,
-                 'Same graph' description,
-                 f.pseudocode pseudo1, df.pseudocode pseudo2,
-                 f.assembly asm1, df.assembly asm2,
-                 f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                 f.nodes bb1, df.nodes bb2,
-                 cast(f.md_index as real) md1, cast(df.md_index as real) md2
-            from functions f,
-                 diff.functions df
-           where f.nodes = df.nodes 
-             and f.edges = df.edges
-             and f.indegree = df.indegree
-             and f.outdegree = df.outdegree
-             and f.cyclomatic_complexity = df.cyclomatic_complexity
-             and f.strongly_connected = df.strongly_connected
-             and f.loops = df.loops
-             and f.tarjan_topological_sort = df.tarjan_topological_sort
-             and f.strongly_connected_spp = df.strongly_connected_spp""" + postfix + """
-             and f.nodes > 5 and df.nodes > 5
-           order by
-                 case when f.size = df.size then 1 else 0 end +
-                 case when f.instructions = df.instructions then 1 else 0 end +
-                 case when f.mnemonics = df.mnemonics then 1 else 0 end +
-                 case when f.names = df.names then 1 else 0 end +
-                 case when f.prototype2 = df.prototype2 then 1 else 0 end +
-                 case when f.primes_value = df.primes_value then 1 else 0 end +
-                 case when f.bytes_hash = df.bytes_hash then 1 else 0 end +
-                 case when f.pseudocode_hash1 = df.pseudocode_hash1 then 1 else 0 end +
-                 case when f.pseudocode_primes = df.pseudocode_primes then 1 else 0 end +
-                 case when f.pseudocode_hash2 = df.pseudocode_hash2 then 1 else 0 end +
-                 case when f.pseudocode_hash3 = df.pseudocode_hash3 then 1 else 0 end DESC"""
-      log_refresh("Finding with heuristic 'Same graph'")
-      self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser, self.unreliable_chooser)
+    self.run_heuristics_for_category("Experimental")
 
     # Find using brute-force
     log_refresh("Brute-forcing...")
     self.find_brute_force()
 
   def find_unreliable_matches(self):
-    choose = self.unreliable_chooser
-
-    postfix = ""
-    if self.ignore_small_functions:
-      postfix = " and f.instructions > 5 and df.instructions > 5 "
-
-    if self.slow_heuristics:
-      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Strongly connected components' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where f.strongly_connected = df.strongly_connected
-                  and df.strongly_connected > 2""" + postfix
-      log_refresh("Finding with heuristic 'Strongly connected components'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, choose, 0.54)
-
-      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Loop count' description,
-                  f.pseudocode pseudo1, df.pseudocode pseudo2,
-                  f.assembly asm1, df.assembly asm2,
-                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                  f.nodes bb1, df.nodes bb2,
-                  cast(f.md_index as real) md1, cast(df.md_index as real) md2
-             from functions f,
-                  diff.functions df
-            where f.loops = df.loops
-              and df.loops > 1""" + postfix
-      log_refresh("Finding with heuristic 'Loop count'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-      sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                       'Nodes, edges, complexity and mnemonics' description,
-                       f.pseudocode pseudo1, df.pseudocode pseudo2,
-                       f.assembly asm1, df.assembly asm2,
-                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2,
-                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                  from functions f,
-                       diff.functions df
-                 where f.nodes = df.nodes
-                   and f.edges = df.edges
-                   and f.mnemonics = df.mnemonics
-                   and f.cyclomatic_complexity = df.cyclomatic_complexity
-                   and f.nodes > 1 and f.edges > 0""" + postfix
-      log_refresh("Finding with heuristic 'Nodes, edges, complexity and mnemonics'")
-      self.add_matches_from_query_ratio(sql, self.best_chooser, self.partial_chooser)
-
-      sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                       'Nodes, edges, complexity and prototype' description,
-                       f.pseudocode pseudo1, df.pseudocode pseudo2,
-                       f.assembly asm1, df.assembly asm2,
-                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2,
-                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                  from functions f,
-                       diff.functions df
-                 where f.nodes = df.nodes
-                   and f.edges = df.edges
-                   and f.prototype2 = df.prototype2
-                   and f.cyclomatic_complexity = df.cyclomatic_complexity
-                   and f.prototype2 != 'int()'""" + postfix
-      log_refresh("Finding with heuristic 'Nodes, edges, complexity and prototype'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-      sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                       'Nodes, edges, complexity, in-degree and out-degree' description,
-                       f.pseudocode pseudo1, df.pseudocode pseudo2,
-                       f.assembly asm1, df.assembly asm2,
-                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2,
-                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                  from functions f,
-                       diff.functions df
-                 where f.nodes = df.nodes
-                   and f.edges = df.edges
-                   and f.cyclomatic_complexity = df.cyclomatic_complexity
-                   and f.nodes > 3 and f.edges > 2
-                   and f.indegree = df.indegree
-                   and f.outdegree = df.outdegree""" + postfix
-      log_refresh("Finding with heuristic 'Nodes, edges, complexity, in-degree and out-degree'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-      sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                       'Nodes, edges and complexity' description,
-                       f.pseudocode pseudo1, df.pseudocode pseudo2,
-                       f.assembly asm1, df.assembly asm2,
-                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2,
-                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                  from functions f,
-                       diff.functions df
-                 where f.nodes = df.nodes
-                   and f.edges = df.edges
-                   and f.cyclomatic_complexity = df.cyclomatic_complexity
-                   and f.nodes > 1 and f.edges > 0""" + postfix
-      log_refresh("Finding with heuristic 'Nodes, edges and complexity'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
-
-      sql = """select f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                 from functions f,
-                      diff.functions df
-                where df.pseudocode is not null 
-                  and f.pseudocode is not null
-                  and f.pseudocode_lines = df.pseudocode_lines
-                  and df.pseudocode_lines > 5""" + postfix
-      log_refresh("Finding with heuristic 'Similar small pseudo-code'")
-      self.add_matches_from_query_ratio_max(sql, self.partial_chooser, self.unreliable_chooser, 0.5)
-
-      sql = """  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity' description,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2,
-                        cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                   from functions f,
-                        diff.functions df
-                  where f.cyclomatic_complexity = df.cyclomatic_complexity
-                    and f.cyclomatic_complexity >= 50""" + postfix
-      log_refresh("Finding with heuristic 'Same high complexity'")
-      self.add_matches_from_query_ratio(sql, self.partial_chooser, choose)
+    self.run_heuristics_for_category("Unreliable")
 
   def find_unmatched(self):
     cur = self.db_cursor()
@@ -2580,7 +2430,7 @@ class CBinDiff:
       os.remove(filename)
       log("Previous diff results '%s' removed." % filename)
 
-    results_db = sqlite3.connect(filename)
+    results_db = sqlite3.connect(filename, check_same_thread=False)
     results_db.text_factory = str
 
     cur = results_db.cursor()
@@ -2641,7 +2491,7 @@ class CBinDiff:
       cur.execute("select value from diff.version")
     except:
       log("Error: %s " % sys.exc_info()[1])
-      Warning("The selected file does not look like a valid SQLite exported database!")
+      Warning("The selected file does not look like a valid Diaphora exported database!")
       cur.close()
       return False
 
@@ -2657,7 +2507,7 @@ class CBinDiff:
     try:
       t0 = time.time()
       log_refresh("Performing diffing...", True)
-      
+
       self.do_continue = True
       if self.equal_db():
         log("The databases seems to be 100% equal")
@@ -2668,11 +2518,11 @@ class CBinDiff:
 
         # Find the unmodified functions
         log_refresh("Finding best matches...")
-        self.find_equal_matches()
+        self.find_equal_matches_parallel()
 
         # Find the modified functions
         log_refresh("Finding partial matches")
-        self.find_matches()
+        self.find_matches_parallel()
 
         if self.slow_heuristics:
           # Find the functions from the callgraph
@@ -2736,7 +2586,7 @@ if __name__ == "__main__":
 
   if do_diff:
     bd = CBinDiff(db1)
-    bd.db = sqlite3.connect(db1)
+    bd.db = sqlite3.connect(db1, check_same_thread=False)
     bd.db.text_factory = str
     bd.db.row_factory = sqlite3.Row
     bd.diff(db2)

@@ -248,7 +248,11 @@ class CIDAChooser(diaphora.CChooser, Choose2):
 
   def OnCommand(self, n, cmd_id):
     # Aditional right-click-menu commands handles
-    if cmd_id == self.cmd_import_all:
+    if cmd_id == self.cmd_show_asm:
+      self.bindiff.show_asm(self.items[n], self.primary)
+    elif cmd_id == self.cmd_show_pseudo:
+      self.bindiff.show_pseudo(self.items[n], self.primary)
+    elif cmd_id == self.cmd_import_all:
       if askyn_c(1, "HIDECANCEL\nDo you really want to import all matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all(self.items)
     elif cmd_id == self.cmd_import_all_funcs:
@@ -264,10 +268,6 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_asm:
       self.bindiff.show_asm_diff(self.items[n])
-    elif cmd_id == self.cmd_show_asm:
-      self.bindiff.show_asm(self.items[n], self.primary)
-    elif cmd_id == self.cmd_show_pseudo:
-      self.bindiff.show_pseudo(self.items[n], self.primary)
     elif cmd_id == self.cmd_highlight_functions:
       if askyn_c(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
         color = self.get_color()
@@ -652,12 +652,16 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         callgraph_primes, callgraph_all_primes = self.recalculate_primes()
 
+    print("Export started!!!")
+
     self.db.commit()
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
     i = 0
     for func in func_list:
+      print("Function %d" % i)
+
       i += 1
       if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
@@ -670,6 +674,8 @@ class CIDABinDiff(diaphora.CBinDiff):
         h_elapsed, m_elapsed = divmod(m_elapsed, 60)
 
         replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
+
+      print("Exporting 0x%08x" % func)
 
       if crashed_before:
         rva = func - self.get_base_address()
@@ -695,7 +701,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
       # Try to fix bug #30 and, also, try to speed up operations as
       # doing a commit every 10 functions, as before, is overkill.
-      if total_funcs > 1000 and i % (total_funcs/10) == 0:
+      if total_funcs > 5000 and i % (total_funcs/10) == 0:
         self.db.commit()
         self.db.execute("PRAGMA synchronous = OFF")
         self.db.execute("PRAGMA journal_mode = MEMORY")
@@ -937,7 +943,13 @@ class CIDABinDiff(diaphora.CBinDiff):
       row2 = rows[1]
 
       html_diff = CHtmlDiff()
-      buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
+      proto1 = self.decompile_and_get(int(ea1))
+      if proto1:
+        buf1 = proto1 + "\n" + "\n".join(self.pseudo[int(ea1)])
+      else:
+        log("Warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
+        buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
+
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
 
@@ -1438,6 +1450,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     cpu_ins_list.sort()
 
     for block in flow:
+      if block.endEA == 0 or block.endEA == BADADDR:
+        continue
+
+      print("  Block 0x%08x 0x%08x" % (block.startEA, block.endEA))
+      idaapi.request_refresh(0xFFFFFFFF)
       nodes += 1
       instructions_data = []
 
@@ -1565,6 +1582,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         bb_degree[block_ea] = [0, 0]
 
       for succ_block in block.succs():
+        if succ_block.endEA == 0:
+          continue
+
         succ_base = succ_block.startEA - image_base
         bb_relations[block_ea].append(succ_base)
         bb_degree[block_ea][1] += 1
@@ -1579,6 +1599,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           dones[succ_block] = 1
 
       for pred_block in block.preds():
+        if pred_block.endEA == 0:
+          continue
+
         try:
           bb_relations[pred_block.startEA - image_base].append(block.startEA - image_base)
         except KeyError:
@@ -1590,8 +1613,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           dones[succ_block] = 1
 
     for block in flow:
+      if block.endEA == 0:
+        continue
+
       block_ea = block.startEA - image_base
       for succ_block in block.succs():
+        if succ_block.endEA == 0:
+          continue
+
         succ_base = succ_block.startEA - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
@@ -1904,7 +1933,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         self.add_program_data("til", til, None)
 
   def load_results(self, filename):
-    results_db = sqlite3.connect(filename)
+    results_db = sqlite3.connect(filename, check_same_thread=False)
     results_db.text_factory = str
     results_db.row_factory = sqlite3.Row
 
@@ -2310,7 +2339,7 @@ def remove_file(filename):
     # the database file because it's still being used by IDA in Windows
     # for some unknown reason, just drop the database's tables and after
     # that continue normally.
-    with sqlite3.connect(filename) as db:
+    with sqlite3.connect(filename, check_same_thread=False) as db:
       cur = db.cursor()
       try:
         funcs = ["functions", "program", "program_data", "version",
