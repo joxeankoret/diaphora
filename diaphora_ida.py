@@ -652,16 +652,12 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         callgraph_primes, callgraph_all_primes = self.recalculate_primes()
 
-    print("Export started!!!")
-
     self.db.commit()
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
     i = 0
     for func in func_list:
-      print("Function %d" % i)
-
       i += 1
       if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
@@ -674,8 +670,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         h_elapsed, m_elapsed = divmod(m_elapsed, 60)
 
         replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
-
-      print("Exporting 0x%08x" % func)
 
       if crashed_before:
         rva = func - self.get_base_address()
@@ -1451,6 +1445,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     for block in flow:
       if block.endEA == 0 or block.endEA == BADADDR:
+        print("0x%08x: Skipping bad basic block" % f)
         continue
 
       nodes += 1

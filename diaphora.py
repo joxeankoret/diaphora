@@ -170,7 +170,7 @@ class CChooser():
 
 #-----------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
-TIMEOUT_LIMIT = 60 * 3
+TIMEOUT_LIMIT = 60 * 5
 
 #-----------------------------------------------------------------------
 class CBinDiff:
@@ -990,6 +990,11 @@ class CBinDiff:
     self.run_heuristics_for_category("Best")
 
   def run_heuristics_for_category(self, arg_category):
+    total_cpus = cpu_count()
+    mode = "[Parallel]"
+    if total_cpus == 1:
+      mode = "[Single thread]"
+
     postfix = ""
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
@@ -1023,7 +1028,7 @@ class CBinDiff:
         best = self.best_chooser
         partial = self.partial_chooser
 
-      log_refresh("[Parallel] Finding with heuristic '%s'" % name)
+      log_refresh("%s Finding with heuristic '%s'" % (mode, name))
       sql = sql.replace("%POSTFIX%", postfix)
       if ratio == HEUR_TYPE_NO_FPS:
         t = Thread(target=self.add_matches_from_query, args=(sql, best))
@@ -1040,8 +1045,14 @@ class CBinDiff:
 
       t.start()
       threads_list.append(t)
-      
-      while len(threads_list) >= cpu_count():
+
+      if total_cpus == 1:
+        t.join()
+        threads_list = []
+      elif total_cpus > 1 and len(threads_list) == total_cpus:
+        log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list))
+
+      while len(threads_list) >= total_cpus:
         for i, t in enumerate(threads_list):
           if not t.is_alive():
             del threads_list[i]
@@ -1049,7 +1060,9 @@ class CBinDiff:
           else:
             t.join(0.1)
 
-    log_refresh("[Parallel] Waiting for %d thread(s) to finish..." % len(threads_list))
+    if len(threads_list) > 0:
+      log_refresh("[Parallel] Waiting for remaning %d thread(s) to finish..." % len(threads_list))
+
     for t in threads_list:
       t.join()
 
