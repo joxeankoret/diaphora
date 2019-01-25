@@ -105,6 +105,11 @@ def log_refresh(msg, show=False):
   log(msg)
 
 #-----------------------------------------------------------------------
+def debug_refresh(msg, show=False):
+  if os.getenv("DIAPHORA_DEBUG"):
+    log(msg)
+
+#-----------------------------------------------------------------------
 class CChooser():
   class Item:
     def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
@@ -170,7 +175,7 @@ class CChooser():
 
 #-----------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
-TIMEOUT_LIMIT = 60 * 5
+TIMEOUT_LIMIT = 60 * 3
 
 #-----------------------------------------------------------------------
 class CBinDiff:
@@ -467,10 +472,7 @@ class CBinDiff:
     sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
     cur.execute(sql)
 
-    sql = "create index if not exists idx_clean_asm on functions(clean_assembly)"
-    cur.execute(sql)
-
-    sql = "create index if not exists idx_clean_pseudo on functions(clean_pseudo)"
+    sql = "create index if not exists idx_clean_asm_pseudo on functions(clean_assembly, clean_pseudo)"
     cur.execute(sql)
 
     sql = "create index if not exists idx_switches on functions(switches)"
@@ -507,6 +509,9 @@ class CBinDiff:
     cur.execute(sql)
 
     sql = "create index if not exists idx_constants on constants (constant)"
+    cur.execute(sql)
+
+    sql = "analyze"
     cur.execute(sql)
 
     cur.close()
@@ -990,7 +995,10 @@ class CBinDiff:
     self.run_heuristics_for_category("Best")
 
   def run_heuristics_for_category(self, arg_category):
-    total_cpus = cpu_count()
+    total_cpus = cpu_count() - 1
+    if total_cpus > 1:
+      total_cpus -= 1
+
     mode = "[Parallel]"
     if total_cpus == 1:
       mode = "[Single thread]"
@@ -1043,6 +1051,8 @@ class CBinDiff:
       else:
         raise Exception("Invalid heuristic ratio calculation value!")
 
+      t.name = name
+      t.time = time.time()
       t.start()
       threads_list.append(t)
 
@@ -1055,16 +1065,33 @@ class CBinDiff:
       while len(threads_list) >= total_cpus:
         for i, t in enumerate(threads_list):
           if not t.is_alive():
+            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.time() - t.time))
             del threads_list[i]
+            debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
             break
           else:
             t.join(0.1)
 
     if len(threads_list) > 0:
-      log_refresh("[Parallel] Waiting for remaning %d thread(s) to finish..." % len(threads_list))
+      log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
 
-    for t in threads_list:
-      t.join()
+      while len(threads_list) > 0:
+        for i, t in enumerate(threads_list):
+          if not t.is_alive():
+            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.time() - t.time))
+            del threads_list[i]
+            debug_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
+            break
+          else:
+            t.join(0.1)
+            if t.time > TIMEOUT_LIMIT:
+              try:
+                log_refresh("Timeout, cancelling queries...")
+                self.db.interrupt()
+              except:
+                print("self.db.interrupt(): %s" % str(sys.exc_info()[1]))
+
+    debug_refresh("Done running heuristics set...")
 
   def find_equal_matches(self):
     cur = self.db_cursor()
@@ -2519,7 +2546,7 @@ class CBinDiff:
 
     try:
       t0 = time.time()
-      log_refresh("Performing diffing...", True)
+      log_refresh("Diffing...", True)
 
       self.do_continue = True
       if self.equal_db():
@@ -2546,7 +2573,7 @@ class CBinDiff:
           # Find using likely unreliable methods modified functions
           log_refresh("Finding probably unreliable matches")
           self.find_unreliable_matches()
-        
+
         if self.experimental:
           # Find using experimental methods modified functions
           log_refresh("Finding experimental matches")
