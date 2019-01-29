@@ -214,8 +214,6 @@ class CBinDiff:
 
     self.last_diff_db = None
     self.re_cache = {}
-    self.re_cache_repl = {}
-    self.cmp_asm_cache = {}
     
     ####################################################################
     # LIMITS
@@ -709,17 +707,11 @@ class CBinDiff:
     return "\n".join(asm)
 
   def re_sub(self, text, repl, string):
-    key = text + str(repl)
-    if key in self.re_cache_repl:
-      return self.re_cache_repl[key]
-
     if text not in self.re_cache:
       self.re_cache[text] = re.compile(text, flags=re.IGNORECASE)
 
     re_obj = self.re_cache[text]
-    ret = re_obj.sub(repl, string)
-    self.re_cache_repl[key] = ret
-    return ret
+    return re_obj.sub(repl, string)
 
   def get_cmp_asm_lines(self, asm):
     sio = StringIO(asm)
@@ -749,9 +741,6 @@ class CBinDiff:
     if asm is None:
       return asm
 
-    if asm in self.cmp_asm_cache:
-      return self.cmp_asm_cache[asm]
-
     # Ignore the comments in the assembly dump
     tmp = asm.split(";")[0]
     tmp = tmp.split(" # ")[0]
@@ -775,8 +764,6 @@ class CBinDiff:
     # Replace aName_XXX with aXXX, useful to ignore small changes in 
     # offsets created to strings
     tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
-
-    self.cmp_asm_cache[asm] = tmp
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
@@ -1084,7 +1071,7 @@ class CBinDiff:
             break
           else:
             t.join(0.1)
-            if t.time > TIMEOUT_LIMIT:
+            if time.time() - t.time > TIMEOUT_LIMIT:
               try:
                 log_refresh("Timeout, cancelling queries...")
                 self.db.interrupt()
