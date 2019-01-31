@@ -173,7 +173,7 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Same cleaned up assembly or pseudo-code",
+  "name":"Same cleaned up assembly",
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
@@ -185,11 +185,30 @@ HEURISTICS.append({
              cast(f.md_index as real) md1, cast(df.md_index as real) md2
         from functions f,
              diff.functions df
-       where (f.clean_assembly = df.clean_assembly
-          or f.clean_pseudo = df.clean_pseudo) 
-          and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
-          and f.name not like 'nullsub%'
-          and df.name not like 'nullsub%' %POSTFIX%""",
+       where f.clean_assembly = df.clean_assembly
+         and f.nodes > 3 and df.nodes > 3
+         and f.name not like 'nullsub%'
+         and df.name not like 'nullsub%'""",
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
+  "name":"Same cleaned pseudo-code",
+  "category":"Best",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+             'Same cleaned up assembly or pseudo-code' description,
+             f.pseudocode pseudo1, df.pseudocode pseudo2,
+             f.assembly asm1, df.assembly asm2,
+             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+             f.nodes bb1, df.nodes bb2,
+             cast(f.md_index as real) md1, cast(df.md_index as real) md2
+        from functions f,
+             diff.functions df
+       where f.clean_pseudo = df.clean_pseudo
+         and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
+         and f.name not like 'nullsub%'
+         and df.name not like 'nullsub%' %POSTFIX%""",
   "flags":HEUR_FLAG_NONE
 })
 

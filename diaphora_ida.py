@@ -25,6 +25,7 @@ import decimal
 import difflib
 import sqlite3
 import traceback
+import threading
 from hashlib import md5
 
 import diaphora
@@ -81,15 +82,18 @@ LITTLE_ORANGE = 0x026AFD
 
 #-----------------------------------------------------------------------
 def log(msg):
-  Message("[%s] %s\n" % (time.asctime(), msg))
+  if isinstance(threading.current_thread(), threading._MainThread):
+    Message("[%s] %s\n" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
-def log_refresh(msg, show=False):
+def log_refresh(msg, show=False, do_log=False):
   if show:
     show_wait_box(msg)
   else:
     replace_wait_box(msg)
-  log(msg)
+
+  if do_log:
+    log(msg)
 
 #-----------------------------------------------------------------------
 # TODO: FIX hack

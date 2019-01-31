@@ -25,6 +25,7 @@ import time
 import json
 import decimal
 import sqlite3
+import threading
 
 from threading import Thread
 from cStringIO import StringIO
@@ -45,7 +46,7 @@ except ImportError:
 
 #-----------------------------------------------------------------------
 VERSION_VALUE = "1.2.4"
-COPYRIGHT_VALUE="Copyright(c) 2015-2018 Joxean Koret"
+COPYRIGHT_VALUE="Copyright(c) 2015-2019 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
@@ -98,7 +99,8 @@ def ast_ratio(ast1, ast2):
 
 #-----------------------------------------------------------------------
 def log(msg):
-  print "[%s] %s\n" % (time.asctime(), msg);
+  if isinstance(threading.current_thread(), threading._MainThread):
+    print("[%s] %s\n" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
 def log_refresh(msg, show=False):
@@ -183,7 +185,8 @@ class CBinDiff:
     self.names = dict()
     self.primes = primes(2048*2048)
     self.db_name = db_name
-    self.db = None
+    self.dbs_dict = {}
+    self.db = None # Used exclusively by the exporter!
     self.open_db()
     self.matched1 = set()
     self.matched2 = set()
@@ -247,26 +250,44 @@ class CBinDiff:
     if self.db is not None:
       try:
         if self.last_diff_db is not None:
-          with self.db.cursor() as cur:
-            cur.execute('detach "%s"' % self.last_diff_db)
+          tid = threading.current_thread().ident
+          if tid in self.dbs_dict:
+            db = self.dbs_dict[tid]
+            with db.cursor() as cur:
+              cur.execute('detach "%s"' % self.last_diff_db)
       except:
         pass
       self.db_close()
 
   def open_db(self):
-    self.db = sqlite3.connect(self.db_name, check_same_thread=False)
-    self.db.text_factory = str
-    self.db.row_factory = sqlite3.Row
-    self.create_schema()
+    db = sqlite3.connect(self.db_name, check_same_thread=True)
+    db.text_factory = str
+    db.row_factory = sqlite3.Row
+
+    tid = threading.current_thread().ident
+    self.dbs_dict[tid] = db
+    if isinstance(threading.current_thread(), threading._MainThread):
+      self.db = db
+      self.create_schema()
+      db.execute("analyze")
+
+  def get_db(self):
+    tid = threading.current_thread().ident
+    if not tid in self.dbs_dict:
+      self.open_db()
+      if self.last_diff_db is not None:
+        self.attach_database(self.last_diff_db)
+    return self.dbs_dict[tid]
 
   def db_cursor(self):
-    if self.db is None:
-      self.open_db()
-    return self.db.cursor()
+    db = self.get_db()
+    return db.cursor()
 
   def db_close(self):
-    self.db.close()
-    self.db = None
+    tid = threading.current_thread().ident
+    if tid in self.dbs_dict:
+      self.dbs_dict[tid].close()
+      del self.dbs_dict[tid]
 
   def create_schema(self):
     cur = self.db_cursor()
@@ -470,7 +491,10 @@ class CBinDiff:
     sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
     cur.execute(sql)
 
-    sql = "create index if not exists idx_clean_asm_pseudo on functions(clean_assembly, clean_pseudo)"
+    sql = "create index if not exists idx_clean_asm on functions(clean_assembly)"
+    cur.execute(sql)
+
+    sql = "create index if not exists idx_clean_pseudo on functions(clean_pseudo)"
     cur.execute(sql)
 
     sql = "create index if not exists idx_switches on functions(switches)"
@@ -983,8 +1007,8 @@ class CBinDiff:
 
   def run_heuristics_for_category(self, arg_category):
     total_cpus = cpu_count() - 1
-    if total_cpus > 1:
-      total_cpus -= 1
+    if total_cpus < 1:
+      total_cpus = 1
 
     mode = "[Parallel]"
     if total_cpus == 1:
@@ -1046,8 +1070,6 @@ class CBinDiff:
       if total_cpus == 1:
         t.join()
         threads_list = []
-      elif total_cpus > 1 and len(threads_list) == total_cpus:
-        log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list))
 
       while len(threads_list) >= total_cpus:
         for i, t in enumerate(threads_list):
@@ -1057,28 +1079,37 @@ class CBinDiff:
             debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
             break
           else:
+            log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list))
             t.join(0.1)
+            idaapi.request_refresh(0xFFFFFFFF)
 
     if len(threads_list) > 0:
       log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
 
+      times = 0
       while len(threads_list) > 0:
+        times += 1
         for i, t in enumerate(threads_list):
+          t.join(0.1)
           if not t.is_alive():
             debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.time() - t.time))
             del threads_list[i]
             debug_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
             break
-          else:
-            t.join(0.1)
-            if time.time() - t.time > TIMEOUT_LIMIT:
-              try:
-                log_refresh("Timeout, cancelling queries...")
-                self.db.interrupt()
-              except:
-                print("self.db.interrupt(): %s" % str(sys.exc_info()[1]))
 
-    debug_refresh("Done running heuristics set...")
+          t.join(0.1)
+          if time.time() - t.time > TIMEOUT_LIMIT:
+            try:
+              log_refresh("Timeout, cancelling queries...")
+              self.get_db().interrupt()
+            except:
+              print("database.interrupt(): %s" % str(sys.exc_info()[1]))
+
+        if times % 50 == 0:
+          names = []
+          for x in threads_list:
+            names.append(x.name)
+          log_refresh("[Parallel] %d thread(s) still running:\n\n%s" % (len(threads_list), ", ".join(names)))
 
   def find_equal_matches(self):
     cur = self.db_cursor()
@@ -1816,7 +1847,7 @@ class CBinDiff:
     main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
     diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
 
-    cur = self.db.cursor()
+    cur = self.db_cursor()
     dones = set()
 
     prev_best_matches = len(self.best_chooser.items)
@@ -2457,7 +2488,7 @@ class CBinDiff:
       os.remove(filename)
       log("Previous diff results '%s' removed." % filename)
 
-    results_db = sqlite3.connect(filename, check_same_thread=False)
+    results_db = sqlite3.connect(filename, check_same_thread=True)
     results_db.text_factory = str
 
     cur = results_db.cursor()
@@ -2613,7 +2644,7 @@ if __name__ == "__main__":
 
   if do_diff:
     bd = CBinDiff(db1)
-    bd.db = sqlite3.connect(db1, check_same_thread=False)
+    bd.db = sqlite3.connect(db1, check_same_thread=True)
     bd.db.text_factory = str
     bd.db.row_factory = sqlite3.Row
     bd.diff(db2)
