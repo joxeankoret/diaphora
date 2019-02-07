@@ -288,6 +288,8 @@ class CBinDiff:
     if tid in self.dbs_dict:
       self.dbs_dict[tid].close()
       del self.dbs_dict[tid]
+    if isinstance(threading.current_thread(), threading._MainThread):
+      self.db.close()
 
   def create_schema(self):
     cur = self.db_cursor()
@@ -1079,12 +1081,12 @@ class CBinDiff:
             debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
             break
           else:
-            log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list))
+            log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list), do_log=False)
             t.join(0.1)
             idaapi.request_refresh(0xFFFFFFFF)
 
     if len(threads_list) > 0:
-      log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
+      log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list), do_log=False)
 
       times = 0
       while len(threads_list) > 0:
@@ -2539,11 +2541,16 @@ class CBinDiff:
       cur.close()
       results_db.close()
 
+  def try_attach(self, cur, db):
+    try:
+      cur.execute('attach "%s" as diff' % db)
+    except:
+      pass
+
   def diff(self, db):
     self.last_diff_db = db
-
     cur = self.db_cursor()
-    cur.execute('attach "%s" as diff' % db)
+    self.try_attach(cur, db)
 
     try:
       cur.execute("select value from diff.version")

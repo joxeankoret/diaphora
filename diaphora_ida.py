@@ -82,11 +82,18 @@ LITTLE_ORANGE = 0x026AFD
 
 #-----------------------------------------------------------------------
 def log(msg):
-  if isinstance(threading.current_thread(), threading._MainThread):
+  # Horrible workaround for an IDA 7.1 and lower versions bug
+  show = False
+  if IDA_SDK_VERSION > 710:
+    show = True
+  elif IDA_SDK_VERSION <= 710:
+    show = isinstance(threading.current_thread(), threading._MainThread)
+
+  if show:
     Message("[%s] %s\n" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
-def log_refresh(msg, show=False, do_log=False):
+def log_refresh(msg, show=False, do_log=True):
   if show:
     show_wait_box(msg)
   else:
