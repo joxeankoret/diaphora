@@ -5,7 +5,7 @@ It works with IDA 6.9 to 7.2. If you are looking for Radare2 support you can [ch
 
 For more details, please check the tutorial in the "doc" directory.
 
-NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
+NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios). Support for "Ghydra" might come in the future (if it makes any sense).
 
 ## Getting help and asking for features
 
