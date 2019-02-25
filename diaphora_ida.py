@@ -592,6 +592,9 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return True
 
+  def refresh(self):
+    idaapi.request_refresh(0xFFFFFFFF)
+
   def show_choosers(self, force=False):
     if len(self.best_chooser.items) > 0:
       self.best_chooser.show(force)

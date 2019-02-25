@@ -103,7 +103,7 @@ def log(msg):
     print("[%s] %s\n" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
-def log_refresh(msg, show=False):
+def log_refresh(msg, show=False, do_log=True):
   log(msg)
 
 #-----------------------------------------------------------------------
@@ -1083,7 +1083,8 @@ class CBinDiff:
           else:
             log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list), do_log=False)
             t.join(0.1)
-            idaapi.request_refresh(0xFFFFFFFF)
+            if is_ida:
+              self.refresh()
 
     if len(threads_list) > 0:
       log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list), do_log=False)
