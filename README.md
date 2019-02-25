@@ -39,6 +39,3 @@ These are some screenshots of Diaphora diffing the [Microsoft bulletin MS15-050]
 
 ![Diaphora diffing a LuaBot, matches and pseudo-code](https://1.bp.blogspot.com/-O5UjSOyjCgg/V5byA-ozXVI/AAAAAAAABaY/yRTMDTSD9zI0mSy4AsHN21ZYf_YvctnkwCLcB/s1600/evs-compile.png)
 
-Here is a screenshot of Diaphora diffing [iBoot from iOS 10.3.3 against iOS 11.0](http://matteyeux.me/hacking/2018/04/04/diaphora-diff-and-ida.html):
-
-![Diaphora diffing iBoot from iOS 10.3.3 against iOS 11.0](http://matteyeux.me/images/newgraph.PNG)
