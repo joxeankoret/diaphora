@@ -1089,8 +1089,9 @@ class CBinDiff:
     if len(threads_list) > 0:
       log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list), do_log=False)
 
+      do_cancel = False
       times = 0
-      while len(threads_list) > 0:
+      while len(threads_list) > 0 and not do_cancel:
         times += 1
         for i, t in enumerate(threads_list):
           t.join(0.1)
@@ -1102,6 +1103,7 @@ class CBinDiff:
 
           t.join(0.1)
           if time.time() - t.time > TIMEOUT_LIMIT:
+            do_cancel = True
             try:
               log_refresh("Timeout, cancelling queries...")
               self.get_db().interrupt()
