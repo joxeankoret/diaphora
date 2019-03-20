@@ -316,6 +316,28 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
+  "name":"Same address and rare constant",
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same address and rare constant' description,
+            f.pseudocode pseudo1, df.pseudocode pseudo2,
+            f.assembly asm1, df.assembly asm2,
+            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from main.constants mc,
+            diff.constants dc,
+            main.functions  f,
+            diff.functions df
+      where mc.constant = dc.constant
+        and  f.id = mc.func_id
+        and df.id = dc.func_id
+        and df.address = f.address""",
+  "min":0.5,
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
   "name":"Same rare constant",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,

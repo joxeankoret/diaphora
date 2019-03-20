@@ -1022,6 +1022,10 @@ class CBinDiff:
 
     threads_list = []
     for heur in HEURISTICS:
+      if len(self.matched1) == self.total_functions1 or len(self.matched2) == self.total_functions2:
+        log("All functions matched in at least one database, finishing.")
+        break
+
       category = heur["category"]
       if category != arg_category:
         continue

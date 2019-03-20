@@ -1020,6 +1020,11 @@ class CIDABinDiff(diaphora.CBinDiff):
           MakeName(tmp_ea, name)
           set_type = False
       else:
+        # If it's an object, we don't want to rename the offset, we want to
+        # rename the true global variable.
+        if is_off(get_full_flags(tmp_ea), OPND_ALL):
+          tmp_ea = next(DataRefsFrom(tmp_ea), tmp_ea)
+
         MakeName(tmp_ea, name)
         set_type = True
     else:
