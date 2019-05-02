@@ -202,6 +202,7 @@ class CBinDiff:
     self.pseudo = {}
     self.pseudo_hash = {}
     self.pseudo_comments = {}
+
     self.unreliable = False
     self.relaxed_ratio = False
     self.experimental = False
@@ -263,7 +264,7 @@ class CBinDiff:
     # Try to search for a DIAPHORA_<value_name> environment variable
     value = os.getenv("DIAPHORA_%s" % value_name)
     if value is not None:
-      if type(value) != type(default)
+      if type(value) != type(default):
         value = type(default)(value)
       return value
     return default
