@@ -2261,6 +2261,12 @@ class CHtmlDiff:
         rtxt = self._stop_wasting_space(rtxt)
         ltxt = self._trunc(ltxt, changed).replace(" ", "&nbsp;")
         rtxt = self._trunc(rtxt, changed).replace(" ", "&nbsp;")
+
+        ltxt = ltxt.replace("<", "&lt;")
+        ltxt = ltxt.replace(">", "&gt;")
+        rtxt = rtxt.replace("<", "&lt;")
+        rtxt = rtxt.replace(">", "&gt;")
+
         row = self._row_template % (str(lno), ltxt, str(rno), rtxt)
         rows.append(row)
 
