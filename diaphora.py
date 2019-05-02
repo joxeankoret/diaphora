@@ -223,11 +223,11 @@ class CBinDiff:
     #
     # Do not run heuristics for more than 3 minutes per each 20.000
     # functions.
-    self.timeout = TIMEOUT_LIMIT
+    self.timeout = self.get_value_for("TIMEOUT_LIMIT", TIMEOUT_LIMIT)
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
     # value per each 20k functions.
-    self.max_processed_rows = MAX_PROCESSED_ROWS
+    self.max_processed_rows = self.get_value_for("MAX_PROCESSED_ROWS", MAX_PROCESSED_ROWS)
     # Limits to filter the functions to export
     self.min_ea = 0
     self.max_ea = 0
@@ -258,6 +258,15 @@ class CBinDiff:
       except:
         pass
       self.db_close()
+
+  def get_value_for(self, value_name, default):
+    # Try to search for a DIAPHORA_<value_name> environment variable
+    value = os.getenv("DIAPHORA_%s" % value_name)
+    if value is not None:
+      if type(value) != type(default)
+        value = type(default)(value)
+      return value
+    return default
 
   def open_db(self):
     db = sqlite3.connect(self.db_name, check_same_thread=True)
