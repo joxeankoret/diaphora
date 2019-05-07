@@ -203,6 +203,11 @@ class CBinDiff:
     self.pseudo_hash = {}
     self.pseudo_comments = {}
 
+    self.unreliable = self.get_value_for("unreliable", False)
+    self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
+    self.experimental = self.get_value_for("experimental", False)
+    self.slow_heuristics = self.get_value_for("slow_heuristics", False)
+
     self.unreliable = False
     self.relaxed_ratio = False
     self.experimental = False
@@ -222,8 +227,7 @@ class CBinDiff:
     ####################################################################
     # LIMITS
     #
-    # Do not run heuristics for more than 3 minutes per each 20.000
-    # functions.
+    # Do not run heuristics for more than X seconds (by default, 3 minutes).
     self.timeout = self.get_value_for("TIMEOUT_LIMIT", TIMEOUT_LIMIT)
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
@@ -242,9 +246,9 @@ class CBinDiff:
     # like the 'Same name'?
     self.ignore_sub_names = True
     # Ignore any and all function names for the 'Same name' heuristic?
-    self.ignore_all_names = True
+    self.ignore_all_names = self.get_value_for("ignore_all_names", True)
     # Ignore small functions?
-    self.ignore_small_functions = False
+    self.ignore_small_functions = self.get_value_for("ignore_small_functions", False)
     ####################################################################
 
   def __del__(self):
@@ -262,7 +266,7 @@ class CBinDiff:
 
   def get_value_for(self, value_name, default):
     # Try to search for a DIAPHORA_<value_name> environment variable
-    value = os.getenv("DIAPHORA_%s" % value_name)
+    value = os.getenv("DIAPHORA_%s" % value_name.upper())
     if value is not None:
       if type(value) != type(default):
         value = type(default)(value)

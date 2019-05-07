@@ -2396,6 +2396,11 @@ def main():
       bd.project_script = project_script
     bd.use_decompiler_always = use_decompiler
 
+    bd.exclude_library_thunk = bd.get_value_for("exclude_library_thunk", bd.exclude_library_thunk)
+    bd.ida_subs = bd.get_value_for("ida_subs", bd.ida_subs)
+    bd.ignore_sub_names = bd.get_value_for("ignore_sub_names", bd.ignore_sub_names)
+    bd.function_summaries_only = bd.get_value_for("function_summaries_only", bd.function_summaries_only)
+
     try:
       bd.export()
     except KeyboardInterrupt:
