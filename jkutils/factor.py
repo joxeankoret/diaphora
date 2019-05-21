@@ -9,7 +9,6 @@ in the Joxean Koret's Diffing Plugin for IDA.
 Copyright (c) 2012-2015 Joxean Koret
 """
 
-import sys
 import random
 import decimal
 

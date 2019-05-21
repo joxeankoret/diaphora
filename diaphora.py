@@ -720,7 +720,6 @@ class CBinDiff:
           except:
             # key doesnt exist because it doesnt have forward references to any bb
             log("Error: %s" % str(sys.exc_info()[1]))
-            pass
 
       # And finally insert the functions to basic blocks relations
       sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
@@ -1196,10 +1195,6 @@ class CBinDiff:
       if self.relaxed_ratio or md1 > 10.0:
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 4, 1.0)
-    elif md1 != 0 and md2 != 0 and False:
-      tmp1 = max(md1, md2)
-      tmp2 = min(md1, md2)
-      v4 = tmp2 * 1. / tmp1
 
     r = max(v1, v2, v3, v4)
     return r
@@ -1576,15 +1571,8 @@ class CBinDiff:
                 select * from diff.functions where id = ? """ + postfix
 
       thresold = min(0.6, float(item[5]))
-      done = False
       for j in range(0, min(10, id1 - last)):
-        if done:
-          break
-
         for i in range(0, min(10, id1 - last)):
-          if done:
-            break
-
           cur.execute(sql, (id1+j, id2+i))
           rows = cur.fetchall()
           if len(rows) == 2:
@@ -1713,7 +1701,6 @@ class CBinDiff:
       match = the_items.pop()
       ea1 = match[1]
       name1 = match[2]
-      ea2 = match[3]
       name2 = match[4]
 
       if ea1 in dones:

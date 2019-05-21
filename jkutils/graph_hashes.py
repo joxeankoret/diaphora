@@ -84,10 +84,10 @@ class CKoretKaramitasHash:
 
   def get_edges_value(self, bb, succs, preds):
     ret = 1
-    for edge in succs:
+    for _ in succs:
       ret *= EDGE_OUT_CONDITIONAL
 
-    for edge in preds:
+    for _ in preds:
       ret *= EDGE_IN_CONDITIONAL
 
     return ret
@@ -124,8 +124,9 @@ class CKoretKaramitasHash:
         if is_call_insn(ea):
           hash *= FEATURE_CALL
 
-        l = DataRefsFrom(ea)
-        hash *= FEATURE_DATA_REFS
+        l = list(DataRefsFrom(ea))
+        if len(l) > 0:
+          hash *= FEATURE_DATA_REFS
 
         for xref in CodeRefsFrom(ea, 0):
           tmp_func = get_func(xref)

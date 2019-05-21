@@ -38,8 +38,6 @@ except ImportError:
     pass
 
 class CFileStr(str):
-    fd = None
-
     def __init__(self, fd):
         self.fd = fd
     
@@ -85,7 +83,6 @@ class CKoretFuzzyHashing:
 
     def simplified(self, bytes, aggresive = False):
         output_size = self.output_size
-        ignore_range = self.ignore_range
         bsize = self.bsize
         total_size = len(bytes)
         size = (total_size/bsize) / output_size
@@ -113,7 +110,6 @@ class CKoretFuzzyHashing:
         bsize = self.bsize
         total_size = len(bytes)
         rappend = ret.append
-        chunk_size = idx*bsize
         reduce_errors = self.reduce_errors
         # Calculate the sum of every block
         while 1:
@@ -164,7 +160,6 @@ class CKoretFuzzyHashing:
         ret = set()
         
         output_size = self.output_size
-        size = len(bytes) *1.00 / output_size
         bsize = self.bsize
         radd = ret.add
         
@@ -193,7 +188,6 @@ class CKoretFuzzyHashing:
         bsize = self.bsize
         output_size = self.output_size
         size = len(bytes)
-        ignore_range = self.ignore_range
         chunk_size = idx*self.bsize
         byte = None
         
@@ -229,7 +223,6 @@ class CKoretFuzzyHashing:
         ret = ""
         size1 = 0
         size2 = 0
-        total_size = len(bytes)
         
         while 1:
             size1 = idx*self.bsize
@@ -317,6 +310,7 @@ class kfha(kdha):
     the standard python hashlib format. This is the Koret Fast Hashing Algorithm """
 
     def __init__(self, bytes):
+        kdha.__init__(self)
         self._bytes = bytes
         self._kfd = CKoretFuzzyHashing()
         self._kfd.algorithm = self._kfd._fast_hash
@@ -326,6 +320,7 @@ class ksha(kdha):
     the standard python hashlib format. This is the Koret Simplified Hashing Algorithm """
 
     def __init__(self, bytes):
+        kdha.__init__(self)
         self._bytes = bytes
         self._kfd = CKoretFuzzyHashing()
         self._kfd.algorithm = self._kfd.simplified

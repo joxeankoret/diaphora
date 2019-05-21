@@ -1005,7 +1005,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         tl.ea = ea1
         tl.itp = mitp
         comment = mcmt
-        ret = cfunc.set_user_cmt(tl, comment)
+        cfunc.set_user_cmt(tl, comment)
         cfunc.save_user_cmts()
 
     tmp_ea = None
@@ -1129,9 +1129,6 @@ class CIDABinDiff(diaphora.CBinDiff):
             address1 = json.loads(diff_rows[0]["assembly_addrs"])
             address2 = json.loads(diff_rows[1]["assembly_addrs"])
 
-            matches = {}
-            to_line = None
-            change_line = None
             diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
             for x in diff_list:
               left, right, ignore = x
@@ -2413,3 +2410,4 @@ def main():
 
 if __name__ == "__main__":
   main()
+

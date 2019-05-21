@@ -1332,7 +1332,6 @@ def check_heuristics_ratio():
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
   mandatory = set(["name", "ratio", "category", "sql", "flags"])
-  fields = set()
   for heur in HEURISTICS:
     for field in mandatory:
       if field not in heur.keys():
