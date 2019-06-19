@@ -759,48 +759,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Same high complexity, prototype and names",
-  "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity, prototype and names' description,
-              f.pseudocode pseudo1, df.pseudocode pseudo2,
-              f.assembly asm1, df.assembly asm2,
-              f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-              f.nodes bb1, df.nodes bb2,
-              cast(f.md_index as real) md1, cast(df.md_index as real) md2
-         from functions f,
-              diff.functions df
-        where f.names = df.names
-          and f.cyclomatic_complexity = df.cyclomatic_complexity
-          and f.cyclomatic_complexity >= 20
-          and f.prototype2 = df.prototype2
-          and df.names != '{}'
-          %POSTFIX%""",
-  "flags":HEUR_FLAG_NONE
-})
-
-HEURISTICS.append({
-  "name":"Same high complexity and names",
-  "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""  select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same high complexity and names' description,
-              f.pseudocode pseudo1, df.pseudocode pseudo2,
-              f.assembly asm1, df.assembly asm2,
-              f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-              f.nodes bb1, df.nodes bb2,
-              cast(f.md_index as real) md1, cast(df.md_index as real) md2
-         from functions f,
-              diff.functions df
-        where f.names = df.names
-          and f.cyclomatic_complexity = df.cyclomatic_complexity
-          and f.cyclomatic_complexity >= 15
-          and df.names != '{}'
-          and f.nodes > 5 and df.nodes > 5
-          %POSTFIX%""",
-  "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Strongly connected components small-primes-product",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO,
