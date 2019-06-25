@@ -1392,7 +1392,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     if demangled_name is not None:
       name = demangled_name
-      true_name = name
 
     if self.hooks is not None:
       ret = self.hooks.before_export_function(f, name)
