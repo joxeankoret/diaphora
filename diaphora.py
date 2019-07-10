@@ -2007,6 +2007,7 @@ if __name__ == "__main__":
 
   if do_diff:
     bd = CBinDiff(db1)
+    bd.ignore_all_names = False
     bd.db = sqlite3.connect(db1, check_same_thread=True)
     bd.db.text_factory = str
     bd.db.row_factory = sqlite3.Row
