@@ -100,7 +100,7 @@ def ast_ratio(ast1, ast2):
 #-----------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
-    print("[%s] %s\n" % (time.asctime(), msg))
+    print("[%s] %s" % (time.asctime(), msg))
 
 #-----------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -249,6 +249,11 @@ class CBinDiff:
     self.ignore_all_names = self.get_value_for("ignore_all_names", True)
     # Ignore small functions?
     self.ignore_small_functions = self.get_value_for("ignore_small_functions", False)
+    # Number of CPU threads/cores to use?
+    cpus = cpu_count() - 1
+    if cpus < 1:
+      cpus = 1
+    self.cpu_count = self.get_value_for("CPU_COUNT", cpus)
     ####################################################################
 
   def __del__(self):
@@ -1021,7 +1026,7 @@ class CBinDiff:
     self.run_heuristics_for_category("Best")
 
   def run_heuristics_for_category(self, arg_category):
-    total_cpus = cpu_count() - 1
+    total_cpus = self.cpu_count
     if total_cpus < 1:
       total_cpus = 1
 
@@ -1860,11 +1865,14 @@ class CBinDiff:
       sql = "create table results (type, line, address, name, address2, name2, ratio, bb1, bb2, description)"
       cur.execute(sql)
 
+      sql = "create unique index uq_results on results(address, address2)"
+      cur.execute(sql)
+
       sql = "create table unmatched (type, line, address, name)"
       cur.execute(sql)
 
       with results_db:
-        results_sql   = "insert into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        results_sql   = "insert or ignore into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         unmatched_sql = "insert into unmatched values (?, ?, ?, ?)"
 
         for item in self.best_chooser.items:
@@ -1964,7 +1972,7 @@ class CBinDiff:
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
 
-        log("Done. Took {} seconds".format(time.time() - t0))
+        log("Done. Took {} seconds.".format(time.time() - t0))
     finally:
       cur.close()
     return True
@@ -2007,7 +2015,8 @@ if __name__ == "__main__":
 
   if do_diff:
     bd = CBinDiff(db1)
-    bd.ignore_all_names = False
+    if not is_ida:
+      bd.ignore_all_names = False
     bd.db = sqlite3.connect(db1, check_same_thread=True)
     bd.db.text_factory = str
     bd.db.row_factory = sqlite3.Row
