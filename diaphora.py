@@ -190,6 +190,7 @@ class CBinDiff:
     self.open_db()
     self.matched1 = set()
     self.matched2 = set()
+    self.matches_cache = {}
     self.total_functions1 = None
     self.total_functions2 = None
     self.equal_callgraph = False
@@ -223,7 +224,7 @@ class CBinDiff:
 
     self.last_diff_db = None
     self.re_cache = {}
-    
+
     ####################################################################
     # LIMITS
     #

@@ -1263,6 +1263,11 @@ class CIDABinDiff(diaphora.CBinDiff):
       log("import_all(): %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
 
+  def do_decompile(self, f):
+    if IDA_SDK_VERSION >= 730:
+      return decompile(f, flags=DECOMP_NO_WAIT)
+    return decompile(f)
+
   def decompile_and_get(self, ea):
     if not self.decompiler_available:
       return False
@@ -1278,7 +1283,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     if f is None:
       return False
 
-    cfunc = decompile(f);
+    cfunc = self.do_decompile(f)
     if cfunc is None:
       # Failed to decompile
       return False
