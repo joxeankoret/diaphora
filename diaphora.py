@@ -44,7 +44,7 @@ try:
 except ImportError:
   is_ida = False
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 VERSION_VALUE = "2.0"
 COPYRIGHT_VALUE="Copyright(c) 2015-2019 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
@@ -57,9 +57,9 @@ CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
 CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def result_iter(cursor, arraysize=1000):
-  'An iterator that uses fetchmany to keep memory usage down'
+  """ An iterator that uses fetchmany to keep memory usage down. """
   while True:
     results = cursor.fetchmany(arraysize)
     if not results:
@@ -67,7 +67,7 @@ def result_iter(cursor, arraysize=1000):
     for result in results:
       yield result
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def quick_ratio(buf1, buf2):
   try:
     if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
@@ -78,7 +78,7 @@ def quick_ratio(buf1, buf2):
     print("quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def real_quick_ratio(buf1, buf2):
   try:
     if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
@@ -89,7 +89,7 @@ def real_quick_ratio(buf1, buf2):
     print("real_quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def ast_ratio(ast1, ast2):
   if ast1 == ast2:
     return 1.0
@@ -97,21 +97,21 @@ def ast_ratio(ast1, ast2):
     return 0
   return difference_ratio(decimal.Decimal(ast1), decimal.Decimal(ast2))
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
     print(("[%s] %s" % (time.asctime(), msg)))
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
   log(msg)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def debug_refresh(msg, show=False):
   if os.getenv("DIAPHORA_DEBUG"):
     log(msg)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CChooser():
   class Item:
     def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
@@ -175,18 +175,18 @@ class CChooser():
       return 0x9999ff
 
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class bytes_encoder(json.JSONEncoder):
   def default(self, obj):
     if isinstance(obj, bytes):
       return obj.decode("utf-8")
     return json.JSONEncoder.default(self, obj)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CBinDiff:
   def __init__(self, db_name, chooser=CChooser):
     self.names = dict()
@@ -387,7 +387,7 @@ class CBinDiff:
 
     sql = """ create table if not exists version (value text) """
     cur.execute(sql)
-    
+
     sql = """ create table if not exists instructions (
                 id integer primary key,
                 address text unique,
