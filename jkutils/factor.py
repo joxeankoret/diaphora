@@ -6,7 +6,7 @@ Primes and factorization utilities
 Part of the Malware Families Clusterization Project, adapted to be used
 in the Joxean Koret's Diffing Plugin for IDA.
 
-Copyright (c) 2012-2015 Joxean Koret
+Copyright (c) 2012-2019 Joxean Koret
 """
 
 import random
@@ -20,7 +20,7 @@ def primesbelow(N):
   N = {0:N, 1:N-1, 2:N+4, 3:N+3, 4:N+2, 5:N+1}[N%6]
   sieve = [True] * (N // 3)
   sieve[0] = False
-  for i in range(long(N ** .5) // 3 + 1):
+  for i in range(int(N ** .5) // 3 + 1):
     if sieve[i]:
       k = (3 * i + 1) | 1
       sieve[k*k // 3::2*k] = [False] * ((N//6 - (k*k)//6 - 1)//k + 1)
@@ -96,13 +96,13 @@ smallprimes = primesbelow(10000) # might seem low, but 10000*10000 = 100000000, 
 def primefactors(n, sort=False):
   factors = []
 
-  limit = long(n ** decimal.Decimal(.5)) + 1
+  limit = int(n ** decimal.Decimal(.5)) + 1
   for checker in smallprimes:
     if checker > limit: break
     while n % checker == 0:
       factors.append(checker)
       n //= checker
-      limit = long(n ** decimal.Decimal(.5)) + 1
+      limit = int(n ** decimal.Decimal(.5)) + 1
       if checker > limit: break
 
   if n < 2: return factors
@@ -138,7 +138,7 @@ def totient(n):
   except KeyError: pass
 
   tot = 1
-  for p, exp in factorization(n).items():
+  for p, exp in list(factorization(n).items()):
     tot *= (p - 1)  *  p ** (exp - 1)
 
   totients[n] = tot
@@ -161,23 +161,23 @@ def _difference(num1, num2):
           num2]
   s = []
   for num in nums:
-    if FACTORS_CACHE.has_key(num):
+    if num in FACTORS_CACHE:
       x = FACTORS_CACHE[num]
     else:
-      x = factorization(long(num))
+      x = factorization(int(num))
       FACTORS_CACHE[num] = x
     s.append(x)
 
   diffs = {}
-  for x in s[0].keys():
-    if x in s[1].keys():
+  for x in list(s[0].keys()):
+    if x in list(s[1].keys()):
       if s[0][x] != s[1][x]:
         diffs[x] = max(s[0][x], s[1][x]) - min(s[0][x], s[1][x])
     else:
       diffs[x] = s[0][x]
   
-  for x in s[1].keys():
-    if x in s[0].keys():
+  for x in list(s[1].keys()):
+    if x in list(s[0].keys()):
       if s[1][x] != s[0][x]:
         diffs[x] = max(s[0][x], s[1][x]) - min(s[0][x], s[1][x])
     else:
@@ -207,8 +207,8 @@ def difference_matrix(samples, debug=True):
   diff_matrix = {}
   for x in samples:
     if debug:
-      print "Calculating difference matrix for %s" % x
-    if not diff_matrix.has_key(x):
+      print("Calculating difference matrix for %s" % x)
+    if x not in diff_matrix:
       diff_matrix[x] = {}
     for y in samples:
       if samples[x] != samples[y]:

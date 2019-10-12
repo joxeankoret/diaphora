@@ -1,11 +1,20 @@
 # Diaphora
-Diaphora (διαφορά, Greek for 'difference') version 1.2.4 is a program diffing plugin for IDA, similar to Zynamics Bindiff or other FOSS counterparts like YaDiff, DarunGrim, TurboDiff, etc... It was released during SyScan 2015.
 
-It works with IDA 6.9 to 7.3. Support for Ghidra is in development. Support for Binary Ninja is also planned but will come after Ghidra's port. If you are looking for Radare2 support you can [check this very old fork](https://github.com/radare/diaphora).
+Diaphora (διαφορά, Greek for 'difference') version 2.0 is the most advanced program diffing tool, working as an IDA plugin, available as of today (2019). It was released first during SyScan 2015 and is actively maintained.
+
+Diaphora supports IDA 6.9 to 7.4, but the main branch has support only for IDA >= 7.4 because the code only runs in Python 3.X.
+
+Support for Ghidra is in development, but it will take very long. Support for Binary Ninja is also planned but will probably come after Ghidra's port. If you are looking for Radare2 support, you can [check this very old fork](https://github.com/radare/diaphora).
 
 For more details, please check the tutorial in the "doc" directory.
 
 NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
+
+## Python 2.7 and IDA versions 6.95 to 7.3
+
+TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4).
+
+Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in Github will only run in IDA 7.4 and Python 3.X. I've tried to make it compatible but it caused the code to be horrible and unmaintainable. As so, I've decided that it was best to drop support for Python 2.X and IDA versions <= 7.3 and focus in Python 3.X and IDA versions >= 7.4.
 
 ## Getting help and asking for features
 

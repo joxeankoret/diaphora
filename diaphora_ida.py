@@ -1,19 +1,19 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2018, Joxean Koret
+Copyright (c) 2015-2019, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 2 of the License, or
-(at your option) any later version.
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GNU Affero General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
@@ -39,25 +39,13 @@ from others.tarjan_sort import strongly_connected_components, robust_topological
 from jkutils.factor import primesbelow as primes
 from jkutils.graph_hashes import CKoretKaramitasHash
 
-import idaapi
 from idc import *
 from idaapi import *
 from idautils import *
 
-try:
-  if IDA_SDK_VERSION < 690:
-    # In versions prior to IDA 6.9 PySide is used...
-    from PySide import QtGui
-    QtWidgets = QtGui
-    is_pyqt5 = False
-  else:
-    # ...while in IDA 6.9, they switched to PyQt5
-    from PyQt5 import QtCore, QtGui, QtWidgets
-    is_pyqt5 = True
-except ImportError:
-  pass
+from PyQt5 import QtCore, QtGui, QtWidgets
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Constants unexported in IDA Python
 PRTYPE_SEMI = 0x0008
 
@@ -80,19 +68,11 @@ or instructions' option."""
 
 LITTLE_ORANGE = 0x026AFD
 
-#-----------------------------------------------------------------------
-def log(msg):
-  # Horrible workaround for an IDA 7.1 and lower versions bug
-  show = False
-  if IDA_SDK_VERSION > 710:
-    show = True
-  elif IDA_SDK_VERSION <= 710:
-    show = isinstance(threading.current_thread(), threading._MainThread)
+#-------------------------------------------------------------------------------
+def log(message):
+  msg("[%s] %s\n" % (time.asctime(), message))
 
-  if show:
-    Message("[%s] %s\n" % (time.asctime(), msg))
-
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
   if show:
     show_wait_box(msg)
@@ -102,64 +82,51 @@ def log_refresh(msg, show=False, do_log=True):
   if do_log:
     log(msg)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # TODO: FIX hack
 diaphora.log = log
 diaphora.log_refresh = log_refresh
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 g_bindiff = None
 def show_choosers():
   global g_bindiff
   if g_bindiff is not None:
     g_bindiff.show_choosers(True)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def save_results():
   global g_bindiff
   if g_bindiff is not None:
-    filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
+    filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
     if filename is not None:
       g_bindiff.save_results(filename)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def load_results():
   tmp_diff = CIDABinDiff(":memory:")
-  filename = AskFile(0, "*.diaphora", "Select the file to load diffing results")
+  filename = ask_file(0, "*.diaphora", "Select the file to load diffing results")
   if filename is not None:
     tmp_diff.load_results(filename)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def import_definitions():
   tmp_diff = diaphora.CIDABinDiff(":memory:")
-  filename = AskFile(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
+  filename = ask_file(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
   if filename is not None:
-    if askyn_c(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
+    if ask_yn(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
       tmp_diff.import_definitions_only(filename)
 
-#-----------------------------------------------------------------------
-# Compatibility between IDA 6.X and 7.X
-#
-KERNEL_VERSION = get_kernel_version()
+#-------------------------------------------------------------------------------
 def diaphora_decode(ea):
-  global KERNEL_VERSION
-  if KERNEL_VERSION.startswith("7."):
-    ins = idaapi.insn_t()
-    decoded_size = idaapi.decode_insn(ins, ea)
-    return decoded_size, ins
-  elif KERNEL_VERSION.startswith("6."):
-    decoded_size = idaapi.decode_insn(ea)
-    return decoded_size, idaapi.cmd
-  else:
-    raise Exception("Unsupported IDA kernel version!")
+  ins = idaapi.insn_t()
+  decoded_size = idaapi.decode_insn(ins, ea)
+  return decoded_size, ins
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CHtmlViewer(PluginForm):
   def OnCreate(self, form):
-    if is_pyqt5:
-      self.parent = self.FormToPyQtWidget(form)
-    else:
-      self.parent = self.FormToPySideWidget(form)
+    self.parent = self.FormToPyQtWidget(form)
     self.PopulateForm()
 
     self.browser = None
@@ -180,16 +147,52 @@ class CHtmlViewer(PluginForm):
     self.text = text
     return PluginForm.Show(self, title)
 
-#-----------------------------------------------------------------------
-class CIDAChooser(diaphora.CChooser, Choose2):
+#-------------------------------------------------------------------------------
+# Hex-Rays finally removed AddCommand(). Now, instead of a 1 line call, we need
+# 2 classes...
+class command_handler_t(ida_kernwin.action_handler_t):
+  def __init__(self, obj, cmd_id, num_args = 2):
+    self.obj = obj
+    self.cmd_id = cmd_id
+    self.num_args = num_args
+    ida_kernwin.action_handler_t.__init__(self)
+
+  def activate(self, ctx):
+    if self.num_args == 1:
+      return self.obj.OnCommand(self.cmd_id)
+    return self.obj.OnCommand(self.obj.selected_items[0], self.cmd_id)
+
+  def update(self, ctx):
+    return idaapi.AST_ENABLE_ALWAYS
+
+#-------------------------------------------------------------------------------
+# Support for the removed AddCommand() API. I'll really miss it...
+class CDiaphoraChooser(diaphora.CChooser, Choose):
+  def __init__(self, title, bindiff, show_commands = True):
+    diaphora.CChooser.__init__(self, title, bindiff, show_commands)
+    self.actions = []
+
+  def AddCommand(self, menu_name, shortcut=None):
+    action_name = "Diaphora:%s" % menu_name.replace(" ", "")
+    self.actions.append([len(self.actions), action_name, menu_name, shortcut])
+    return len(self.actions)-1
+
+  def OnPopup(self, form, popup_handle):
+    for num, action_name, menu_name, shortcut in self.actions:
+      handler = command_handler_t(self, num, 2)
+      desc = ida_kernwin.action_desc_t(action_name, menu_name, handler, shortcut)
+      ida_kernwin.attach_dynamic_action_to_popup(form, popup_handle, desc)
+
+#-------------------------------------------------------------------------------
+class CIDAChooser(CDiaphoraChooser):
 
   def __init__(self, title, bindiff, show_commands=True):
-    diaphora.CChooser.__init__(self, title, bindiff, show_commands)
+    CDiaphoraChooser  .__init__(self, title, bindiff, show_commands)
     if title.startswith("Unmatched in"):
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose2.CH_MULTI)
+      Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose.CH_MULTI)
     else:
-      Choose2.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
-                                      ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose2.CH_MULTI)
+      Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
+                                      ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose.CH_MULTI)
 
   def OnClose(self):
     """space holder"""
@@ -202,23 +205,23 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     pass
 
   def OnSelectLine(self, n):
-    item = self.items[int(n)]
+    item = self.items[n[0]]
     if self.primary:
       try:
         jump_ea = int(item[1], 16)
         # Only jump for valid addresses
-        if isEnabled(jump_ea):
+        if is_mapped(jump_ea):
           jumpto(jump_ea)
       except:
-        print "OnSelectLine", sys.exc_info()[1]
+        print("OnSelectLine", sys.exc_info()[1])
     else:
-      self.bindiff.show_asm(self.items[n], self.primary)
+      self.bindiff.show_asm(self.items[n[0]], self.primary)
 
   def OnGetLine(self, n):
     try:
       return self.items[n]
     except:
-      print "OnGetLine", sys.exc_info()[1]
+      print("OnGetLine", sys.exc_info()[1])
 
   def OnGetSize(self):
     return len(self.items)
@@ -244,7 +247,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
-      self.cmd_import_selected = self.AddCommand("Import selected")
+      self.cmd_import_selected = self.AddCommand("Import selected", "Ctrl+Alt+i")
       self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
       self.cmd_import_all = self.AddCommand("Import *all* functions")
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
@@ -264,34 +267,34 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     elif cmd_id == self.cmd_show_pseudo:
       self.bindiff.show_pseudo(self.items[n], self.primary)
     elif cmd_id == self.cmd_import_all:
-      if askyn_c(1, "HIDECANCEL\nDo you really want to import all matched functions, comments, prototypes and definitions?") == 1:
+      if ask_yn(1, "HIDECANCEL\nDo you really want to import all matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all(self.items)
     elif cmd_id == self.cmd_import_all_funcs:
-      if askyn_c(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
+      if ask_yn(1, "HIDECANCEL\nDo you really want to import all IDA named matched functions, comments, prototypes and definitions?") == 1:
         self.bindiff.import_all_auto(self.items)
     elif cmd_id == self.cmd_import_selected or cmd_id == self.cmd_import_selected_auto:
       if len(self.selected_items) <= 1:
         self.bindiff.import_one(self.items[n])
       else:
-        if askyn_c(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
+        if ask_yn(1, "HIDECANCEL\nDo you really want to import all selected IDA named matched functions, comments, prototypes and definitions?") == 1:
           self.bindiff.import_selected(self.items, self.selected_items, cmd_id == self.cmd_import_selected_auto)
     elif cmd_id == self.cmd_diff_c:
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_asm:
       self.bindiff.show_asm_diff(self.items[n])
     elif cmd_id == self.cmd_highlight_functions:
-      if askyn_c(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
+      if ask_yn(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
         color = self.get_color()
         for item in self.items:
           ea = int(item[1], 16)
-          if not SetColor(ea, CIC_FUNC, color):
-            print "Error setting color for %x" % ea
+          if not set_color(ea, CIC_FUNC, color):
+            print("Error setting color for %x" % ea)
         Refresh()
     elif cmd_id == self.cmd_unhighlight_functions:
       for item in self.items:
         ea = int(item[1], 16)
         if not SetColor(ea, CIC_FUNC, 0xFFFFFF):
-          print "Error setting color for %x" % ea
+          print("Error setting color for %x" % ea)
       Refresh()
     elif cmd_id == self.cmd_diff_graph:
       item = self.items[n]
@@ -302,7 +305,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_save_results:
-      filename = AskFile(1, "*.diaphora", "Select the file to store diffing results")
+      filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
       if filename is not None:
         self.bindiff.save_results(filename)
 
@@ -312,9 +315,15 @@ class CIDAChooser(diaphora.CChooser, Choose2):
     self.selected_items = sel_list
 
   def seems_false_positive(self, item):
-    if not item[2].startswith("sub_") and not item[4].startswith("sub_"):
-      if item[2] != item[4]:
-        if item[4].find(item[2]) == -1 and not item[2].find(item[4]) == -1:
+    name1 = item[2]
+    name2 = item[4]
+
+    name1 = name1.rstrip("_0")
+    name2 = name2.rstrip("_0")
+
+    if not name1.startswith("sub_") and not name2.startswith("sub_"):
+      if name1 != name2:
+        if name2.find(name1) == -1 and not name1.find(name2) == -1:
           return True
 
     return False
@@ -333,7 +342,7 @@ class CIDAChooser(diaphora.CChooser, Choose2):
       return [color, 0]
     return [0xFFFFFF, 0]
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
   def __init__(self):
     s = r"""Diaphora
@@ -424,7 +433,7 @@ class CBinDiffExporterSetup(Form):
     )
     return BinDiffOptions(**opts)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class timeraction_t(object):
   def __init__(self, func, args, interval):
     self.func = func
@@ -432,7 +441,7 @@ class timeraction_t(object):
     self.interval = interval
     self.obj = idaapi.register_timer(self.interval, self)
     if self.obj is None:
-      raise RuntimeError, "Failed to register timer"
+      raise RuntimeError("Failed to register timer")
 
   def __call__(self):
     if self.args is not None:
@@ -441,26 +450,22 @@ class timeraction_t(object):
       self.func()
     return -1
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class uitimercallback_t(object):
   def __init__(self, g, interval):
     self.interval = interval
     self.obj = idaapi.register_timer(self.interval, self)
     if self.obj is None:
-      raise RuntimeError, "Failed to register timer"
+      raise RuntimeError("Failed to register timer")
     self.g = g
 
   def __call__(self):
-    if not "GetTForm" in dir(self.g):
-      f = find_tform(self.g._title)
-    else:
-      f = self.g.GetTForm()
-
-    switchto_tform(f, 1)
+    f = find_widget(self.g._title)
+    activate_widget(f, 1)
     process_ui_action("GraphZoomFit", 0)
     return -1
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CDiffGraphViewer(GraphViewer):
   def __init__(self, title, g, colours):
     try:
@@ -492,7 +497,7 @@ class CDiffGraphViewer(GraphViewer):
 
       return True
     except:
-      print "GraphViewer Error:", sys.exc_info()[1]
+      print("GraphViewer Error:", sys.exc_info()[1])
       return True
 
   def OnGetText(self, node_id):
@@ -508,13 +513,13 @@ class CDiffGraphViewer(GraphViewer):
       label = "\n".join(ret)
       return (label, colour)
     except:
-      print "GraphViewer.OnGetText:", sys.exc_info()[1]
+      print("GraphViewer.OnGetText:", sys.exc_info()[1])
       return ("ERROR", 0x000000)
 
   def Show(self):
     return GraphViewer.Show(self)
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
   def __init__(self):
     idaapi.action_handler_t.__init__(self)
@@ -526,7 +531,7 @@ class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CIdaMenuHandlerSaveResults(idaapi.action_handler_t):
   def __init__(self):
     idaapi.action_handler_t.__init__(self)
@@ -538,7 +543,7 @@ class CIdaMenuHandlerSaveResults(idaapi.action_handler_t):
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
   def __init__(self):
     idaapi.action_handler_t.__init__(self)
@@ -550,14 +555,14 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CIDABinDiff(diaphora.CBinDiff):
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
     self.decompiler_available = True
     self.names = dict(Names())
-    self.min_ea = MinEA()
-    self.max_ea = MaxEA()
+    self.min_ea = get_inf_attr(INF_MIN_EA)
+    self.max_ea = get_inf_attr(INF_MAX_EA)
 
     self.project_script = None
     self.hooks = None
@@ -570,7 +575,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       log("Loading project specific Python script %s" % self.project_script)
       module = imp.load_source("diaphora_hooks", self.project_script)
     except:
-      print "Error loading project specific Python script: %s" % str(sys.exc_info()[1])
+      print("Error loading project specific Python script: %s" % str(sys.exc_info()[1]))
       return False
 
     if module is None:
@@ -627,7 +632,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     if not row:
       return None
 
-    address = long(row[0])
+    address = int(row[0])
     cur.close()
 
     return address
@@ -672,8 +677,11 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.db.execute("BEGIN transaction")
     i = 0
     for func in func_list:
+      if user_cancelled():
+        raise Exception("Canceled.")
+
       i += 1
-      if (total_funcs > 100) and i % (total_funcs/100) == 0 or i == 1:
+      if (total_funcs >= 100) and i % (int(total_funcs/100)) == 0 or i == 1:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
         elapsed = time.time() - t
         remaining = (elapsed / i) * (total_funcs - i)
@@ -682,7 +690,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         h, m = divmod(m, 60)
         m_elapsed, s_elapsed = divmod(elapsed, 60)
         h_elapsed, m_elapsed = divmod(m_elapsed, 60)
-
         replace_wait_box(line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s))
 
       if crashed_before:
@@ -761,9 +768,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     sql = "select name from diff.program_data where type = 'til'"
     cur.execute(sql)
     for row in cur.fetchall():
-      LoadTil(row["name"])
+      add_default_til(row["name"])
     cur.close()
-    Wait()
+    auto_wait()
 
   def import_definitions(self):
     cur = self.db_cursor()
@@ -777,7 +784,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         continue
 
       the_name = row["name"].split(" ")[0]
-      if GetStrucIdByName(the_name) == BADADDR:
+      if get_struc_id(the_name) == BADADDR:
         type_name = "struct"
         if row["type"] == "enum":
           type_name = "enum"
@@ -785,24 +792,28 @@ class CIDABinDiff(diaphora.CBinDiff):
           type_name == "union"
 
         new_rows.add(row)
-        ret = ParseTypes("%s %s;" % (type_name, row["name"]))
-        if ret != 0:
-          pass
+        line = "%s %s;" % (type_name, row["name"])
+        try:
+          ret = idc.parse_decls("%s %s;" % (type_name, row["name"]))
+          if ret != 0:
+            pass
+        except:
+          log("Error importing type: %s" % str(sys.exc_info()[1]))
 
-    for i in xrange(10):
+    for i in range(10):
       for row in new_rows:
         if row["name"] is None:
           continue
 
         the_name = row["name"].split(" ")[0]
-        if GetStrucIdByName(the_name) == BADADDR and GetStrucIdByName(row["name"]) == BADADDR:
+        if get_struc_id(the_name) == BADADDR and get_struc_id(row["name"]) == BADADDR:
           definition = self.get_valid_definition(row["value"])
-          ret = ParseTypes(definition)
+          ret = idc.parse_decls(definition) # Remove the "idc." to reproduce some strange behaviour
           if ret != 0:
             pass
 
     cur.close()
-    Wait()
+    auto_wait()
 
   def reinit(self, main_db, diff_db, create_choosers=True):
     log("Main database '%s'." % main_db)
@@ -856,7 +867,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.close()
 
   def import_one(self, item):
-    ret = askyn_c(1, "AUTOHIDE DATABASE\nDo you want to import all the type libraries, structs and enumerations?")
+    ret = ask_yn(1, "AUTOHIDE DATABASE\nDo you want to import all the type libraries, structs and enumerations?")
 
     if ret == 1:
       # Import all the type libraries from the diff database
@@ -985,8 +996,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     graph2.Show()
 
     set_dock_pos(title1, title2, DP_RIGHT)
-    uitimercallback_t(graph1, 10)
-    uitimercallback_t(graph2, 10)
+    uitimercallback_t(graph1, 100)
+    uitimercallback_t(graph2, 100)
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
@@ -1015,9 +1026,9 @@ class CIDABinDiff(diaphora.CBinDiff):
       # Global variables
       tmp_ea = data_refs[0]
       if tmp_ea in self.names:
-        curr_name = GetTrueName(tmp_ea)
+        curr_name = get_ea_name(tmp_ea)
         if curr_name != name and self.is_auto_generated(curr_name):
-          MakeName(tmp_ea, name)
+          set_name(tmp_ea, name, SN_CHECK)
           set_type = False
       else:
         # If it's an object, we don't want to rename the offset, we want to
@@ -1025,7 +1036,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if is_off(get_full_flags(tmp_ea), OPND_ALL):
           tmp_ea = next(DataRefsFrom(tmp_ea), tmp_ea)
 
-        MakeName(tmp_ea, name)
+        set_name(tmp_ea, name, SN_CHECK)
         set_type = True
     else:
       # Functions
@@ -1034,14 +1045,16 @@ class CIDABinDiff(diaphora.CBinDiff):
         code_refs = list(CodeRefsFrom(ea1, 1))
 
       if len(code_refs) > 0:
-        curr_name = GetTrueName(code_refs[0])
+        curr_name = get_ea_name(code_refs[0])
         if curr_name != name and self.is_auto_generated(curr_name):
-          MakeName(code_refs[0], name)
+          set_name(code_refs[0], name, SN_CHECK)
           tmp_ea = code_refs[0]
           set_type = True
 
     if tmp_ea is not None and set_type:
-      if mtype is not None and GetType(tmp_ea) != mtype:
+      if mtype is not None and idc.get_type(tmp_ea) != mtype:
+        if type(mtype) is bytes:
+          mtype = mtype.decode("utf-8")
         SetType(tmp_ea, mtype)
 
   def row_is_importable(self, ea2, import_syms):
@@ -1166,19 +1179,19 @@ class CIDABinDiff(diaphora.CBinDiff):
 
       ea1 = int(ea1)
       if not name.startswith("sub_") or force:
-        if not MakeNameEx(ea1, name, SN_NOWARN|SN_NOCHECK):
-          for i in xrange(10):
-            if MakeNameEx(ea1, "%s_%d" % (name, i), SN_NOWARN|SN_NOCHECK):
+        if not set_name(ea1, name, SN_NOWARN|SN_NOCHECK):
+          for i in range(10):
+            if set_name(ea1, "%s_%d" % (name, i), SN_NOWARN|SN_NOCHECK):
               break
 
       if proto is not None and proto != "int()":
         SetType(ea1, proto)
 
       if comment is not None and comment != "":
-        SetFunctionCmt(ea1, comment, 1)
+        set_func_cmt(ea1, comment, 1)
 
       if flags is not None:
-        SetFunctionFlags(ea1, flags)
+        set_func_attr(ea1, FUNCATTR_FLAGS, flags)
 
       self.import_instruction_level(ea1, ea2, cur)
 
@@ -1248,7 +1261,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.do_import_all(items)
 
       msg = "AUTOHIDE DATABASE\nHIDECANCEL\nAll functions were imported. Do you want to relaunch the diffing process?"
-      if askyn_c(1, msg) == 1:
+      if ask_yn(1, msg) == 1:
         self.db.execute("detach diff")
         # We cannot run that code here or otherwise IDA will crash corrupting the stack
         timeraction_t(self.re_diff, None, 1000)
@@ -1294,7 +1307,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     cmts = idaapi.restore_user_cmts(cfunc.entry_ea)
     if cmts is not None:
-      for tl, cmt in cmts.iteritems():
+      for tl, cmt in cmts.items():
         self.pseudo_comments[tl.ea - self.get_base_address()] = [str(cmt), tl.itp]
 
     sv = cfunc.get_pseudocode()
@@ -1312,7 +1325,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     return first_line
 
   def guess_type(self, ea):
-    t = GuessType(ea)
+    t = guess_type(ea)
     if not self.use_decompiler_always:
       return t
     else:
@@ -1374,7 +1387,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       return False
 
     #no single bits sets - mostly defines / flags
-    for i in xrange(64):
+    for i in range(64):
       if value == (1 << i):
         return False
 
@@ -1389,14 +1402,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return True
 
   def read_function(self, f, discard=False):
-    name = GetFunctionName(int(f))
+    name = get_func_name(int(f))
     true_name = name
-    demangled_name = Demangle(name, INF_SHORT_DN)
-    if demangled_name == "":
-      demangled_name = None
+    demangle_named_name = demangle_name(name, INF_SHORT_DN)
+    if demangle_named_name == "":
+      demangle_named_name = None
 
-    if demangled_name is not None:
-      name = demangled_name
+    if demangle_named_name is not None:
+      name = demangle_named_name
 
     if self.hooks is not None:
       ret = self.hooks.before_export_function(f, name)
@@ -1418,13 +1431,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         return False
 
       # Already recognized runtime's function?
-      flags = GetFunctionFlags(f)
+      flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags == -1:
         return False
 
     if self.exclude_library_thunk:
       # Skip library and thunk functions
-      flags = GetFunctionFlags(f)
+      flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
         return False
 
@@ -1456,30 +1469,30 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     callers = list()
     for caller in list(CodeRefsTo(f, 0)):
       caller_func = get_func(caller)
-      if caller_func and caller_func.startEA not in callers:
-        callers.append(caller_func.startEA)
+      if caller_func and caller_func.start_ea not in callers:
+        callers.append(caller_func.start_ea)
 
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
 
     for block in flow:
-      if block.endEA == 0 or block.endEA == BADADDR:
-        print("0x%08x: Skipping bad basic block" % f)
+      if block.end_ea == 0 or block.end_ea == BADADDR:
+        print(("0x%08x: Skipping bad basic block" % f))
         continue
 
       nodes += 1
       instructions_data = []
 
-      block_ea = block.startEA - image_base
+      block_ea = block.start_ea - image_base
       idx = len(bb_topological)
       bb_topological[idx] = []
       bb_topo_num[block_ea] = idx
 
-      for x in list(Heads(block.startEA, block.endEA)):
-        mnem = GetMnem(x)
+      for x in list(Heads(block.start_ea, block.end_ea)):
+        mnem = print_insn_mnem(x)
         disasm = GetDisasm(x)
-        size += ItemSize(x)
+        size += get_item_size(x)
         instructions += 1
 
         if mnem in cpu_ins_list:
@@ -1494,14 +1507,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
             assembly[block_ea] = [[x - image_base, "loc_%x:" % x], [x - image_base, disasm]]
 
         decoded_size, ins = diaphora_decode(x)
-        if ins.Operands[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.Operands[0].offb
-        if ins.Operands[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.Operands[1].offb
+        if ins.ops[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+          decoded_size -= ins.ops[0].offb
+        if ins.ops[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+          decoded_size -= ins.ops[1].offb
         if decoded_size <= 0:
           decoded_size = 1
 
-        for oper in ins.Operands:
+        for oper in ins.ops:
           if oper.type == o_imm:
             if self.is_constant(oper, x) and self.constant_filter(oper.value):
               constants.append(oper.value)
@@ -1510,32 +1523,33 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           if len(drefs) > 0:
             for dref in drefs:
               if get_func(dref) is None:
-                str_constant = GetString(dref, -1, -1)
+                str_constant = get_strlit_contents(dref, -1, -1)
                 if str_constant is not None:
+                  str_constant = str_constant.decode("utf-8")
                   if str_constant not in constants:
                     constants.append(str_constant)
 
-        curr_bytes = GetManyBytes(x, decoded_size, False)
+        curr_bytes = get_bytes(x, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
           log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
           continue
 
         bytes_hash.append(curr_bytes)
-        bytes_sum += sum(map(ord, curr_bytes))
+        bytes_sum += sum(curr_bytes)
 
-        function_hash.append(GetManyBytes(x, ItemSize(x), False))
+        function_hash.append(get_bytes(x, get_item_size(x), False))
         outdegree += len(list(CodeRefsFrom(x, 0)))
         mnems.append(mnem)
-        op_value = GetOperandValue(x, 1)
+        op_value = get_operand_value(x, 1)
         if op_value == -1:
-          op_value = GetOperandValue(x, 0)
+          op_value = get_operand_value(x, 0)
 
         tmp_name = None
         if op_value != BADADDR and op_value in self.names:
           tmp_name = self.names[op_value]
-          demangled_name = Demangle(tmp_name, INF_SHORT_DN)
-          if demangled_name is not None:
-            tmp_name = demangled_name
+          demangle_named_name = demangle_name(tmp_name, INF_SHORT_DN)
+          if demangle_named_name is not None:
+            tmp_name = demangle_named_name
             pos = tmp_name.find("(")
             if pos > -1:
               tmp_name = tmp_name[:pos]
@@ -1547,9 +1561,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         l = list(CodeRefsFrom(x, 0))
         for callee in l:
           callee_func = get_func(callee)
-          if callee_func and callee_func.startEA != func.startEA:
-            if callee_func.startEA not in callees:
-              callees.append(callee_func.startEA)
+          if callee_func and callee_func.start_ea != func.start_ea:
+            if callee_func.start_ea not in callees:
+              callees.append(callee_func.start_ea)
 
         if len(l) == 0:
           l = DataRefsFrom(x)
@@ -1558,13 +1572,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         for ref in l:
           if ref in self.names:
             tmp_name = self.names[ref]
-            tmp_type = GetType(ref)
+            tmp_type = idc.get_type(ref)
 
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
         instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name, tmp_type])
 
-        switch = get_switch_info_ex(x)
+        switch = get_switch_info(x)
         if switch:
           switch_cases = switch.get_jtable_size()
           results = calc_switch_cases(x, switch)
@@ -1575,13 +1589,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
             # returned object is not iterable.
             can_iter = False
             switch_cases_values = set()
-            for idx in xrange(len(results.cases)):
+            for idx in range(len(results.cases)):
               cur_case = results.cases[idx]
               if not '__iter__' in dir(cur_case):
                 break
 
               can_iter |= True
-              for cidx in xrange(len(cur_case)):
+              for cidx in range(len(cur_case)):
                 case_id = cur_case[cidx]
                 switch_cases_values.add(case_id)
 
@@ -1595,10 +1609,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         bb_degree[block_ea] = [0, 0]
 
       for succ_block in block.succs():
-        if succ_block.endEA == 0:
+        if succ_block.end_ea == 0:
           continue
 
-        succ_base = succ_block.startEA - image_base
+        succ_base = succ_block.start_ea - image_base
         bb_relations[block_ea].append(succ_base)
         bb_degree[block_ea][1] += 1
         bb_edges.append((block_ea, succ_base))
@@ -1608,33 +1622,33 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         edges += 1
         indegree += 1
-        if not dones.has_key(succ_block.id):
+        if succ_block.id not in dones:
           dones[succ_block] = 1
 
       for pred_block in block.preds():
-        if pred_block.endEA == 0:
+        if pred_block.end_ea == 0:
           continue
 
         try:
-          bb_relations[pred_block.startEA - image_base].append(block.startEA - image_base)
+          bb_relations[pred_block.start_ea - image_base].append(block.start_ea - image_base)
         except KeyError:
-          bb_relations[pred_block.startEA - image_base] = [block.startEA - image_base]
+          bb_relations[pred_block.start_ea - image_base] = [block.start_ea - image_base]
 
         edges += 1
         outdegree += 1
-        if not dones.has_key(succ_block.id):
+        if succ_block.id not in dones:
           dones[succ_block] = 1
 
     for block in flow:
-      if block.endEA == 0:
+      if block.end_ea == 0:
         continue
 
-      block_ea = block.startEA - image_base
+      block_ea = block.start_ea - image_base
       for succ_block in block.succs():
-        if succ_block.endEA == 0:
+        if succ_block.end_ea == 0:
           continue
 
-        succ_base = succ_block.startEA - image_base
+        succ_base = succ_block.start_ea - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
     strongly_connected_spp = 0
@@ -1664,7 +1678,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           loops += 1
 
     asm = []
-    keys = assembly.keys()
+    keys = list(assembly.keys())
     keys.sort()
 
     # Collect the ordered list of addresses, as shown in the assembly
@@ -1685,18 +1699,18 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     cc = edges - nodes + 2
     proto = self.guess_type(f)
-    proto2 = GetType(f)
+    proto2 = idc.get_type(f)
     try:
       prime = str(self.primes[cc])
     except:
       log("Cyclomatic complexity too big: 0x%x -> %d" % (f, cc))
       prime = 0
 
-    comment = GetFunctionCmt(f, 1)
-    bytes_hash = md5("".join(bytes_hash)).hexdigest()
-    function_hash = md5("".join(function_hash)).hexdigest()
+    comment = idc.get_func_cmt(f, 1)
+    bytes_hash = md5(b"".join(bytes_hash)).hexdigest()
+    function_hash = md5(b"".join(function_hash)).hexdigest()
 
-    function_flags = GetFunctionFlags(f)
+    function_flags = get_func_attr(f, FUNCATTR_FLAGS)
     pseudo = None
     pseudo_hash1 = None
     pseudo_hash2 = None
@@ -1719,7 +1733,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       clean_assembly = self.get_cmp_asm_lines(asm)
     except:
       clean_assembly = ""
-      print "Error getting assembly for 0x%x" % f
+      print("Error getting assembly for 0x%x" % f)
 
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
@@ -1743,7 +1757,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
       md_index = str(md_index)
 
-    seg_rva = x - SegStart(x)
+    seg_rva = x - get_segm_start(x)
 
     kgh = CKoretKaramitasHash()
     kgh_hash = kgh.calculate(f)
@@ -1886,27 +1900,30 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     cur.close()
 
   def GetLocalType(self, ordinal, flags):
-    ret = GetLocalTinfo(ordinal)
+    ret = get_local_tinfo(ordinal)
     if ret is not None:
       (stype, fields) = ret
       if stype:
-        name = GetLocalTypeName(ordinal)
+        name = idc.get_numbered_type_name(ordinal)
         return idc_print_type(stype, fields, name, flags)
     return ""
 
   def export_structures(self):
-    # It seems that GetMaxLocalType, sometimes, can return negative
+    # It seems that get_ordinal_qty, sometimes, can return negative
     # numbers, according to one beta-tester. My guess is that it's a bug
     # in IDA. However, as we cannot reproduce, at least handle this
     # condition.
-    local_types = GetMaxLocalType()
+    local_types = idc.get_ordinal_qty()
     if (local_types & 0x80000000) != 0:
-      log("Warning: GetMaxLocalType returned a negative number (0x%x)!" % local_types)
+      log("Warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types)
       return
 
     for i in range(local_types):
-      name = GetLocalTypeName(i+1)
+      name = idc.get_numbered_type_name(i+1)
       definition = self.GetLocalType(i+1, PRTYPE_MULTI | PRTYPE_TYPE | PRTYPE_SEMI | PRTYPE_PRAGMA)
+      if definition is None:
+        continue
+
       type_name = "struct"
       if definition.startswith("enum"):
         type_name = "enum"
@@ -1924,18 +1941,18 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       self.add_program_data(type_name, name, definition)
 
   def get_til_names(self):
-    idb_path = GetIdbPath()
+    idb_path = get_idb_path()
     filename, ext = os.path.splitext(idb_path)
     til_path = "%s.til" % filename
 
     with open(til_path, "rb") as f:
       line = f.readline()
-      pos = line.find("Local type definitions")
+      pos = line.find(b"Local type definitions")
       if pos > -1:
-        tmp = line[pos+len("Local type definitions")+1:]
-        pos = tmp.find("\x00")
+        tmp = line[pos+len(b"Local type definitions")+1:]
+        pos = tmp.find(b"\x00")
         if pos > -1:
-          defs = tmp[:pos].split(",")
+          defs = tmp[:pos].split(b",")
           return defs
     return None
 
@@ -1969,12 +1986,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       diff_db = row["diff_db"]
       if not os.path.exists(main_db):
         log("Primary database %s not found." % main_db)
-        main_db = AskFile(0, main_db, "Select the primary database path")
+        main_db = ask_file(0, main_db, "Select the primary database path")
         if main_db is None:
           return False
 
       if not os.path.exists(diff_db):
-        diff_db = AskFile(0, main_db, "Select the secondary database path")
+        diff_db = ask_file(0, main_db, "Select the secondary database path")
         if diff_db is None:
           return False
 
@@ -2029,7 +2046,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if self.unmatched_second is not None:
       self.unmatched_second.Close()
 
-    ret = askyn_c(1, "Do you want to show only the new matches?")
+    ret = ask_yn(1, "Do you want to show only the new matches?")
     if ret == -1:
       return
     elif ret == 0:
@@ -2041,16 +2058,16 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
   def equal_db(self):
     are_equal = diaphora.CBinDiff.equal_db(self)
     if are_equal:
-      if askyn_c(0, "HIDECANCEL\nThe databases seems to be 100% equal. Do you want to continue anyway?") != 1:
+      if ask_yn(0, "HIDECANCEL\nThe databases seems to be 100% equal. Do you want to continue anyway?") != 1:
         self.do_continue = False
     return are_equal
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
   global g_bindiff
 
   total_functions = len(list(Functions()))
-  if GetIdbPath() == "" or total_functions == 0:
+  if get_idb_path() == "" or total_functions == 0:
     Warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
     return
 
@@ -2083,7 +2100,7 @@ def _diff_or_export(use_ui, **options):
     crashed_before = False
     if os.path.exists(crash_file):
       crashed_before = True
-      ret = askyn_c(1, "The previous export session crashed. Do you want to resume the previous crashed session?")
+      ret = ask_yn(1, "The previous export session crashed. Do you want to resume the previous crashed session?")
       if ret == -1:
         log("Cancelled")
         return
@@ -2091,7 +2108,7 @@ def _diff_or_export(use_ui, **options):
         resume_crashed = True
 
     if not resume_crashed and not crashed_before:
-      ret = askyn_c(0, "Export database already exists. Do you want to overwrite it?")
+      ret = ask_yn(0, "Export database already exists. Do you want to overwrite it?")
       if ret == -1:
         log("Cancelled")
         return
@@ -2160,16 +2177,16 @@ def _diff_or_export(use_ui, **options):
       else:
         bd.diff(opts.file_in)
   except:
-    print("Error: %s" % sys.exc_info()[1])
+    print(("Error: %s" % sys.exc_info()[1]))
     traceback.print_exc()
 
   return bd
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
     total_functions = len(list(Functions()))
-    sqlite_db = os.path.splitext(GetIdbPath())[0] + ".sqlite"
+    sqlite_db = os.path.splitext(get_idb_path())[0] + ".sqlite"
     self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
     self.use_decompiler = kwargs.get('use_decompiler', True)
@@ -2182,8 +2199,8 @@ class BinDiffOptions:
     self.unreliable = kwargs.get('unreliable', False)
     self.slow = kwargs.get('slow', False)
     self.experimental = kwargs.get('experimental', False)
-    self.min_ea = kwargs.get('min_ea', MinEA())
-    self.max_ea = kwargs.get('max_ea', MaxEA())
+    self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
+    self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))
     self.ida_subs = kwargs.get('ida_subs', True)
     self.ignore_sub_names = kwargs.get('ignore_sub_names', True)
     self.ignore_all_names = kwargs.get('ignore_all_names', False)
@@ -2195,7 +2212,7 @@ class BinDiffOptions:
     # Python script to run for both the export and diffing process
     self.project_script = kwargs.get('project_script')
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CHtmlDiff:
   """A replacement for difflib.HtmlDiff that tries to enforce a max width
 
@@ -2316,7 +2333,7 @@ class CHtmlDiff:
 
     return res
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class CAstVisitor(ctree_visitor_t):
   def __init__(self, cfunc):
     self.primes = primes(4096)
@@ -2339,14 +2356,14 @@ class CAstVisitor(ctree_visitor_t):
       traceback.print_exc()
     return 0
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def is_ida_file(filename):
   filename = filename.lower()
   return filename.endswith(".idb") or filename.endswith(".i64") or \
          filename.endswith(".til") or filename.endswith(".id0") or \
          filename.endswith(".id1") or filename.endswith(".nam")
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def remove_file(filename):
   try:
     os.remove(filename)
@@ -2370,7 +2387,7 @@ def remove_file(filename):
       finally:
         cur.close()
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def main():
   global g_bindiff
   if os.getenv("DIAPHORA_AUTO") is not None:
@@ -2382,7 +2399,7 @@ def main():
     if use_decompiler is None:
       use_decompiler = False
 
-    idaapi.autoWait()
+    auto_wait()
 
     if os.path.exists(file_out):
       if g_bindiff is not None:

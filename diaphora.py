@@ -2,20 +2,20 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2018, Joxean Koret
+Copyright (c) 2015-2019, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 2 of the License, or
-(at your option) any later version.
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GNU Affero General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
@@ -28,7 +28,7 @@ import sqlite3
 import threading
 
 from threading import Thread
-from cStringIO import StringIO
+from io import StringIO
 from difflib import SequenceMatcher
 from multiprocessing import cpu_count
 
@@ -45,7 +45,7 @@ except ImportError:
   is_ida = False
 
 #-----------------------------------------------------------------------
-VERSION_VALUE = "1.2.4"
+VERSION_VALUE = "2.0"
 COPYRIGHT_VALUE="Copyright(c) 2015-2019 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -75,7 +75,7 @@ def quick_ratio(buf1, buf2):
     s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
     return s.quick_ratio()
   except:
-    print "quick_ratio:", str(sys.exc_info()[1])
+    print("quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
 #-----------------------------------------------------------------------
@@ -86,7 +86,7 @@ def real_quick_ratio(buf1, buf2):
     s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
     return s.real_quick_ratio()
   except:
-    print "real_quick_ratio:", str(sys.exc_info()[1])
+    print("real_quick_ratio:", str(sys.exc_info()[1]))
     return 0
 
 #-----------------------------------------------------------------------
@@ -100,7 +100,7 @@ def ast_ratio(ast1, ast2):
 #-----------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
-    print("[%s] %s" % (time.asctime(), msg))
+    print(("[%s] %s" % (time.asctime(), msg)))
 
 #-----------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -178,6 +178,13 @@ class CChooser():
 #-----------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
+
+#-----------------------------------------------------------------------
+class bytes_encoder(json.JSONEncoder):
+  def default(self, obj):
+    if isinstance(obj, bytes):
+      return obj.decode("utf-8")
+    return json.JSONEncoder.default(self, obj)
 
 #-----------------------------------------------------------------------
 class CBinDiff:
@@ -621,11 +628,13 @@ class CBinDiff:
     # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
     for prop in props[:len(props)-4]:
       # XXX: Fixme! This is a hack for 64 bit architectures kernels
-      if type(prop) is long and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+      if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
         prop = str(prop)
+      elif type(prop) is bytes:
+        prop = prop.encode("utf-8")
 
       if type(prop) is list or type(prop) is set:
-        new_props.append(json.dumps(list(prop), ensure_ascii=False))
+        new_props.append(json.dumps(list(prop), ensure_ascii=False, cls=bytes_encoder))
       else:
         new_props.append(prop)
 
@@ -647,7 +656,7 @@ class CBinDiff:
     try:
       cur.execute(sql, new_props)
     except:
-      print prop
+      print("Props???", new_props)
       raise
 
     func_id = cur.lastrowid
@@ -665,7 +674,7 @@ class CBinDiff:
     sql = "insert into constants (func_id, constant) values (?, ?)"
     props_dict = self.create_function_dictionary(props)
     for constant in props_dict["constants"]:
-      if type(constant) is str and len(constant) > 4:
+      if type(constant) in [str, bytes] and len(constant) > 4:
         cur.execute(sql, (func_id, constant))
 
     # Phase 4: Save the basic blocks relationships
@@ -1079,11 +1088,7 @@ class CBinDiff:
       elif ratio == HEUR_TYPE_RATIO:
         t = Thread(target=self.add_matches_from_query_ratio, args=(sql, best, partial))
       elif ratio == HEUR_TYPE_RATIO_MAX:
-        if category == "Partial":
-          best = self.partial_chooser
-          partial = self.unreliable_chooser
-
-        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, best, partial, min_value))
+        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, min_value))
       else:
         raise Exception("Invalid heuristic ratio calculation value!")
 
@@ -1131,7 +1136,7 @@ class CBinDiff:
               log_refresh("Timeout, cancelling queries...")
               self.get_db().interrupt()
             except:
-              print("database.interrupt(): %s" % str(sys.exc_info()[1]))
+              print(("database.interrupt(): %s" % str(sys.exc_info()[1])))
 
         if times % 50 == 0:
           names = []
@@ -1156,8 +1161,8 @@ class CBinDiff:
     if self.relaxed_ratio and ast1 is not None and ast2 is not None and max(len(ast1), len(ast2)) < 16:
       ast_done = True
       v3 = self.ast_ratio(ast1, ast2)
-      if v3 == 1:
-        return 1.0
+      if v3 == 1.0:
+        return v3
 
     v1 = 0
     if pseudo1 is not None and pseudo2 is not None and pseudo1 != "" and pseudo2 != "":
@@ -1203,6 +1208,14 @@ class CBinDiff:
       v4 = min((v1 + v2 + v3 + 3.0) / 4, 1.0)
 
     r = max(v1, v2, v3, v4)
+    if r == 1.0 and md1 != md2:
+      # We cannot assign a 1.0 ratio if both MD indices are different, that's an
+      # error
+      r = 0
+      for v in [v1, v2, v3, v4]:
+        if v != 1.0 and v > r:
+          r = v
+
     return r
 
   def all_functions_matched(self):
@@ -1255,9 +1268,9 @@ class CBinDiff:
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
       if debug:
-        print "0x%x 0x%x %d" % (int(ea), int(ea2), r)
+        print("0x%x 0x%x %d" % (int(ea), int(ea2), r))
 
-      if r == 1:
+      if r == 1.0:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
@@ -1276,7 +1289,7 @@ class CBinDiff:
 
     cur.close()
 
-  def add_matches_from_query_ratio_max(self, sql, best, partial, val):
+  def add_matches_from_query_ratio_max(self, sql, val):
     if self.all_functions_matched():
       return
     
@@ -1321,17 +1334,16 @@ class CBinDiff:
         continue
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
-
-      if r == 1:
+      if r == 1.0:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif r > val:
-        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+      elif r >= 0.5:
+        self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif partial is not None:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+      elif r < 0.5 and r > val:
+        self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
 
@@ -1378,7 +1390,7 @@ class CBinDiff:
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
       good_ratio = False
-      if r == 1:
+      if r == 1.0:
         item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
         good_ratio = True
         self.best_chooser.add_item(item)
@@ -1995,7 +2007,7 @@ if __name__ == "__main__":
   elif is_ida:
     diaphora_dir = os.path.dirname(__file__)
     script = os.path.join(diaphora_dir, "diaphora_ida.py")
-    execfile(script)
+    exec(compile(open(script, "rb").read(), script, 'exec'))
     do_diff = False
   else:
     import argparse

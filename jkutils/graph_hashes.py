@@ -7,10 +7,10 @@ An implementation of the Koret-Karamitas (KOKA) CFGs hashing algorithm.
 Based on the paper Efficient Features for Function Matching between Binary
 Executables by Huku (Chariton Karamitas, CENSUS S.A., huku@census-labs.com).
 
-Copyright (c) 2018, Joxean Koret
+Copyright (c) 2018-2019, Joxean Koret
 """
 
-from __future__ import print_function
+
 
 import sys
 import time
@@ -73,10 +73,10 @@ class CKoretKaramitasHash:
   def get_node_value(self, succs, preds):
     """ Return a set of prime numbers corresponding to the characteristics of the node. """
     ret = 1
-    if succs == 0:
+    if preds == 0:
       ret *= NODE_ENTRY
     
-    if preds == 0:
+    if succs == 0:
       ret *= NODE_EXIT
 
     ret *= NODE_NORMAL
@@ -91,6 +91,11 @@ class CKoretKaramitasHash:
       ret *= EDGE_IN_CONDITIONAL
 
     return ret
+
+  def is_call_insn(self, ea):
+    ins = ida_ua.insn_t()
+    ida_ua.decode_insn(ins, ea)
+    return ida_idp.is_call_insn(ins)
 
   def calculate(self, f):
     func = get_func(f)
@@ -108,8 +113,8 @@ class CKoretKaramitasHash:
 
     # Iterate through each basic block
     for block in flow:
-      block_ea = block.startEA
-      if block.endEA == 0:
+      block_ea = block.start_ea
+      if block.end_ea == 0:
         continue
 
       succs = list(block.succs())
@@ -119,9 +124,9 @@ class CKoretKaramitasHash:
       hash *= self.get_edges_value(block, succs, preds)
 
       # ...and each instruction on each basic block
-      for ea in list(Heads(block.startEA, block.endEA)):
+      for ea in list(Heads(block.start_ea, block.end_ea)):
 
-        if is_call_insn(ea):
+        if self.is_call_insn(ea):
           hash *= FEATURE_CALL
 
         l = list(DataRefsFrom(ea))
@@ -130,7 +135,7 @@ class CKoretKaramitasHash:
 
         for xref in CodeRefsFrom(ea, 0):
           tmp_func = get_func(xref)
-          if tmp_func is None or tmp_func.startEA != func.startEA:
+          if tmp_func is None or tmp_func.start_ea != func.start_ea:
             hash *= FEATURE_CALL_REF
 
         # Remember the relationships
@@ -138,14 +143,14 @@ class CKoretKaramitasHash:
 
         # Iterate the succesors of this basic block
         for succ_block in block.succs():
-          bb_relations[block_ea].append(succ_block.startEA)
+          bb_relations[block_ea].append(succ_block.start_ea)
 
         # Iterate the predecessors of this basic block
         for pred_block in block.preds():
           try:
-            bb_relations[pred_block.startEA].append(block.startEA)
+            bb_relations[pred_block.start_ea].append(block.start_ea)
           except KeyError:
-            bb_relations[pred_block.startEA] = [block.startEA]
+            bb_relations[pred_block.start_ea] = [block.start_ea]
 
     # Calculate the strongly connected components
     try:
@@ -164,7 +169,7 @@ class CKoretKaramitasHash:
     except:
       print("Exception:", str(sys.exc_info()[1]))
 
-    flags = GetFunctionFlags(f)
+    flags = get_func_attr(f, FUNCATTR_FLAGS)
     if flags & FUNC_NORET:
       hash *= FEATURE_FUNC_NO_RET
     if flags & FUNC_LIB:
