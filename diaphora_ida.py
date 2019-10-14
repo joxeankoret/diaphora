@@ -148,6 +148,22 @@ class CHtmlViewer(PluginForm):
     return PluginForm.Show(self, title)
 
 #-------------------------------------------------------------------------------
+class CBasicChooser(Choose):
+  def __init__(self, title):
+      Choose.__init__(
+          self,
+          title,
+          [ ["Id",   10 | Choose.CHCOL_PLAIN] ,
+            ["Name", 30 | Choose.CHCOL_PLAIN] ])
+      self.items = []
+
+  def OnGetSize(self):
+      return len(self.items)
+
+  def OnGetLine(self, n):
+      return self.items[n]
+
+#-------------------------------------------------------------------------------
 # Hex-Rays finally removed AddCommand(). Now, instead of a 1 line call, we need
 # 2 classes...
 class command_handler_t(ida_kernwin.action_handler_t):
@@ -166,7 +182,7 @@ class command_handler_t(ida_kernwin.action_handler_t):
     return idaapi.AST_ENABLE_ALWAYS
 
 #-------------------------------------------------------------------------------
-# Support for the removed AddCommand() API. I'll really miss it...
+# Support for the removed AddCommand() API
 class CDiaphoraChooser(diaphora.CChooser, Choose):
   def __init__(self, title, bindiff, show_commands = True):
     diaphora.CChooser.__init__(self, title, bindiff, show_commands)
@@ -194,16 +210,6 @@ class CIDAChooser(CDiaphoraChooser):
       Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
                                       ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose.CH_MULTI)
 
-  def OnClose(self):
-    """space holder"""
-    return True
-
-  def OnEditLine(self, n):
-    """space holder"""
-
-  def OnInsertLine(self):
-    pass
-
   def OnSelectLine(self, n):
     item = self.items[n[0]]
     if self.primary:
@@ -226,10 +232,20 @@ class CIDAChooser(CDiaphoraChooser):
   def OnGetSize(self):
     return len(self.items)
 
-  def OnDeleteLine(self, n):
-    if n >= 0:
-      del self.items[n]
-    return True
+  def OnDeleteLine(self, items):
+    for n in items:
+      if n >= 0:
+        name1 = self.items[n][2]
+        name2 = self.items[n][4]
+
+        del self.items[n]
+        
+        if name1 in self.bindiff.matched1:
+          self.bindiff.matched1.remove(name1)
+        if name2 in self.bindiff.matched2:
+          self.bindiff.matched2.remove(name2)
+
+    return [Choose.ALL_CHANGED] + items
 
   def OnRefresh(self, n):
     return n
@@ -244,6 +260,7 @@ class CIDAChooser(CDiaphoraChooser):
 
     if self.show_commands and (self.cmd_diff_asm is None or force):
       # create aditional actions handlers
+      self.cmd_add_manual_match = self.AddCommand("Add manual match")
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
@@ -308,8 +325,51 @@ class CIDAChooser(CDiaphoraChooser):
       filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
       if filename is not None:
         self.bindiff.save_results(filename)
+    elif cmd_id == self.cmd_add_manual_match:
+      self.add_manual_match()
 
     return True
+
+  def get_diff_functions(self):
+    cur = self.bindiff.db_cursor()
+    cur.execute("select cast(id as text), name from functions order by id")
+    rows = list(cur.fetchall())
+    rows = list(map(list, rows))
+    cur.close()
+
+    return rows
+
+  def add_manual_match(self):
+    f = choose_func("Select a function from the current database...", 0)
+    if f is not None:
+      diff_chooser = CBasicChooser("Select a function from the external database...")
+      diff_funcs = self.get_diff_functions()
+      diff_chooser.items = diff_funcs
+      ret = diff_chooser.Show(modal=True)
+      if ret > -1:
+        name1 = get_func_name(f.start_ea)
+        name2 = diff_funcs[ret][1]
+
+        if name1 in self.bindiff.matched1 or name2 in self.bindiff.matched2:
+          line = "Either the local function %s or the foreign function %s are already matched.\n" + \
+                 "Please remove the previously assigned match before adding a manual match."
+          warning(line % (repr(name1), repr(name2)))
+        else:
+          log("Adding manual match between %s and %s" % (name1, name2))
+          sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                           'Manual Match' description,
+                           f.pseudocode pseudo1, df.pseudocode pseudo2,
+                           f.assembly asm1, df.assembly asm2,
+                           f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                           f.nodes bb1, df.nodes bb2,
+                           cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                      from functions f,
+                           diff.functions df
+                     where f.name = %s
+                       and df.name = %s""" % (repr(name1), repr(name2))
+          self.bindiff.add_matches_from_query_ratio(sql, self.bindiff.best_chooser, self.bindiff.partial_chooser)
+          for chooser in [self.bindiff.best_chooser, self.bindiff.partial_chooser, self.bindiff.unreliable_chooser]:
+            chooser.Refresh()
 
   def OnSelectionChange(self, sel_list):
     self.selected_items = sel_list
@@ -475,7 +535,7 @@ class CDiffGraphViewer(GraphViewer):
       self.nodes = {}
       self.colours = colours
     except:
-      Warning("CDiffGraphViewer: OnInit!!! " + str(sys.exc_info()[1]))
+      warning("CDiffGraphViewer: OnInit!!! " + str(sys.exc_info()[1]))
 
   def OnRefresh(self):
     try:
@@ -666,7 +726,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     if crashed_before:
       start_func = self.get_last_crash_func()
       if start_func is None:
-        Warning("Diaphora cannot resume the previous crashed session, the export process will start from scratch.")
+        warning("Diaphora cannot resume the previous crashed session, the export process will start from scratch.")
         crashed_before = False
       else:
         callgraph_primes, callgraph_all_primes = self.recalculate_primes()
@@ -848,7 +908,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
     if len(rows) != 2:
-      Warning("Sorry, there is no assembly available for either the first or the second database.")
+      warning("Sorry, there is no assembly available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -900,7 +960,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.execute(sql, (ea, ))
     row = cur.fetchone()
     if row is None:
-      Warning("Sorry, there is no assembly available for the selected function.")
+      warning("Sorry, there is no assembly available for the selected function.")
     else:
       fmt = HtmlFormatter()
       fmt.noclasses = True
@@ -926,7 +986,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.execute(sql, (str(ea), ))
     row = cur.fetchone()
     if row is None or row["prototype"] is None or row["pseudocode"] is None:
-      Warning("Sorry, there is no pseudo-code available for the selected function.")
+      warning("Sorry, there is no pseudo-code available for the selected function.")
     else:
       fmt = HtmlFormatter()
       fmt.noclasses = True
@@ -956,7 +1016,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
     if len(rows) != 2:
-      Warning("Sorry, there is no pseudo-code available for either the first or the second database.")
+      warning("Sorry, there is no pseudo-code available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -966,7 +1026,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       if proto1:
         buf1 = proto1 + "\n" + "\n".join(self.pseudo[int(ea1)])
       else:
-        log("Warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
+        log("warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
         buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
 
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
@@ -983,7 +1043,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     g2 = self.get_graph(str(ea2))
 
     if g1 == ({}, {}) or g2 == ({}, {}):
-      Warning("Sorry, graph information is not available for one of the databases.")
+      warning("Sorry, graph information is not available for one of the databases.")
       return False
 
     colours = self.compare_graphs(g1, ea1, g2, ea2)
@@ -1364,7 +1424,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       action_name, action_desc, action_handler, hotkey = item
       self.register_menu_action(action_name, action_desc, action_handler, hotkey)
 
-    Warning("""AUTOHIDE REGISTRY\nIf you close one tab you can always re-open it by pressing F3
+    warning("""AUTOHIDE REGISTRY\nIf you close one tab you can always re-open it by pressing F3
 or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   # Ripped out from REgoogle
@@ -1915,7 +1975,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     # condition.
     local_types = idc.get_ordinal_qty()
     if (local_types & 0x80000000) != 0:
-      log("Warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types)
+      log("warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types)
       return
 
     for i in range(local_types):
@@ -1973,14 +2033,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) != 1:
-        Warning("Malformed results database!")
+        warning("Malformed results database!")
         return False
 
       row = rows[0]
       version = row["version"]
       if version != diaphora.VERSION_VALUE:
         msg = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
-        Warning(msg % (version, diaphora.VERSION_VALUE))
+        warning(msg % (version, diaphora.VERSION_VALUE))
 
       main_db = row["main_db"]
       diff_db = row["diff_db"]
@@ -2068,7 +2128,7 @@ def _diff_or_export(use_ui, **options):
 
   total_functions = len(list(Functions()))
   if get_idb_path() == "" or total_functions == 0:
-    Warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
+    warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
     return
 
   opts = BinDiffOptions(**options)
@@ -2084,13 +2144,13 @@ def _diff_or_export(use_ui, **options):
     opts = x.get_options()
 
   if opts.file_out == opts.file_in:
-    Warning("Both databases are the same file!")
+    warning("Both databases are the same file!")
     return
   elif opts.file_out == "" or len(opts.file_out) < 5:
-    Warning("No output database selected or invalid filename. Please select a database file.")
+    warning("No output database selected or invalid filename. Please select a database file.")
     return
   elif is_ida_file(opts.file_in) or is_ida_file(opts.file_out):
-    Warning("One of the selected databases is an IDA file. Please select only database files")
+    warning("One of the selected databases is an IDA file. Please select only database files")
     return
 
   export = True
@@ -2194,7 +2254,7 @@ class BinDiffOptions:
 
     self.relax = kwargs.get('relax')
     if self.relax:
-      Warning(MSG_RELAXED_RATIO_ENABLED)
+      warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get('unreliable', False)
     self.slow = kwargs.get('slow', False)
