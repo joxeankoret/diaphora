@@ -20,7 +20,15 @@ Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in 
 
 You can join the mailing list https://groups.google.com/forum/?hl=es#!forum/diaphora to ask for help, new features, report issues, etc... For reporting bugs, however, I recommend using the issues tracker:  https://github.com/joxeankoret/diaphora/issues
 
-Please note that only the last 3 versions of IDA are officially supported. As of today, it means that only IDA 7.1, 7.2 and 7.3 are supported. Versions 6.8, 6.9, 6.95 and 7.0 do work (with all the last patches that were supplied to *customers*), but no official support is offered for them. However, if you run into any problem with these versions, ping me and I will do my best.
+## License
+
+Versions of Diaphora prior to 1.2.4, including version 1.2.4, are licensed under the [GNU GPL version 3](https://www.gnu.org/licenses/gpl-3.0.html). Since version 2.0, Diaphora is now licensed under the [GNU Affero GPL version 3 license](https://www.gnu.org/licenses/agpl-3.0.html). The license has been changed so companies wanting to modify and adapt Diaphora cannot offer web services based on these modified versions without contributing back the changes.
+
+For 99.99% of users, the license change doesn't affect them at all. If your company needs a different licensing model, check the next section...
+
+## Licensing
+
+Commercial licenses of Diaphora are available. Please contact admin@joxeankoret.com for more details.
 
 ## Donations
 
