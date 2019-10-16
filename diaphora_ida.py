@@ -31,7 +31,7 @@ from hashlib import md5
 import diaphora
 
 from pygments import highlight
-from pygments.lexers import NasmLexer, CppLexer
+from pygments.lexers import NasmLexer, CppLexer, DiffLexer
 from pygments.formatters import HtmlFormatter
 
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
@@ -263,6 +263,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_add_manual_match = self.AddCommand("Add manual match")
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
+      self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_import_selected = self.AddCommand("Import selected", "Ctrl+Alt+i")
       self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
@@ -297,6 +298,8 @@ class CIDAChooser(CDiaphoraChooser):
           self.bindiff.import_selected(self.items, self.selected_items, cmd_id == self.cmd_import_selected_auto)
     elif cmd_id == self.cmd_diff_c:
       self.bindiff.show_pseudo_diff(self.items[n])
+    elif cmd_id == self.cmd_diff_c_patch:
+      self.bindiff.show_pseudo_diff(self.items[n], html=False)
     elif cmd_id == self.cmd_diff_asm:
       self.bindiff.show_asm_diff(self.items[n])
     elif cmd_id == self.cmd_highlight_functions:
@@ -410,7 +413,7 @@ class CBinDiffExporterSetup(Form):
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
 
-  SQLite databases:                                                                                                                    Export filter limits:
+  SQLite databases:                                                                                                                                                     Export filter limits:
   <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
@@ -999,7 +1002,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       cdiffer.Show(src, title)
     cur.close()
 
-  def show_pseudo_diff(self, item):
+  def show_pseudo_diff(self, item, html = True):
     cur = self.db_cursor()
     sql = """select *
                from (
@@ -1031,11 +1034,29 @@ class CIDABinDiff(diaphora.CBinDiff):
         buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
 
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
-      src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
+      
+      if not html:
+        uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
+        tmp = []
+        for line in uni_diff:
+          tmp.append(line.strip("\n"))
+        tmp = tmp[2:]
+        buf = "\n".join(tmp)
+
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = False
+        fmt.nobackground = True
+        src = highlight(buf, DiffLexer(), fmt)
+      else:
+        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
 
       title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
+      
+      with open("/home/joxean/Documents/research/diaphora/current-diaphora/kk.html", "w") as f:
+        f.write(src)
 
     cur.close()
 
@@ -2349,8 +2370,10 @@ class CHtmlDiff:
     for left, right, changed in difflib._mdiff(lhs, rhs):
         lno, ltxt = left
         rno, rtxt = right
+
         ltxt = self._stop_wasting_space(ltxt)
         rtxt = self._stop_wasting_space(rtxt)
+
         ltxt = self._trunc(ltxt, changed).replace(" ", "&nbsp;")
         rtxt = self._trunc(rtxt, changed).replace(" ", "&nbsp;")
 
@@ -2383,23 +2406,17 @@ class CHtmlDiff:
     else:
       return s
 
-  def _trunc(self, s, changed, max_col=120):
+  def _trunc(self, s, changed):
     if not changed:
-      return s[:max_col]
+      return s
 
     # Don't count markup towards the length.
-    outlen = 0
     push = 0
     for i, ch in enumerate(s):
       if ch == "\x00": # Followed by an additional byte that should also not count
-        outlen -= 1
         push = True
       elif ch == "\x01":
         push = False
-      else:
-        outlen += 1
-      if outlen == max_col:
-        break
 
     res = s[:i + 1]
     if push:
