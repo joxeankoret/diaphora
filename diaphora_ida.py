@@ -1054,9 +1054,6 @@ class CIDABinDiff(diaphora.CBinDiff):
       title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
-      
-      with open("/home/joxean/Documents/research/diaphora/current-diaphora/kk.html", "w") as f:
-        f.write(src)
 
     cur.close()
 
