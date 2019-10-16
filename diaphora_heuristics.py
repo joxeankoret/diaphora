@@ -228,7 +228,8 @@ HEURISTICS.append({
         and f.instructions = df.instructions
         and f.nodes = df.nodes
         and f.edges = df.edges
-        and f.mnemonics = df.mnemonics""",
+        and f.mnemonics = df.mnemonics
+        and f.nodes > 1""",
   "flags":HEUR_FLAG_NONE
 })
 

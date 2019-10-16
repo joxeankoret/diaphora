@@ -945,8 +945,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     new_func = self.read_function(str(ea1))
     self.delete_function(ea1)
     self.save_function(new_func)
-
     self.db.commit()
+
+    self.update_choosers()
 
   def show_asm(self, item, primary):
     cur = self.db_cursor()
@@ -1290,8 +1291,21 @@ class CIDABinDiff(diaphora.CBinDiff):
         self.save_function(new_func)
         total += 1
       self.db.commit()
+
+      # Update the choosers after importing
+      self.update_choosers()
     finally:
       hide_wait_box()
+
+  def update_choosers(self):
+    for chooser in [self.best_chooser, self.partial_chooser, self.unreliable_chooser]:
+      for i, item in enumerate(chooser.items):
+        ea = int(item[1], 16)
+        name = item[2]
+        func_name = get_func_name(ea)
+        if func_name is not None and func_name != "" and func_name != name:
+          chooser.items[i][2] = func_name
+      chooser.Refresh()
 
   def do_import_all(self, items):
     # Import all the type libraries from the diff database
