@@ -395,6 +395,7 @@ HEURISTICS.append({
              diff.functions df
        where f.md_index = df.md_index
          and f.md_index > 0
+         and f.nodes > 3 and df.nodes > 3
          and ((f.constants = df.constants
          and f.constants_count > 0)) %POSTFIX%""",
   "flags":HEUR_FLAG_NONE

@@ -92,7 +92,7 @@ g_bindiff = None
 def show_choosers():
   global g_bindiff
   if g_bindiff is not None:
-    g_bindiff.show_choosers(True)
+    g_bindiff.show_choosers(False)
 
 #-------------------------------------------------------------------------------
 def save_results():
@@ -176,7 +176,11 @@ class command_handler_t(ida_kernwin.action_handler_t):
   def activate(self, ctx):
     if self.num_args == 1:
       return self.obj.OnCommand(self.cmd_id)
-    return self.obj.OnCommand(self.obj.selected_items[0], self.cmd_id)
+    if len(self.obj.selected_items) == 0:
+      sel = 0
+    else:
+      sel = self.obj.selected_items[0]
+    return self.obj.OnCommand(sel, self.cmd_id)
 
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
@@ -247,9 +251,6 @@ class CIDAChooser(CDiaphoraChooser):
 
     return [Choose.ALL_CHANGED] + items
 
-  def OnRefresh(self, n):
-    return n
-
   def show(self, force=False):
     if self.show_commands:
       self.items = sorted(self.items, key=lambda x: decimal.Decimal(x[5]), reverse=True)
@@ -309,13 +310,13 @@ class CIDAChooser(CDiaphoraChooser):
           ea = int(item[1], 16)
           if not set_color(ea, CIC_FUNC, color):
             print("Error setting color for %x" % ea)
-        Refresh()
+        self.Refresh()
     elif cmd_id == self.cmd_unhighlight_functions:
       for item in self.items:
         ea = int(item[1], 16)
-        if not SetColor(ea, CIC_FUNC, 0xFFFFFF):
+        if not set_color(ea, CIC_FUNC, 0xFFFFFF):
           print("Error setting color for %x" % ea)
-      Refresh()
+      self.Refresh()
     elif cmd_id == self.cmd_diff_graph:
       item = self.items[n]
       ea1 = int(item[1], 16)
@@ -335,7 +336,7 @@ class CIDAChooser(CDiaphoraChooser):
 
   def get_diff_functions(self):
     cur = self.bindiff.db_cursor()
-    cur.execute("select cast(id as text), name from functions order by id")
+    cur.execute("select cast(id as text), name from diff.functions order by id")
     rows = list(cur.fetchall())
     rows = list(map(list, rows))
     cur.close()
@@ -921,7 +922,12 @@ class CIDABinDiff(diaphora.CBinDiff):
       asm2 = self.prettify_asm(row2["assembly"])
       buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
       buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
-      src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
+      
+      fmt = HtmlFormatter()
+      fmt.noclasses = True
+      fmt.linenos = False
+      fmt.nobackground = True
+      src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
 
       title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
@@ -1032,9 +1038,16 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         log("warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
         buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
-
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
-      
+
+      if buf1 == buf2:
+        warning("Both pseudo-codes are equal.")
+        return
+
+      fmt = HtmlFormatter()
+      fmt.noclasses = True
+      fmt.linenos = False
+      fmt.nobackground = True
       if not html:
         uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
         tmp = []
@@ -1042,14 +1055,10 @@ class CIDABinDiff(diaphora.CBinDiff):
           tmp.append(line.strip("\n"))
         tmp = tmp[2:]
         buf = "\n".join(tmp)
-
-        fmt = HtmlFormatter()
-        fmt.noclasses = True
-        fmt.linenos = False
-        fmt.nobackground = True
+        
         src = highlight(buf, DiffLexer(), fmt)
       else:
-        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"))
+        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, CppLexer())
 
       title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
       cdiffer = CHtmlViewer()
@@ -2362,22 +2371,25 @@ class CHtmlDiff:
 
   _rexp_too_much_space = re.compile("^\t[.\\w]+ {8}")
 
-  def make_file(self, lhs, rhs):
+  def make_file(self, lhs, rhs, fmt, lex):
     rows = []
     for left, right, changed in difflib._mdiff(lhs, rhs):
         lno, ltxt = left
         rno, rtxt = right
 
-        ltxt = self._stop_wasting_space(ltxt)
-        rtxt = self._stop_wasting_space(rtxt)
+        if not changed:
+          ltxt = highlight(ltxt, lex, fmt)
+          rtxt = highlight(rtxt, lex, fmt)
+        else:
+          ltxt = self._stop_wasting_space(ltxt)
+          rtxt = self._stop_wasting_space(rtxt)
 
-        ltxt = self._trunc(ltxt, changed).replace(" ", "&nbsp;")
-        rtxt = self._trunc(rtxt, changed).replace(" ", "&nbsp;")
-
-        ltxt = ltxt.replace("<", "&lt;")
-        ltxt = ltxt.replace(">", "&gt;")
-        rtxt = rtxt.replace("<", "&lt;")
-        rtxt = rtxt.replace(">", "&gt;")
+          ltxt = ltxt.replace(" ", "&nbsp;")
+          rtxt = rtxt.replace(" ", "&nbsp;")
+          ltxt = ltxt.replace("<", "&lt;")
+          ltxt = ltxt.replace(">", "&gt;")
+          rtxt = rtxt.replace("<", "&lt;")
+          rtxt = rtxt.replace(">", "&gt;")
 
         row = self._row_template % (str(lno), ltxt, str(rno), rtxt)
         rows.append(row)
@@ -2402,24 +2414,6 @@ class CHtmlDiff:
       return s[:mlen-4] + s[mlen:]
     else:
       return s
-
-  def _trunc(self, s, changed):
-    if not changed:
-      return s
-
-    # Don't count markup towards the length.
-    push = 0
-    for i, ch in enumerate(s):
-      if ch == "\x00": # Followed by an additional byte that should also not count
-        push = True
-      elif ch == "\x01":
-        push = False
-
-    res = s[:i + 1]
-    if push:
-      res += "\x01"
-
-    return res
 
 #-------------------------------------------------------------------------------
 class CAstVisitor(ctree_visitor_t):
