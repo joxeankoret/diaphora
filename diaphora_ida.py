@@ -832,7 +832,14 @@ class CIDABinDiff(diaphora.CBinDiff):
     sql = "select name from diff.program_data where type = 'til'"
     cur.execute(sql)
     for row in cur.fetchall():
-      add_default_til(row["name"])
+      til = row["name"]
+      if type(til) is bytes:
+        til = til.decode("utf-8")
+
+      try:
+        add_default_til(til)
+      except:
+        log("Error loading til %s: %s" % (row["name"], str(sys.exc_info()[1])))
     cur.close()
     auto_wait()
 
