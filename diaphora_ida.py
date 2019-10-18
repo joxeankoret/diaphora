@@ -261,6 +261,7 @@ class CIDAChooser(CDiaphoraChooser):
 
     if self.show_commands and (self.cmd_diff_asm is None or force):
       # create aditional actions handlers
+      self.cmd_rediff = self.AddCommand("Diff again")
       self.cmd_add_manual_match = self.AddCommand("Add manual match")
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
@@ -331,6 +332,9 @@ class CIDAChooser(CDiaphoraChooser):
         self.bindiff.save_results(filename)
     elif cmd_id == self.cmd_add_manual_match:
       self.add_manual_match()
+    elif cmd_id == self.cmd_rediff:
+      self.bindiff.db.execute("detach diff")
+      timeraction_t(self.bindiff.re_diff, None, 1000)
 
     return True
 
@@ -1367,12 +1371,6 @@ class CIDABinDiff(diaphora.CBinDiff):
   def import_all(self, items):
     try:
       self.do_import_all(items)
-
-      msg = "AUTOHIDE DATABASE\nHIDECANCEL\nAll functions were imported. Do you want to relaunch the diffing process?"
-      if ask_yn(1, msg) == 1:
-        self.db.execute("detach diff")
-        # We cannot run that code here or otherwise IDA will crash corrupting the stack
-        timeraction_t(self.re_diff, None, 1000)
     except:
       log("import_all(): %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
@@ -2154,14 +2152,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if self.unmatched_second is not None:
       self.unmatched_second.Close()
 
-    ret = ask_yn(1, "Do you want to show only the new matches?")
-    if ret == -1:
-      return
-    elif ret == 0:
-      self.matched1 = set()
-      self.matched2 = set()
-
-    self.diff(self.last_diff_db)
+    _diff_or_export(use_ui=True, file_in=self.last_diff_db,
+                                 project_script = self.project_script)
 
   def equal_db(self):
     are_equal = diaphora.CBinDiff.equal_db(self)
