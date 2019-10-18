@@ -25,6 +25,7 @@ def strongly_connected_components(graph):
         
     def visit(node):
         if node in low: return
+        if node not in graph: graph[node] = []
 
         num = len(low)
         low[node] = num
@@ -42,7 +43,7 @@ def strongly_connected_components(graph):
             for item in component:
                 low[item] = len(graph)
     
-    for node in graph:
+    for node in dict(graph):
         visit(node)
     
     return result
