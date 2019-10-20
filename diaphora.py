@@ -1933,18 +1933,17 @@ class CBinDiff:
       cur.execute("select value from diff.version")
     except:
       log("Error: %s " % sys.exc_info()[1])
-      Warning("The selected file does not look like a valid Diaphora exported database!")
+      log("The selected file does not look like a valid Diaphora exported database!")
       cur.close()
       return False
 
     row = cur.fetchone()
     if not row:
-      Warning("Invalid database!")
+      log("Invalid database!")
       return False
 
     if row["value"] != VERSION_VALUE:
-      Warning("The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
-      return False
+      log("WARNING: The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
 
     try:
       t0 = time.time()

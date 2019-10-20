@@ -50,21 +50,27 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 PRTYPE_SEMI = 0x0008
 
 # Messages
-MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n<b>Relaxed ratio calculations</b> can be enabled. It will ignore many small
-modifications to functions and will match more functions with higher ratios. Enable this option if you're only interested in the
-new functionality. Disable it for patch diffing if you're interested in small modifications (like buffer sizes).
-<br><br>
-This is recommended for diffing big databases (more than 20,000 functions in the database).<br><br>
-You can disable it by un-checking the 'Relaxed calculations of differences ratios' option."""
+MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n
+Relaxed ratio calculations can be enabled. It will ignore many small
+modifications to functions and will match more functions with higher ratios.
+Enable this option if you're only interested in the new functionality. Disable
+it for patch diffing if you're interested in small modifications (like buffer
+sizes).
 
-MSG_FUNCTION_SUMMARIES_ONLY = """AUTOHIDE DATABASE\n<b>Do not export basic blocks or instructions</b> will be enabled.<br>
-It will not export the information relative to basic blocks or<br>
-instructions and 'Diff assembly in a graph' will not be available.
-<br><br>
-This is automatically done for exporting huge databases with<br>
-more than 100,000 functions.<br><br>
-You can disable it by un-checking the 'Do not export basic blocks<br>
-or instructions' option."""
+This is recommended for diffing big databases (more than 20,000 functions in the
+database).
+
+You can disable it by un-checking the 'Relaxed calculations of differences
+ratios' option."""
+
+MSG_FUNCTION_SUMMARIES_ONLY = """AUTOHIDE DATABASE\n
+Do not export basic blocks or instructions will be enabled. It will not export
+the information relative to basic blocks or instructions and 'Diff assembly in a
+graph' will not be available.
+
+This is automatically done for exporting huge databases with more than 100,000
+functions. You can disable it by un-checking the 'Do not export basic blocks or
+instructions' option."""
 
 LITTLE_ORANGE = 0x026AFD
 
@@ -136,7 +142,8 @@ class CHtmlViewer(PluginForm):
   def PopulateForm(self):
     self.layout = QtWidgets.QVBoxLayout()
     self.browser = QtWidgets.QTextBrowser()
-    self.browser.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+    self.browser.setLineWrapMode(QtWidgets.QTextEdit.FixedColumnWidth)
+    self.browser.setLineWrapColumnOrWidth(150)
     self.browser.setHtml(self.text)
     self.browser.setReadOnly(True)
     self.browser.setFontWeight(12)
@@ -193,15 +200,21 @@ class CDiaphoraChooser(diaphora.CChooser, Choose):
     self.actions = []
 
   def AddCommand(self, menu_name, shortcut=None):
-    action_name = "Diaphora:%s" % menu_name.replace(" ", "")
+    if menu_name is not None:
+      action_name = "Diaphora:%s" % menu_name.replace(" ", "")
+    else:
+      action_name = None
     self.actions.append([len(self.actions), action_name, menu_name, shortcut])
     return len(self.actions)-1
 
   def OnPopup(self, form, popup_handle):
     for num, action_name, menu_name, shortcut in self.actions:
-      handler = command_handler_t(self, num, 2)
-      desc = ida_kernwin.action_desc_t(action_name, menu_name, handler, shortcut)
-      ida_kernwin.attach_dynamic_action_to_popup(form, popup_handle, desc)
+      if menu_name is None:
+        ida_kernwin.attach_action_to_popup(form, popup_handle, None)
+      else:
+        handler = command_handler_t(self, num, 2)
+        desc = ida_kernwin.action_desc_t(action_name, menu_name, handler, shortcut)
+        ida_kernwin.attach_dynamic_action_to_popup(form, popup_handle, desc)
 
 #-------------------------------------------------------------------------------
 class CIDAChooser(CDiaphoraChooser):
@@ -262,18 +275,21 @@ class CIDAChooser(CDiaphoraChooser):
     if self.show_commands and (self.cmd_diff_asm is None or force):
       # create aditional actions handlers
       self.cmd_rediff = self.AddCommand("Diff again")
+      self.cmd_save_results = self.AddCommand("Save results")
       self.cmd_add_manual_match = self.AddCommand("Add manual match")
+      self.AddCommand(None)
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
-      self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
+      self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
+      self.AddCommand(None)
       self.cmd_import_selected = self.AddCommand("Import selected", "Ctrl+Alt+i")
       self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
       self.cmd_import_all = self.AddCommand("Import *all* functions")
       self.cmd_import_all_funcs = self.AddCommand("Import *all* data for sub_* functions")
+      self.AddCommand(None)
       self.cmd_highlight_functions = self.AddCommand("Highlight matches")
       self.cmd_unhighlight_functions = self.AddCommand("Unhighlight matches")
-      self.cmd_save_results = self.AddCommand("Save diffing results")
     elif not self.show_commands and (self.cmd_show_asm is None or force):
       self.cmd_show_asm = self.AddCommand("Show assembly")
       self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
@@ -684,10 +700,11 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def diff(self, db):
     res = diaphora.CBinDiff.diff(self, db)
-    # And, finally, show the list of best and partial matches and
-    # register the hotkey for re-opening results
-    self.show_choosers()
-    self.register_menu()
+    if res:
+      # And, finally, show the list of best and partial matches and
+      # register the hotkey for re-opening results
+      self.show_choosers()
+      self.register_menu()
     hide_wait_box()
     return res
 
@@ -2080,13 +2097,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       rows = cur.fetchall()
       if len(rows) != 1:
         warning("Malformed results database!")
+        msg("Malformed results database!")
         return False
 
       row = rows[0]
       version = row["version"]
       if version != diaphora.VERSION_VALUE:
-        msg = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
-        warning(msg % (version, diaphora.VERSION_VALUE))
+        line = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
+        warning(line % (version, diaphora.VERSION_VALUE))
+        msg(line)
 
       main_db = row["main_db"]
       diff_db = row["diff_db"]
