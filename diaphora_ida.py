@@ -1304,7 +1304,9 @@ class CIDABinDiff(diaphora.CBinDiff):
         SetType(ea1, proto)
 
       if comment is not None and comment != "":
-        set_func_cmt(ea1, comment, 1)
+        func = get_func(ea1)
+        if func is not None:
+          set_func_cmt(func, comment, 1)
 
       if flags is not None:
         set_func_attr(ea1, FUNCATTR_FLAGS, flags)
