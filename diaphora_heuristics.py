@@ -44,7 +44,11 @@ HEURISTICS.append({
   "ratio":HEUR_TYPE_NO_FPS,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                    'Same RVA and hash' description,
-                   f.nodes bb1, df.nodes bb2
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
               from functions f,
                    diff.functions df
              where (df.rva = f.rva
@@ -62,7 +66,11 @@ HEURISTICS.append({
   "ratio":HEUR_TYPE_NO_FPS,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                    'Same order and hash' description,
-                   f.nodes bb1, df.nodes bb2
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
               from functions f,
                    diff.functions df
              where df.id = f.id
@@ -81,14 +89,18 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_NO_FPS,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Function hash' description,
-             f.nodes bb1, df.nodes bb2
-        from functions f,
-             diff.functions df
-       where f.function_hash = df.function_hash 
-         and ((f.nodes > 1 and df.nodes > 1
-           and f.instructions > 5 and df.instructions > 5)
-            or f.instructions > 10 and df.instructions > 10)""",
+                   'Function Hash' description,
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
+              from functions f,
+                   diff.functions df
+             where f.function_hash = df.function_hash 
+               and ((f.nodes > 1 and df.nodes > 1
+                 and f.instructions > 5 and df.instructions > 5)
+                  or f.instructions > 10 and df.instructions > 10)""",
   "flags":HEUR_FLAG_NONE
 })
 
@@ -96,15 +108,19 @@ HEURISTICS.append({
   "name":"Bytes hash and names",
   "category":"Best",
   "ratio":HEUR_TYPE_NO_FPS,
-  "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Bytes hash and names' description,
-             f.nodes bb1, df.nodes bb2
-        from functions f,
-             diff.functions df
-       where f.bytes_hash = df.bytes_hash
-         and f.names = df.names
-         and f.names != '{}'
-         and f.instructions > 5 and df.instructions > 5""",
+  "sql":"""  select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Bytes hash and names' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                from functions f,
+                     diff.functions df
+               where f.bytes_hash = df.bytes_hash
+                 and f.names = df.names
+                 and f.names != '{}'
+                 and f.instructions > 5 and df.instructions > 5""",
   "flags":HEUR_FLAG_NONE
 })
 
@@ -113,13 +129,16 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_NO_FPS,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Bytes hash' description,
-             f.nodes bb1, df.nodes bb2,
-             cast(f.md_index as real) md1, cast(df.md_index as real) md2
-        from functions f,
-             diff.functions df
-       where f.bytes_hash = df.bytes_hash
-         and f.instructions > 5 and df.instructions > 5""",
+                   'Bytes hash' description,
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
+              from functions f,
+                   diff.functions df
+             where f.bytes_hash = df.bytes_hash
+               and f.instructions > 5 and df.instructions > 5""",
   "flags":HEUR_FLAG_NONE
 })
 
@@ -128,14 +147,18 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_NO_FPS,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Bytes sum' description,
-             f.nodes bb1, df.nodes bb2
-        from functions f,
-             diff.functions df
-       where f.bytes_sum = df.bytes_sum
-         and f.size = df.size
-         and f.mnemonics = df.mnemonics
-         and f.instructions > 5 and df.instructions > 5""",
+                   'Bytes sum' description,
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
+              from functions f,
+                   diff.functions df
+             where f.bytes_sum = df.bytes_sum
+               and f.size = df.size
+               and f.mnemonics = df.mnemonics
+               and f.instructions > 5 and df.instructions > 5""",
   "flags":HEUR_FLAG_UNRELIABLE
 })
 
@@ -147,7 +170,8 @@ HEURISTICS.append({
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
        from functions f,
             diff.functions df
       where f.pseudocode = df.pseudocode
@@ -157,18 +181,20 @@ HEURISTICS.append({
         and df.name not like 'nullsub%'
         %POSTFIX%
       union
-     select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
+     select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
        from functions f,
             diff.functions df
       where f.assembly = df.assembly
         and df.assembly is not null
         and f.instructions >= 4 and df.instructions >= 4
         and f.name not like 'nullsub%'
-        and df.name not like 'nullsub%' """,
+        and df.name not like 'nullsub%'
+        %POSTFIX% """,
   "flags":HEUR_FLAG_NONE|HEUR_FLAG_SLOW
 })
 

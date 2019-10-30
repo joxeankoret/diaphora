@@ -1048,8 +1048,17 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = " and f.instructions > 5 and df.instructions > 5 "
 
+    if self.hooks is not None:
+      if 'get_queries_postfix' in dir(self.hooks):
+        postfix = self.hooks.get_queries_postfix(arg_category, postfix)
+
     threads_list = []
-    for heur in HEURISTICS:
+    heuristics = list(HEURISTICS)
+    if self.hooks is not None:
+      if 'get_heuristics' in dir(self.hooks):
+        heuristics = self.hooks.get_heuristics(arg_category, heuristics)
+
+    for heur in heuristics:
       if len(self.matched1) == self.total_functions1 or len(self.matched2) == self.total_functions2:
         log("All functions matched in at least one database, finishing.")
         break
@@ -1083,6 +1092,11 @@ class CBinDiff:
 
       log_refresh("%s Finding with heuristic '%s'" % (mode, name))
       sql = sql.replace("%POSTFIX%", postfix)
+
+      if self.hooks is not None:
+        if 'on_launch_heuristic' in dir(self.hooks):
+          sql = self.hooks.on_launch_heuristic(name, sql)
+
       if ratio == HEUR_TYPE_NO_FPS:
         t = Thread(target=self.add_matches_from_query, args=(sql, best))
       elif ratio == HEUR_TYPE_RATIO:
@@ -1270,6 +1284,16 @@ class CBinDiff:
       if debug:
         print("0x%x 0x%x %d" % (int(ea), int(ea2), r))
 
+      should_add = True
+      if self.hooks is not None:
+        if 'on_match' in dir(self.hooks):
+          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+          should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+      if not should_add or name1 in self.matched1 or name2 in self.matched2:
+        continue
+
       if r == 1.0:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
@@ -1334,6 +1358,17 @@ class CBinDiff:
         continue
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+
+      should_add = True
+      if self.hooks is not None:
+        if 'on_match' in dir(self.hooks):
+          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+          should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+      if not should_add or name1 in self.matched1 or name2 in self.matched2:
+        continue
+
       if r == 1.0:
         self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
@@ -1389,6 +1424,17 @@ class CBinDiff:
         continue
 
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+
+      should_add = True
+      if self.hooks is not None:
+        if 'on_match' in dir(self.hooks):
+          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+          should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+      if not should_add or name1 in self.matched1 or name2 in self.matched2:
+        continue
+
       good_ratio = False
       if r == 1.0:
         item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
@@ -1418,7 +1464,7 @@ class CBinDiff:
     """ Warning: use this *only* if the ratio is known to be 1.00 """
     if self.all_functions_matched():
       return
-    
+
     cur = self.db_cursor()
     try:
       cur.execute(sql)
@@ -1440,10 +1486,28 @@ class CBinDiff:
       ea2 = str(row["ea2"])
       name2 = row["name2"]
       desc = row["description"]
+      pseudo1 = row["pseudo1"]
+      pseudo2 = row["pseudo2"]
+      asm1 = row["asm1"]
+      asm2 = row["asm2"]
+      ast1 = row["pseudo_primes1"]
+      ast2 = row["pseudo_primes2"]
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
+      md1 = row["md1"]
+      md2 = row["md2"]
 
       if name1 in self.matched1 or name2 in self.matched2:
+        continue
+
+      should_add = True
+      if self.hooks is not None:
+        if 'on_match' in dir(self.hooks):
+          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+          should_add, r = self.hooks.on_match(d1, d2, desc, 1.0)
+
+      if not should_add or name1 in self.matched1 or name2 in self.matched2:
         continue
 
       choose.add_item(CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2))
@@ -1457,7 +1521,11 @@ class CBinDiff:
     # Same basic blocks, edges, mnemonics, etc... but different names
     sql = """ select distinct f.address ea, f.name name1, df.name name2,
                      f.names f_names, df.names df_names, df.address ea2,
-                     f.nodes bb1, df.nodes bb2
+                     f.nodes bb1, df.nodes bb2,
+                     f.pseudocode pseudo1, df.pseudocode pseudo2,
+                     f.assembly asm1, df.assembly asm2,
+                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -1485,7 +1553,27 @@ class CBinDiff:
       ratio = (commons * 1.) / total
       if ratio >= 0.5:
         ea2 = row["ea2"]
-        item = CChooser.Item(ea, name1, ea2, name2, "Nodes, edges, complexity and mnemonics with small differences", ratio, bb1, bb2)
+        pseudo1 = row["pseudo1"]
+        pseudo2 = row["pseudo2"]
+        asm1 = row["asm1"]
+        asm2 = row["asm2"]
+        ast1 = row["pseudo_primes1"]
+        ast2 = row["pseudo_primes2"]
+        md1 = row["md1"]
+        md2 = row["md2"]
+        desc = "Nodes, edges, complexity and mnemonics with small differences"
+
+        should_add = True
+        if self.hooks is not None:
+          if 'on_match' in dir(self.hooks):
+            d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+            d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+            should_add, r = self.hooks.on_match(d1, d2, desc, ratio)
+
+        if not should_add or name1 in self.matched1 or name2 in self.matched2:
+          continue
+
+        item = CChooser.Item(ea, name1, ea2, name2, desc, ratio, bb1, bb2)
         if ratio == 1.0:
           self.best_chooser.add_item(item)
         else:
@@ -1512,7 +1600,9 @@ class CBinDiff:
               where (d.mangled_function = f.mangled_function
                  or d.name = f.name)
                 and f.name not like 'nullsub_%'"""
-    log_refresh("Finding with heuristic 'Same name'")
+    
+    desc = "Perfect match, same name"
+    log_refresh("Finding with heuristic '%s'" % desc)
     cur.execute(sql)
     rows = cur.fetchall()
     cur.close()
@@ -1545,10 +1635,21 @@ class CBinDiff:
         md2 = row["md2"]
 
         ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+
+        should_add = True
+        if self.hooks is not None:
+          if 'on_match' in dir(self.hooks):
+            d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+            d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+            should_add, r = self.hooks.on_match(d1, d2, desc, ratio)
+
+        if not should_add or name1 in self.matched1 or name2 in self.matched2:
+          continue
+
         if float(ratio) == 1.0 or (md1 != 0 and md1 == md2):
-          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", 1, bb1, bb2))
+          self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, desc, 1, bb1, bb2))
         else:
-          choose.add_item(CChooser.Item(ea, name, ea2, name, "Perfect match, same name", ratio, bb1, bb2))
+          choose.add_item(CChooser.Item(ea, name, ea2, name, desc, ratio, bb1, bb2))
 
         self.matched1.add(name)
         self.matched1.add(name1)
@@ -1612,6 +1713,24 @@ class CBinDiff:
               ea2 = rows[1]["address"]
               bb1 = rows[0]["nodes"]
               bb2 = rows[1]["nodes"]
+              ast1 = rows[0]["pseudocode_primes"]
+              ast2 = rows[1]["pseudocode_primes"]
+              pseudo1 = rows[0]["pseudocode"]
+              pseudo2 = rows[1]["pseudocode"]
+              asm1 = rows[0]["assembly"]
+              asm2 = rows[1]["assembly"]
+              md1 = rows[0]["md_index"]
+              md2 = rows[1]["md_index"]
+
+              should_add = True
+              if self.hooks is not None:
+                if 'on_match' in dir(self.hooks):
+                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+                  d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+              if not should_add or name1 in self.matched1 or name2 in self.matched2:
+                continue
 
               if r == 1:
                 self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
@@ -1956,6 +2075,11 @@ class CBinDiff:
       if self.do_continue:
         # Compare the call graphs
         self.check_callgraph()
+
+      if self.project_script is not None:
+        log("Loading project specific Python script...")
+        if not self.load_hooks():
+          return False
 
         # Find the unmodified functions
         log_refresh("Finding best matches...")
