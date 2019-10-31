@@ -12,7 +12,7 @@ NOTE: If you're looking for a tool for diffing or matching functions between bin
 
 ## Python 2.7 and IDA versions 6.95 to 7.3
 
-TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4).
+TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [this branch](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
 
 Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in Github will only run in IDA 7.4 and Python 3.X. I've tried to make it compatible but it caused the code to be horrible and unmaintainable. As so, I've decided that it was best to drop support for Python 2.X and IDA versions <= 7.3 and focus in Python 3.X and IDA versions >= 7.4.
 
