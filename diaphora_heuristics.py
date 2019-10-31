@@ -2,20 +2,20 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2018, Joxean Koret
+Copyright (c) 2015-2019, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 2 of the License, or
-(at your option) any later version.
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GNU Affero General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 #-------------------------------------------------------------------------------
@@ -254,7 +254,28 @@ HEURISTICS.append({
         and f.instructions = df.instructions
         and f.nodes = df.nodes
         and f.edges = df.edges
-        and f.mnemonics = df.mnemonics""",
+        and f.mnemonics = df.mnemonics
+        and f.nodes > 1""",
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
+  "name":"Same constants",
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2,
+            'Same constants' description,
+             f.pseudocode pseudo1, df.pseudocode pseudo2,
+             f.assembly asm1, df.assembly asm2,
+             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+             f.nodes bb1, df.nodes bb2,
+             cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from functions f,
+            diff.functions df
+      where f.constants = df.constants
+        and f.constants_count = df.constants_count
+        and f.constants_count > 1 %POSTFIX%""",
+  "min":0.5,
   "flags":HEUR_FLAG_NONE
 })
 
@@ -400,6 +421,7 @@ HEURISTICS.append({
              diff.functions df
        where f.md_index = df.md_index
          and f.md_index > 0
+         and f.nodes > 3 and df.nodes > 3
          and ((f.constants = df.constants
          and f.constants_count > 0)) %POSTFIX%""",
   "flags":HEUR_FLAG_NONE
@@ -471,7 +493,7 @@ HEURISTICS.append({
 HEURISTICS.append({
   "name":"Switch structures",
   "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
+  "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Switch structures' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
@@ -484,27 +506,8 @@ HEURISTICS.append({
         and df.switches != '{}'
         and f.nodes > 5 and df.nodes > 5
         %POSTFIX%""",
+  "min": 0.5,
   "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
-  "name":"Same constants",
-  "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2,
-            'Same constants' description,
-             f.pseudocode pseudo1, df.pseudocode pseudo2,
-             f.assembly asm1, df.assembly asm2,
-             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-             f.nodes bb1, df.nodes bb2,
-             cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.constants = df.constants
-        and f.constants_count = df.constants_count
-        and f.constants_count > 0 %POSTFIX%""",
-  "min":0.5,
-  "flags":HEUR_FLAG_NONE
 })
 
 HEURISTICS.append({
@@ -1284,7 +1287,7 @@ def check_heuristic_in_sql():
 
     sql = heur["sql"]
     if sql.lower().find(name.lower()) == -1:
-      print("SQL command not correctly associated to %s" % repr(name))
+      print(("SQL command not correctly associated to %s" % repr(name)))
       print(sql)
       assert(sql.find(name) != -1)
 
@@ -1318,19 +1321,19 @@ def check_mandatory_fields():
   mandatory = set(["name", "ratio", "category", "sql", "flags"])
   for heur in HEURISTICS:
     for field in mandatory:
-      if field not in heur.keys():
-        print("Field '%s' not found in heuristic!" % field)
+      if field not in list(heur.keys()):
+        print(("Field '%s' not found in heuristic!" % field))
         print(heur)
-        assert(field in heur.keys())
+        assert(field in list(heur.keys()))
 
 #-------------------------------------------------------------------------------
 def check_field_names():
   expected = set(["name", "ratio", "category", "min", "sql", "flags"])
   fields = set()
   for heur in HEURISTICS:
-    for field in heur.keys():
+    for field in list(heur.keys()):
       if field not in expected:
-        print("Invalid field '%s' found for heuristic!" % field)
+        print(("Invalid field '%s' found for heuristic!" % field))
         print(heur)
         assert(field in expected)
       
