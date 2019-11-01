@@ -33,6 +33,12 @@ However, Diaphora has also many features that are unique, not available in any o
  * Scripting support (for both the exporting and diffing processes).
  * ...
 
+It's also actively maintained, and the following is a list of the features that are 'in the making':
+
+ * Support for compilation units (finding and diffing compilation units).
+ * Direct integration with [Pigaios](https://github.com/joxeankoret/pigaios).
+ * 'Machine Learning' based techniques so reverse engineers can teach Diaphora what is a good match or a bad one, and how to search for more.
+
 ## Python 2.7 and IDA versions 6.95 to 7.3
 
 TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [this branch](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
