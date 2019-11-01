@@ -10,6 +10,35 @@ For more details, please check the tutorial in the "doc" directory.
 
 NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
 
+## Features
+
+Diaphora has many of the most common program diffing (bindiffing) techniques you might expect, like:
+
+ * Diffing assembler.
+ * Diffing control flow graphs.
+ * Porting symbol names and comments.
+ * Addig manual matches.
+ * Similarity ratio calculation.
+ * Batch automation.
+ * Call graph matching calculation.
+ * Dozens of heuristics based on graph theory, assembler, bytes, functions' features, etc...
+
+But Diaphora has also many features that are *unique*, and not available in any other public tool. The following is a non extensive list of unique features:
+
+ * Parallel diffing.
+ * Pseudo-code based heuristics.
+ * Pseudo-code patches generation.
+ * Ability to port structs, enums and typedefs.
+ * Diffing pseudo-codes (with syntax highlighting!).
+ * Scripting support (for both the exporting and diffing processes).
+ * ...
+
+It's also actively maintained, and the following is a list of the features that are 'in the making':
+
+ * Support for compilation units (finding and diffing compilation units).
+ * Direct integration with [Pigaios](https://github.com/joxeankoret/pigaios).
+ * 'Machine Learning' based techniques so reverse engineers can teach Diaphora what is a good match or a bad one, and how to search for more.
+
 ## Python 2.7 and IDA versions 6.95 to 7.3
 
 TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [the branch 1.2](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
