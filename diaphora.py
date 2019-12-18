@@ -2076,10 +2076,10 @@ class CBinDiff:
         # Compare the call graphs
         self.check_callgraph()
 
-      if self.project_script is not None:
-        log("Loading project specific Python script...")
-        if not self.load_hooks():
-          return False
+        if self.project_script is not None:
+          log("Loading project specific Python script...")
+          if not self.load_hooks():
+            return False
 
         # Find the unmodified functions
         log_refresh("Finding best matches...")
