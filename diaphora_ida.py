@@ -886,13 +886,13 @@ class CIDABinDiff(diaphora.CBinDiff):
         new_rows.add(row)
         line = "%s %s;" % (type_name, row["name"])
         try:
-          ret = idc.parse_decls("%s %s;" % (type_name, row["name"]))
+          ret = idc.parse_decls(line)
           if ret != 0:
             pass
         except:
           log("Error importing type: %s" % str(sys.exc_info()[1]))
 
-    for i in range(10):
+    for _ in range(10):
       for row in new_rows:
         if row["name"] is None:
           continue
@@ -1503,7 +1503,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     @return: C{True} if value should be included in query. C{False} otherwise
     """
     # no small values
-    if value < 0x10000:
+    if value < 0x1000:
       return False
 
     if value & 0xFFFFFF00 == 0xFFFFFF00 or value & 0xFFFF00 == 0xFFFF00 or \
@@ -1894,7 +1894,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
-             assembly_addrs, kgh_hash,
+             assembly_addrs, kgh_hash, None,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -1952,7 +1952,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
-      d["bb_relations"])
+      d["bb_relations"],
+      d["userdata"])
     return l
 
   def create_function_dictionary(self, l):
@@ -1962,7 +1963,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
-    assembly_addrs, kgh_hash, callers, callees, basic_blocks_data, bb_relations) = l
+    assembly_addrs, kgh_hash, userdata, callers, callees, basic_blocks_data,
+    bb_relations) = l
     d = dict(
           name = name,
           nodes = nodes,
@@ -2009,7 +2011,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           callers = callers,
           callees = callees,
           basic_blocks_data = basic_blocks_data,
-          bb_relations = bb_relations)
+          bb_relations = bb_relations,
+          userdata = userdata)
     return d
 
   def get_base_address(self):
