@@ -45,7 +45,7 @@ except ImportError:
   is_ida = False
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.0.2"
+VERSION_VALUE = "2.0.3"
 COPYRIGHT_VALUE="Copyright(c) 2015-2019 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -365,7 +365,8 @@ class CBinDiff:
                         constants_count integer,
                         segment_rva text,
                         assembly_addrs text,
-                        kgh_hash text) """
+                        kgh_hash text,
+                        userdata text) """
     cur.execute(sql)
 
     sql = """ create table if not exists program (
@@ -648,10 +649,11 @@ class CBinDiff:
                                     tarjan_topological_sort, strongly_connected_spp,
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
                                     function_hash, bytes_sum, md_index, constants,
-                                    constants_count, segment_rva, assembly_addrs, kgh_hash)
+                                    constants_count, segment_rva, assembly_addrs, kgh_hash,
+                                    userdata)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
     try:
       cur.execute(sql, new_props)
@@ -1641,7 +1643,7 @@ class CBinDiff:
           if 'on_match' in dir(self.hooks):
             d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
             d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-            should_add, r = self.hooks.on_match(d1, d2, desc, ratio)
+            should_add, ratio = self.hooks.on_match(d1, d2, desc, ratio)
 
         if not should_add or name1 in self.matched1 or name2 in self.matched2:
           continue
@@ -2076,10 +2078,10 @@ class CBinDiff:
         # Compare the call graphs
         self.check_callgraph()
 
-      if self.project_script is not None:
-        log("Loading project specific Python script...")
-        if not self.load_hooks():
-          return False
+        if self.project_script is not None:
+          log("Loading project specific Python script...")
+          if not self.load_hooks():
+            return False
 
         # Find the unmodified functions
         log_refresh("Finding best matches...")
