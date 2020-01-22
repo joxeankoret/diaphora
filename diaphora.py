@@ -1219,9 +1219,9 @@ class CBinDiff:
     v4 = 0.0
     if md1 == md2 and md1 > 0.0:
       # A MD-Index >= 10.0 is somehow rare
-      if self.relaxed_ratio or md1 > 10.0:
+      if self.relaxed_ratio and md1 > 10.0:
         return 1.0
-      v4 = min((v1 + v2 + v3 + 3.0) / 4, 1.0)
+      v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
 
     r = max(v1, v2, v3, v4)
     if r == 1.0 and md1 != md2:
@@ -1648,7 +1648,7 @@ class CBinDiff:
         if not should_add or name1 in self.matched1 or name2 in self.matched2:
           continue
 
-        if float(ratio) == 1.0 or (md1 != 0 and md1 == md2):
+        if float(ratio) == 1.0 or (self.relaxed_ratio and md1 != 0 and md1 == md2):
           self.best_chooser.add_item(CChooser.Item(ea, name, ea2, name, desc, 1, bb1, bb2))
         else:
           choose.add_item(CChooser.Item(ea, name, ea2, name, desc, ratio, bb1, bb2))
