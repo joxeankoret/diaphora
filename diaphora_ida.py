@@ -2033,7 +2033,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       (stype, fields) = ret
       if stype:
         name = idc.get_numbered_type_name(ordinal)
-        return idc_print_type(stype, fields, name, flags)
+        try:
+          return idc_print_type(stype, fields, name, flags)
+        except:
+          log("Error: %s" % str(sys.exc_info()[1]))
+          return ""
     return ""
 
   def export_structures(self):
