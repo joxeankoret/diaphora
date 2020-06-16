@@ -1650,7 +1650,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
               if get_func(dref) is None:
                 str_constant = get_strlit_contents(dref, -1, -1)
                 if str_constant is not None:
-                  str_constant = str_constant.decode("utf-8")
+                  str_constant = str_constant.decode("utf-8", "backslashreplace")
                   if str_constant not in constants:
                     constants.append(str_constant)
 
