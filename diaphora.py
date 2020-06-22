@@ -223,6 +223,7 @@ class CBinDiff:
     self.use_decompiler_always = True
     self.exclude_library_thunk = True
     self.project_script = None
+    self.hooks = None
 
     # Create the choosers
     self.chooser = chooser
