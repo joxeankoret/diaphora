@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2019, Joxean Koret
+Copyright (c) 2015-2020, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -1761,8 +1761,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         edges += 1
         outdegree += 1
-        if succ_block.id not in dones:
-          dones[succ_block] = 1
+        if pred_block.id not in dones:
+          dones[pred_block] = 1
 
     for block in flow:
       if block.end_ea == 0:
@@ -2443,7 +2443,13 @@ class CHtmlDiff:
       return s
 
 #-------------------------------------------------------------------------------
-class CAstVisitor(ctree_visitor_t):
+try:
+  class CAstVisitorInherits(ctree_visitor_t): pass
+except:
+  class CAstVisitorInherits: pass
+
+#-------------------------------------------------------------------------------
+class CAstVisitor(CAstVisitorInherits):
   def __init__(self, cfunc):
     self.primes = primes(4096)
     ctree_visitor_t.__init__(self, CV_FAST)

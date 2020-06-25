@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2019, Joxean Koret
+Copyright (c) 2015-2020, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -45,8 +45,8 @@ except ImportError:
   is_ida = False
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.0.3"
-COPYRIGHT_VALUE="Copyright(c) 2015-2019 Joxean Koret"
+VERSION_VALUE = "2.0.4"
+COPYRIGHT_VALUE="Copyright(c) 2015-2020 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
