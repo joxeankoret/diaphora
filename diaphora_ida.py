@@ -885,6 +885,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.do_import_one(ea1, ea2, True)
 
     new_func = self.read_function(str(ea1))
+
     self.delete_function(ea1)
     self.save_function(new_func)
 
@@ -1983,6 +1984,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       self.reinit(main_db, diff_db)
 
       sql = "select * from results"
+
       cur.execute(sql)
       for row in diaphora.result_iter(cur):
         if row["type"] == "best":
@@ -2003,14 +2005,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         choose.add_item(diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2))
 
-      sql = "select * from unmatched"
-      cur.execute(sql)
-      for row in diaphora.result_iter(cur):
-        if row["type"] == "primary":
-          choose = self.unmatched_primary
-        else:
-          choose = self.unmatched_second
-        choose.add_item(diaphora.CChooser.Item(int(row["address"], 16), row["name"]))
+        sql = "select * from unmatched"
+        cur.execute(sql)
+        for row in diaphora.result_iter(cur):
+          if row["type"] == "primary":
+            choose = self.unmatched_primary
+          else:
+            choose = self.unmatched_second
+          choose.add_item(diaphora.CChooser.Item(int(row["address"], 16), row["name"]))
 
       self.import_all_auto(self.best_chooser.items)
 
