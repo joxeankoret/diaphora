@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2019, Joxean Koret
+Copyright (c) 2015-2021, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
