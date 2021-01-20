@@ -122,6 +122,16 @@ def save_results():
     if filename is not None:
       g_bindiff.save_results(filename)
 
+def load_and_import_all_results(filename, main_db, diff_db):
+  tmp_diff = CIDABinDiff(":memory:")
+
+  if(os.path.exists(filename) and os.path.exists(main_db) and os.path.exists(diff_db)):
+    tmp_diff.load_and_import_all_results(filename, main_db, diff_db)
+
+  log("Exiting load_and_import_all_results")
+
+  idaapi.qexit(0)
+
 #-----------------------------------------------------------------------
 def load_results():
   tmp_diff = CIDABinDiff(":memory:")
@@ -760,12 +770,15 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur = self.db_cursor()
     sql = "select name from diff.program_data where type = 'til'"
     cur.execute(sql)
+
     for row in cur.fetchall():
       LoadTil(row["name"])
+
     cur.close()
     Wait()
 
   def import_definitions(self):
+    log("Importing definitions...")
     cur = self.db_cursor()
     sql = "select type, name, value from diff.program_data where type in ('structure', 'struct', 'enum')"
     cur.execute(sql)
@@ -872,6 +885,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.do_import_one(ea1, ea2, True)
 
     new_func = self.read_function(str(ea1))
+
     self.delete_function(ea1)
     self.save_function(new_func)
 
@@ -1199,6 +1213,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_items(new_items)
 
   def import_items(self, items):
+    log("Importing items...")
+
     to_import = set()
     # Import all the function names and comments
     for item in items:
@@ -1944,6 +1960,69 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if til_names is not None:
       for til in til_names:
         self.add_program_data("til", til, None)
+
+  def load_and_import_all_results(self, filename, main_db, diff_db):
+    results_db = sqlite3.connect(filename, check_same_thread=False)
+    results_db.text_factory = str
+    results_db.row_factory = sqlite3.Row
+
+    cur = results_db.cursor()
+    try:
+      sql = "select main_db, diff_db, version from config"
+      cur.execute(sql)
+      rows = cur.fetchall()
+      if len(rows) != 1:
+        Warning("Malformed results database!")
+        return False
+
+      row = rows[0]
+      version = row["version"]
+      if version != diaphora.VERSION_VALUE:
+        msg = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
+        Warning(msg % (version, diaphora.VERSION_VALUE))
+
+      self.reinit(main_db, diff_db)
+
+      sql = "select * from results"
+
+      cur.execute(sql)
+      for row in diaphora.result_iter(cur):
+        if row["type"] == "best":
+          choose = self.best_chooser
+        elif row["type"] == "partial":
+          choose = self.partial_chooser
+        else:
+          choose = self.unreliable_chooser
+
+        ea1 = int(row["address"], 16)
+        name1 = row["name"]
+        ea2 = int(row["address2"], 16)
+        name2 = row["name2"]
+        desc = row["description"]
+        ratio = float(row["ratio"])
+        bb1 = int(row["bb1"])
+        bb2 = int(row["bb2"])
+
+        choose.add_item(diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2))
+
+        sql = "select * from unmatched"
+        cur.execute(sql)
+        for row in diaphora.result_iter(cur):
+          if row["type"] == "primary":
+            choose = self.unmatched_primary
+          else:
+            choose = self.unmatched_second
+          choose.add_item(diaphora.CChooser.Item(int(row["address"], 16), row["name"]))
+
+      self.import_all_auto(self.best_chooser.items)
+
+      return True
+    finally:
+      cur.close()
+      results_db.close()
+
+    return False
+
 
   def load_results(self, filename):
     results_db = sqlite3.connect(filename, check_same_thread=False)
