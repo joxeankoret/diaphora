@@ -18,7 +18,6 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import sys
 import os
 import re
 import sys
@@ -2127,13 +2126,10 @@ class CBinDiff:
     return True
 
 if __name__ == "__main__":
-
-
   version_info = sys.version_info
   if version_info[0] == 2:
-      log("You are using Python2 instead of Python3, Diaphora master" 
-              "works Python3 but there are other branches that contain" 
-              "backward compatability")
+    log("WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3.")
+    log("TIP: There are other branches that contain backward compatability.")
 
   do_diff = True
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
