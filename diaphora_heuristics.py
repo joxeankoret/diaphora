@@ -386,7 +386,7 @@ HEURISTICS.append({
 
 HEURISTICS.append({
   "name":"Same rare constant",
-  "category":"Partial",
+  "category":"Slow",
   "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare constant' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -400,7 +400,9 @@ HEURISTICS.append({
             diff.functions df
       where mc.constant = dc.constant
         and  f.id = mc.func_id
-        and df.id = dc.func_id""",
+        and df.id = dc.func_id
+        and f.nodes > 3 and df.nodes > 3
+        and f.constants_count > 0""",
   "min":0.2,
   "flags":HEUR_FLAG_NONE
 })
@@ -928,25 +930,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Equal small pseudo-code",
-  "category":"Experimental",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal small pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.pseudocode = df.pseudocode
-        and df.pseudocode is not null
-        and f.pseudocode_lines < 5
-        %POSTFIX%""",
-  "flags":HEUR_FLAG_NONE
-})
-
-HEURISTICS.append({
   "name":"Same low complexity, prototype and names",
   "category":"Experimental",
   "ratio":HEUR_TYPE_RATIO_MAX,
@@ -1237,6 +1220,25 @@ HEURISTICS.append({
         and f.cyclomatic_complexity >= 50
         %POSTFIX%""",
   "flags":HEUR_FLAG_SLOW
+})
+
+HEURISTICS.append({
+  "name":"Equal small pseudo-code",
+  "category":"Unreliable",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal small pseudo-code' description,
+            f.pseudocode pseudo1, df.pseudocode pseudo2,
+            f.assembly asm1, df.assembly asm2,
+            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from functions f,
+            diff.functions df
+      where f.pseudocode = df.pseudocode
+        and df.pseudocode is not null
+        and f.pseudocode_lines < 5
+        %POSTFIX%""",
+  "flags":HEUR_FLAG_NONE
 })
 
 #-------------------------------------------------------------------------------

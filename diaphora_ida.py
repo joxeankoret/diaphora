@@ -1077,7 +1077,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       fmt.linenos = False
       fmt.nobackground = True
       if not html:
-        uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
+        uni_diff = difflib.unified_diff(buf2.split("\n"), buf1.split("\n"))
         tmp = []
         for line in uni_diff:
           tmp.append(line.strip("\n"))
@@ -1086,9 +1086,9 @@ class CIDABinDiff(diaphora.CBinDiff):
         
         src = highlight(buf, DiffLexer(), fmt)
       else:
-        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, CppLexer())
+        src = html_diff.make_file(buf2.split("\n"), buf1.split("\n"), fmt, CppLexer())
 
-      title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
+      title = "Diff pseudo-code %s - %s" % (row2["name"], row1["name"])
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
@@ -1407,7 +1407,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     return decompile(f)
 
   def decompile_and_get(self, ea):
-    if not self.decompiler_available:
+    if not self.decompiler_available or is_spec_ea(ea):
       return False
 
     decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
@@ -1539,7 +1539,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if self.hooks is not None:
       ret = self.hooks.before_export_function(f, name)
       if not ret:
-        return ret
+        return False
 
     f = int(f)
     func = get_func(f)
@@ -1949,11 +1949,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["seg_rva"],
       d["assembly_addrs"],
       d["kgh_hash"],
+      d["userdata"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
-      d["bb_relations"],
-      d["userdata"])
+      d["bb_relations"])
     return l
 
   def create_function_dictionary(self, l):
