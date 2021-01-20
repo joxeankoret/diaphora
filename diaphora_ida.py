@@ -1276,9 +1276,10 @@ class CIDABinDiff(diaphora.CBinDiff):
               if changed or is_importable:
                 ea1 = str(ea1)
                 ea2 = str(ea2)
+                if ea1 in matched_syms and ea2 in import_syms:
+                  self.import_instruction(matched_syms[ea1], import_syms[ea2])
                 if ea2 in matched_syms and ea1 in import_syms:
                   self.import_instruction(matched_syms[ea2], import_syms[ea1])
-
     finally:
       cur.close()
 
