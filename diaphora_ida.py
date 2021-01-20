@@ -1187,7 +1187,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       return True
 
     # Has a name
-    if import_syms[ea][2] is not None:
+    if import_syms[ea][3] is not None:
       return True
 
     # Has pseudocode comment
