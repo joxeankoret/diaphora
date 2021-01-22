@@ -199,6 +199,28 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
+  "name":"Same address and mnemonics",
+  "category":"Best",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                   'Same address and mnemonics' description,
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
+              from functions f,
+                   diff.functions df
+             where df.address = f.address
+               and df.mnemonics = f.mnemonics
+               and df.instructions = f.instructions
+               and df.instructions > 5
+               and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))""",
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
   "name":"Same cleaned up assembly",
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO,
@@ -1316,7 +1338,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 28, 2: 18, 0: 7}))
+  assert(ratios == Counter({1: 29, 2: 18, 0: 7}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
