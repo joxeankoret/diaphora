@@ -203,7 +203,7 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Same cleaned up assembly or pseudo-code' description,
+             'Same cleaned up assembly' description,
              f.pseudocode pseudo1, df.pseudocode pseudo2,
              f.assembly asm1, df.assembly asm2,
              f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -223,7 +223,7 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Same cleaned up assembly or pseudo-code' description,
+             'Same cleaned pseudo-code' description,
              f.pseudocode pseudo1, df.pseudocode pseudo2,
              f.assembly asm1, df.assembly asm2,
              f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -386,7 +386,7 @@ HEURISTICS.append({
 
 HEURISTICS.append({
   "name":"Same rare constant",
-  "category":"Slow",
+  "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same rare constant' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -404,7 +404,7 @@ HEURISTICS.append({
         and f.nodes > 3 and df.nodes > 3
         and f.constants_count > 0""",
   "min":0.2,
-  "flags":HEUR_FLAG_NONE
+  "flags":HEUR_FLAG_SLOW
 })
 
 HEURISTICS.append({
@@ -1276,7 +1276,7 @@ def check_dupes():
   import pprint
   pprint.pprint(dups)
   
-  assert(dups == [['Similar small pseudo-code', 2], ['Loop count', 2]])
+  assert(sorted(dups) == sorted([['Similar small pseudo-code', 2], ['Loop count', 2]]) )
   
 #-------------------------------------------------------------------------------
 def check_heuristic_in_sql():
@@ -1316,7 +1316,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 28, 2: 14, 0: 7}))
+  assert(ratios == Counter({1: 28, 2: 18, 0: 7}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
