@@ -445,7 +445,7 @@ class CBinDiffExporterSetup(Form):
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
 
-  SQLite databases:                                                                                                                                             Export filter limits:
+  SQLite databases:                                                                                                                                     Export filter limits:
   <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
