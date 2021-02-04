@@ -451,14 +451,14 @@ class CBinDiffExporterSetup(Form):
 
   <Use the decompiler if available:{rUseDecompiler}>
   <Do not export library and thunk functions:{rExcludeLibraryThunk}>
-  <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
+  <#Enable if you want neither sub_* functions nor library functions to be exported#Export manually renamed functions only:{rNonIdaSubs}>
   <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
-  <Use probably unreliable methods:{rUnreliable}>
+  <Use probably unreliable heuristics:{rUnreliable}>
   <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
-  <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
+  <#Enable this option if you aren't interested in small changes#Less strict matching:{rRelaxRatio}>
   <Use experimental heuristics:{rExperimental}>
   <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
-  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
+  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore heuristic to match on function name:{rIgnoreAllNames}>
   <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
 
   Project specific rules:
