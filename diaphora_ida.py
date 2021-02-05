@@ -2613,6 +2613,8 @@ def main():
     bd.ida_subs = bd.get_value_for("ida_subs", bd.ida_subs)
     bd.ignore_sub_names = bd.get_value_for("ignore_sub_names", bd.ignore_sub_names)
     bd.function_summaries_only = bd.get_value_for("function_summaries_only", bd.function_summaries_only)
+    bd.min_ea = int(bd.get_value_for("from_address", "0"), 16)
+    bd.max_ea = int(bd.get_value_for("to_address", "0"), 16)
 
     try:
       bd.export()
