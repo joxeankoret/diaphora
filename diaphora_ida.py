@@ -466,8 +466,8 @@ class CBinDiffExporterSetup(Form):
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
-    args = {'iFileSave': Form.FileInput(save=True, swidth=40),
-            'iFileOpen': Form.FileInput(open=True, swidth=40),
+    args = {'iFileSave': Form.FileInput(save=True, swidth=40,  hlp="SQLite database (*.sqlite)"),
+            'iFileOpen': Form.FileInput(open=True, swidth=40,  hlp="SQLite database (*.sqlite)"),
             'iMinEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'iMaxEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
