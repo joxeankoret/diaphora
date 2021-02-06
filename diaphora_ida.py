@@ -1549,9 +1549,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       name = demangle_named_name
 
     if self.hooks is not None:
-      ret = self.hooks.before_export_function(f, name)
-      if not ret:
-        return False
+      if 'before_export_function' in dir(self.hooks):
+        ret = self.hooks.before_export_function(f, name)
+        if not ret:
+          return False
 
     f = int(f)
     func = get_func(f)
@@ -1911,9 +1912,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              basic_blocks_data, bb_relations)
 
     if self.hooks is not None:
-      d = self.create_function_dictionary(l)
-      d = self.hooks.after_export_function(d)
-      l = self.get_function_from_dictionary(d)
+      if 'after_export_function' in dir(self.hooks):
+        d = self.create_function_dictionary(l)
+        d = self.hooks.after_export_function(d)
+        l = self.get_function_from_dictionary(d)
 
     return l
 
@@ -2613,6 +2615,8 @@ def main():
     bd.ida_subs = bd.get_value_for("ida_subs", bd.ida_subs)
     bd.ignore_sub_names = bd.get_value_for("ignore_sub_names", bd.ignore_sub_names)
     bd.function_summaries_only = bd.get_value_for("function_summaries_only", bd.function_summaries_only)
+    bd.min_ea = int(bd.get_value_for("from_address", "0"), 16)
+    bd.max_ea = int(bd.get_value_for("to_address", "0"), 16)
 
     try:
       bd.export()
