@@ -2129,7 +2129,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       self.reinit(main_db, diff_db)
 
-      min_ratio = float(self.get_value_for("MINIMUM_IMPORT_THRESHOLD", 0.5))
+      min_ratio = float(self.get_value_for("MINIMUM_IMPORT_RATIO", 0.5))
       log("Minimum import threshold %f" % min_ratio)
 
       sql = "select * from results"
