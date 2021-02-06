@@ -466,8 +466,8 @@ class CBinDiffExporterSetup(Form):
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
-    args = {'iFileSave': Form.FileInput(save=True, swidth=40,  hlp="SQLite database (*.sqlite)"),
-            'iFileOpen': Form.FileInput(open=True, swidth=40,  hlp="SQLite database (*.sqlite)"),
+    args = {'iFileSave': Form.FileInput(save=True, swidth=40, hlp="SQLite database (*.sqlite)"),
+            'iFileOpen': Form.FileInput(open=True, swidth=40, hlp="SQLite database (*.sqlite)"),
             'iMinEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'iMaxEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
@@ -481,7 +481,7 @@ class CBinDiffExporterSetup(Form):
                                                "rIgnoreSubNames",
                                                "rIgnoreAllNames",
                                                "rIgnoreSmallFunctions")),
-            'iProjectSpecificRules' : Form.FileInput(open=True)}
+            'iProjectSpecificRules' : Form.FileInput(open=True, hlp="Python scripts (*.py)")}
 
     Form.__init__(self, s, args)
 
@@ -2129,6 +2129,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       self.reinit(main_db, diff_db)
 
+      min_ratio = float(self.get_value_for("MINIMUM_IMPORT_THRESHOLD", 0.5))
+      log("Minimum import threshold %f" % min_ratio)
+
       sql = "select * from results"
       cur.execute(sql)
       for row in diaphora.result_iter(cur):
@@ -2146,8 +2149,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         desc = row["description"]
         ratio = float(row["ratio"])
 
-        # I don't think we want to import results with such a bad ratio
-        if ratio < 0.5:
+        if ratio < min_ratio:
+          log("Match %s-%s is excluded" % (name1, name2))
           continue
 
         bb1 = int(row["bb1"])
@@ -2614,7 +2617,10 @@ def main():
     bd.ignore_sub_names = bd.get_value_for("ignore_sub_names", bd.ignore_sub_names)
     bd.function_summaries_only = bd.get_value_for("function_summaries_only", bd.function_summaries_only)
     bd.min_ea = int(bd.get_value_for("from_address", "0"), 16)
-    bd.max_ea = int(bd.get_value_for("to_address", "0"), 16)
+
+    to_ea = bd.get_value_for("to_address", None)
+    if to_ea is not None:
+      bd.max_ea = int(to_ea, 16)
 
     try:
       bd.export()
