@@ -828,7 +828,6 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def export(self):
     if self.project_script is not None:
-      log("Loading project specific Python script...")
       if not self.load_hooks():
         return False
 
