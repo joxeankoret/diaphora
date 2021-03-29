@@ -53,7 +53,7 @@ COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 # better comparison ratios
 CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
   "qword_", "dword_", "byte_", "word_", "off_", "def_", "unk_", "asc_",
-  "stru_", "dbl_", "locret_"]
+  "stru_", "dbl_", "locret_", "flt_", "jpt_"]
 CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
 
