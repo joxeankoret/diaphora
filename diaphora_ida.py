@@ -261,7 +261,7 @@ class CIDAChooser(CDiaphoraChooser):
     return len(self.items)
 
   def OnDeleteLine(self, items):
-    for n in items:
+    for n in sorted(items, reverse=True):
       if n >= 0:
         name1 = self.items[n][2]
         name2 = self.items[n][4]
