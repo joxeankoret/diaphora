@@ -45,7 +45,7 @@ except ImportError:
   is_ida = False
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.0.5"
+VERSION_VALUE = "2.0.6"
 COPYRIGHT_VALUE="Copyright(c) 2015-2021 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -297,7 +297,10 @@ class CBinDiff:
     if isinstance(threading.current_thread(), threading._MainThread):
       self.db = db
       self.create_schema()
-      db.execute("analyze")
+      try:
+        db.execute("analyze")
+      except:
+        pass
 
   def get_db(self):
     tid = threading.current_thread().ident
@@ -677,7 +680,14 @@ class CBinDiff:
     sql = "insert into constants (func_id, constant) values (?, ?)"
     props_dict = self.create_function_dictionary(props)
     for constant in props_dict["constants"]:
+      should_add = False
       if type(constant) in [str, bytes] and len(constant) > 4:
+        should_add = True
+      elif type(constant) in [int, float, decimal.Decimal]:
+        should_add = True
+        constant = str(constant)
+
+      if should_add:
         cur.execute(sql, (func_id, constant))
 
     # Phase 4: Save the basic blocks relationships
@@ -1110,7 +1120,7 @@ class CBinDiff:
         raise Exception("Invalid heuristic ratio calculation value!")
 
       t.name = name
-      t.time = time.time()
+      t.time = time.monotonic()
       t.start()
       threads_list.append(t)
 
@@ -1121,7 +1131,7 @@ class CBinDiff:
       while len(threads_list) >= total_cpus:
         for i, t in enumerate(threads_list):
           if not t.is_alive():
-            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.time() - t.time))
+            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
             del threads_list[i]
             debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
             break
@@ -1141,13 +1151,13 @@ class CBinDiff:
         for i, t in enumerate(threads_list):
           t.join(0.1)
           if not t.is_alive():
-            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.time() - t.time))
+            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
             del threads_list[i]
             debug_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
             break
 
           t.join(0.1)
-          if time.time() - t.time > TIMEOUT_LIMIT:
+          if time.monotonic() - t.time > TIMEOUT_LIMIT:
             do_cancel = True
             try:
               log_refresh("Timeout, cancelling queries...")
@@ -1251,9 +1261,9 @@ class CBinDiff:
       return
 
     i = 0
-    t = time.time()
+    t = time.monotonic()
     while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
-      if time.time() - t > self.timeout:
+      if time.monotonic() - t > self.timeout:
         log("Timeout")
         break
 
@@ -1328,9 +1338,9 @@ class CBinDiff:
       return
 
     i = 0
-    t = time.time()
+    t = time.monotonic()
     while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
-      if time.time() - t > self.timeout:
+      if time.monotonic() - t > self.timeout:
         log("Timeout")
         break
 
@@ -1393,9 +1403,9 @@ class CBinDiff:
 
     matches = []
     i = 0
-    t = time.time()
+    t = time.monotonic()
     while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
-      if time.time() - t > self.timeout:
+      if time.monotonic() - t > self.timeout:
         log("Timeout")
         break
 
@@ -1589,7 +1599,7 @@ class CBinDiff:
 
   def find_same_name(self, choose):
     cur = self.db_cursor()
-    sql = """select f.address ea1, f.mangled_function mangled1,
+    sql = """select distinct f.address ea1, f.mangled_function mangled1,
                     d.address ea2, f.name name, d.name name2,
                     d.mangled_function mangled2,
                     f.pseudocode pseudo1, d.pseudocode pseudo2,
@@ -1755,7 +1765,7 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_from_matches(self, the_items):
+  def find_from_matches(self, the_items, same_name = False):
     # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
     # Rule 1: if a function A in program P has id X, and function B in
     # the same program has id + 1, then, in program P2, function B maybe
@@ -1775,7 +1785,10 @@ class CBinDiff:
         ea2 = match[3]
         name2 = match[4]
         ratio = float(match[5])
-        if ratio < 0.5:
+        if not same_name:
+          if ratio < 0.5:
+            continue
+        elif name1 != name2:
           continue
 
         id1 = self.get_function_id(name1)
@@ -2073,7 +2086,7 @@ class CBinDiff:
       log("WARNING: The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
 
     try:
-      t0 = time.time()
+      t0 = time.monotonic()
       log_refresh("Diffing...", True)
 
       self.do_continue = True
@@ -2099,6 +2112,7 @@ class CBinDiff:
 
         # Call address sequence heuristic
         self.find_from_matches(self.best_chooser.items)
+        self.find_from_matches(self.partial_chooser.items, same_name = True)
 
         if self.slow_heuristics:
           # Find the functions from the callgraph
@@ -2124,7 +2138,7 @@ class CBinDiff:
           if 'on_finish' in dir(self.hooks):
             self.hooks.on_finish()
 
-        log("Done. Took {} seconds.".format(time.time() - t0))
+        log("Done. Took {} seconds.".format(time.monotonic() - t0))
     finally:
       cur.close()
     return True

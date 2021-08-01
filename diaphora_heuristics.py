@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 """
 Diaphora, a diffing plugin for IDA
@@ -119,7 +119,7 @@ HEURISTICS.append({
                      diff.functions df
                where f.bytes_hash = df.bytes_hash
                  and f.names = df.names
-                 and f.names != '{}'
+                 and f.names != '[]'
                  and f.instructions > 5 and df.instructions > 5""",
   "flags":HEUR_FLAG_NONE
 })
@@ -282,6 +282,25 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
+  "name":"Same RVA",
+  "category":"Best",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                   'Equal RVA' description,
+                   f.pseudocode pseudo1, df.pseudocode pseudo2,
+                   f.assembly asm1, df.assembly asm2,
+                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                   f.nodes bb1, df.nodes bb2,
+                   cast(f.md_index as real) md1, cast(df.md_index as real) md2
+              from functions f,
+                   diff.functions df
+             where df.rva = f.rva
+               %POSTFIX%""",
+  "min":0.7,
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
   "name":"Same constants",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
@@ -426,7 +445,7 @@ HEURISTICS.append({
         and f.nodes > 3 and df.nodes > 3
         and f.constants_count > 0""",
   "min":0.2,
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 HEURISTICS.append({
@@ -527,7 +546,7 @@ HEURISTICS.append({
        from functions f,
             diff.functions df
       where f.switches = df.switches
-        and df.switches != '{}'
+        and df.switches != '[]'
         and f.nodes > 5 and df.nodes > 5
         %POSTFIX%""",
   "min": 0.5,
@@ -571,7 +590,7 @@ HEURISTICS.append({
         from functions f,
              diff.functions df
        where f.names = df.names
-         and f.names != '{}'
+         and f.names != '[]'
          and f.md_index = df.md_index
          and f.instructions = df.instructions
          and f.nodes > 5 and df.nodes > 5 %POSTFIX%""",
@@ -601,7 +620,7 @@ HEURISTICS.append({
                  and f.outdegree = df.outdegree
                  and f.nodes > 3
                  and f.edges > 3
-                 and f.names != '{}'
+                 and f.names != '[]'
                  %POSTFIX%
                union
               select f.address ea, f.name name1, df.address ea2, df.name name2,
@@ -617,7 +636,7 @@ HEURISTICS.append({
                  and f.edges = df.edges
                  and f.mnemonics = df.mnemonics
                  and f.names = df.names
-                 and f.names != '{}'
+                 and f.names != '[]'
                  and f.cyclomatic_complexity = df.cyclomatic_complexity
                  and f.prototype2 = df.prototype2
                  %POSTFIX%""",
@@ -640,7 +659,7 @@ HEURISTICS.append({
        where f.mnemonics = df.mnemonics
          and f.instructions = df.instructions
          and f.names = df.names
-         and f.names != '{}'
+         and f.names != '[]'
          and f.instructions > 5 and df.instructions > 5
          %POSTFIX%""",
   "flags":HEUR_FLAG_NONE
@@ -710,6 +729,8 @@ HEURISTICS.append({
        from functions f,
             diff.functions df
       where df.pseudocode_hash1 = f.pseudocode_hash1
+        and df.pseudocode_hash2 = f.pseudocode_hash2
+        and df.pseudocode_hash3 = f.pseudocode_hash3
         and f.instructions > 5
         and df.instructions > 5 """,
   "flags":HEUR_FLAG_NONE
@@ -729,12 +750,12 @@ HEURISTICS.append({
             diff.functions df
       where f.pseudocode_lines = df.pseudocode_lines
         and f.names = df.names
-        and df.names != '{}'
+        and df.names != '[]'
         and df.pseudocode_lines > 5
         and df.pseudocode is not null 
         and f.pseudocode is not null
         %POSTFIX%""",
-  "flags":HEUR_FLAG_UNRELIABLE
+  "flags":HEUR_FLAG_NONE
 })
 
 HEURISTICS.append({
@@ -915,26 +936,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Similar small pseudo-code",
-  "category":"Experimental",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.pseudocode_lines = df.pseudocode_lines
-        and df.pseudocode_lines <= 5
-        and df.pseudocode is not null 
-        and f.pseudocode is not null
-        %POSTFIX%""",
-  "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Small pseudo-code fuzzy AST hash",
   "category":"Experimental",
   "ratio":HEUR_TYPE_RATIO,
@@ -967,7 +968,7 @@ HEURISTICS.append({
           and f.cyclomatic_complexity = df.cyclomatic_complexity
           and f.cyclomatic_complexity < 20
           and f.prototype2 = df.prototype2
-          and df.names != '{}'
+          and df.names != '[]'
           %POSTFIX%""",
   "min":0.5,
   "flags":HEUR_FLAG_NONE
@@ -988,7 +989,7 @@ HEURISTICS.append({
       where f.names = df.names
         and f.cyclomatic_complexity = df.cyclomatic_complexity
         and f.cyclomatic_complexity < 15
-        and df.names != '{}'
+        and df.names != '[]'
         %POSTFIX%""",
   "min":0.5,
   "flags":HEUR_FLAG_NONE
@@ -1069,7 +1070,7 @@ HEURISTICS.append({
         from functions f,
              diff.functions df
        where f.names = df.names
-         and f.names != '{}'
+         and f.names != '[]'
          and f.strongly_connected_spp = df.strongly_connected_spp
          and f.strongly_connected_spp > 0
          and f.nodes > 5 and df.nodes > 5 """,
@@ -1206,27 +1207,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Similar small pseudo-code",
-  "category":"Unreliable",
-  "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Similar small pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where df.pseudocode is not null 
-        and f.pseudocode is not null
-        and f.pseudocode_lines = df.pseudocode_lines
-        and df.pseudocode_lines > 5
-        %POSTFIX%""",
-  "min":0.5,
-  "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Same high complexity",
   "category":"Unreliable",
   "ratio":HEUR_TYPE_RATIO,
@@ -1242,25 +1222,6 @@ HEURISTICS.append({
         and f.cyclomatic_complexity >= 50
         %POSTFIX%""",
   "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
-  "name":"Equal small pseudo-code",
-  "category":"Unreliable",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal small pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.pseudocode = df.pseudocode
-        and df.pseudocode is not null
-        and f.pseudocode_lines < 5
-        %POSTFIX%""",
-  "flags":HEUR_FLAG_NONE
 })
 
 #-------------------------------------------------------------------------------

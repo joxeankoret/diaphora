@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2020, Joxean Koret
+Copyright (c) 2015-2021, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -757,7 +757,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     callgraph_all_primes = {}
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
-    t = time.time()
+    t = time.monotonic()
 
     if crashed_before:
       start_func = self.get_last_crash_func()
@@ -779,7 +779,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       i += 1
       if (total_funcs >= 100) and i % (int(total_funcs/100)) == 0 or i == 1:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
-        elapsed = time.time() - t
+        elapsed = time.monotonic() - t
         remaining = (elapsed / i) * (total_funcs - i)
 
         m, s = divmod(remaining, 60)
@@ -1080,7 +1080,6 @@ class CIDABinDiff(diaphora.CBinDiff):
 
       if buf1 == buf2:
         warning("Both pseudo-codes are equal.")
-        return
 
       fmt = HtmlFormatter()
       fmt.noclasses = True
@@ -1548,9 +1547,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       name = demangle_named_name
 
     if self.hooks is not None:
-      ret = self.hooks.before_export_function(f, name)
-      if not ret:
-        return False
+      if 'before_export_function' in dir(self.hooks):
+        ret = self.hooks.before_export_function(f, name)
+        if not ret:
+          return False
 
     f = int(f)
     func = get_func(f)
@@ -1910,9 +1910,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              basic_blocks_data, bb_relations)
 
     if self.hooks is not None:
-      d = self.create_function_dictionary(l)
-      d = self.hooks.after_export_function(d)
-      l = self.get_function_from_dictionary(d)
+      if 'after_export_function' in dir(self.hooks):
+        d = self.create_function_dictionary(l)
+        d = self.hooks.after_export_function(d)
+        l = self.get_function_from_dictionary(d)
 
     return l
 
@@ -2336,7 +2337,7 @@ def _diff_or_export(use_ui, **options):
         if os.path.exists(crash_file):
           os.remove(crash_file)
 
-  t0 = time.time()
+  t0 = time.monotonic()
   try:
     bd = CIDABinDiff(opts.file_out)
     bd.use_decompiler_always = opts.use_decompiler
@@ -2374,7 +2375,7 @@ def _diff_or_export(use_ui, **options):
           os.remove("%s-crash" % opts.file_out)
 
       if exported:
-        log("Database exported. Took {} seconds.".format(time.time() - t0))
+        log("Database exported. Took {} seconds.".format(time.monotonic() - t0))
         hide_wait_box()
 
     if opts.file_in != "":
