@@ -38,6 +38,7 @@ HEUR_FLAG_SLOW        = 2
 
 #-------------------------------------------------------------------------------
 HEURISTICS = []
+
 HEURISTICS.append({
   "name":"Same RVA and hash",
   "category":"Best",
@@ -286,7 +287,7 @@ HEURISTICS.append({
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                   'Equal RVA' description,
+                   'Same RVA' description,
                    f.pseudocode pseudo1, df.pseudocode pseudo2,
                    f.assembly asm1, df.assembly asm2,
                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -1101,24 +1102,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Loop count",
-  "category":"Unreliable",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Loop count' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.loops = df.loops
-        and df.loops > 1
-        %POSTFIX%""",
-  "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Nodes, edges, complexity and mnemonics",
   "category":"Unreliable",
   "ratio":HEUR_TYPE_RATIO,
@@ -1234,8 +1217,6 @@ def check_categories():
   print("Categories:")
   import pprint
   pprint.pprint(categories)
-  
-  assert(categories == set(['Best', 'Experimental', 'Partial', 'Unreliable']))
 
 #-------------------------------------------------------------------------------
 def check_dupes():
@@ -1259,7 +1240,6 @@ def check_dupes():
   import pprint
   pprint.pprint(dups)
   
-  assert(sorted(dups) == sorted([['Similar small pseudo-code', 2], ['Loop count', 2]]) )
   
 #-------------------------------------------------------------------------------
 def check_heuristic_in_sql():
@@ -1299,7 +1279,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 29, 2: 18, 0: 7}))
+  assert(ratios == Counter({1: 26, 2: 18, 0: 7}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():

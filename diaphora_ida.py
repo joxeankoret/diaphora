@@ -292,6 +292,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
+      self.cmd_diff_external = self.AddCommand("Diff using an external tool")
       self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
       self.AddCommand(None)
       self.cmd_import_selected = self.AddCommand("Import selected", "Ctrl+Alt+i")
@@ -362,6 +363,8 @@ class CIDAChooser(CDiaphoraChooser):
     elif cmd_id == self.cmd_rediff:
       self.bindiff.db.execute("detach diff")
       timeraction_t(self.bindiff.re_diff, None, 1000)
+    elif cmd_id == self.cmd_diff_external:
+      self.bindiff.diff_external(self.items[n])
 
     return True
 
@@ -649,6 +652,19 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
+
+#-------------------------------------------------------------------------------
+class CExternalDiffingDialog(Form):
+  """Simple Form to test multilinetext and combo box controls"""
+  def __init__(self):
+      Form.__init__(self, r"""STARTITEM 0
+BUTTON YES* Diff Pseudo-code
+BUTTON NO Diff Assembler
+External Diffing Tool
+<#Hint1#Enter command line:{iStrCommand}>
+""", {
+      'iStrCommand': Form.StringInput(),
+    })
 
 #-------------------------------------------------------------------------------
 class CIDABinDiff(diaphora.CBinDiff):
@@ -1102,6 +1118,116 @@ class CIDABinDiff(diaphora.CBinDiff):
       cdiffer.Show(src, title)
 
     cur.close()
+
+  def diff_external(self, item):
+    cmd_line = None
+    f = CExternalDiffingDialog()
+    f.Compile()
+    cmd = reg_read_string("diaphora_external_command")
+    if cmd == "" or cmd is None:
+      cmd = "your_command $1 $2"
+    f.iStrCommand.value = cmd
+    ok = f.Execute()
+    if ok == 0:
+      cmd_line = f.iStrCommand.value
+      diff_asm = True
+    elif ok == 1:
+      cmd_line = f.iStrCommand.value
+      diff_asm = False
+
+    f.Free()
+    if cmd_line is None:
+      return
+
+    reg_write_string("diaphora_external_command", cmd_line)
+    if diff_asm:
+      ret = self.diff_external_asm(item, cmd_line)
+    else:
+      ret = self.diff_external_pseudo(item, cmd_line)
+    print("External command returned", ret)
+
+  def diff_external_asm(self, item, cmd_line):
+    ret = None
+    cur = self.db_cursor()
+    sql = """select *
+               from (
+             select prototype, assembly, name, 1
+               from functions
+              where address = ?
+                and assembly is not null
+       union select prototype, assembly, name, 2
+               from diff.functions
+              where address = ?
+                and assembly is not null)
+              order by 4 asc"""
+    ea1 = str(int(item[1], 16))
+    ea2 = str(int(item[3], 16))
+    cur.execute(sql, (ea1, ea2))
+    rows = cur.fetchall()
+    if len(rows) != 2:
+      warning("Sorry, there is no assembly available for either the first or the second database.")
+    else:
+      row1 = rows[0]
+      row2 = rows[1]
+
+      asm1 = self.prettify_asm(row1["assembly"])
+      asm2 = self.prettify_asm(row2["assembly"])
+      buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
+      buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
+
+      filename1 = "main_%s.asm" % item[1]
+      filename2 = "diff_%s.asm" % item[3]
+      
+      with open(filename1, "w") as f_source:
+        with open(filename2, "w") as f_dest:
+          f_source.writelines(buf1)
+          f_dest.writelines(buf2)
+
+      line = cmd_line.replace("$1", filename1)
+      line = line.replace("$2", filename2)
+      ret = os.system(line)
+
+    cur.close()
+    return ret
+
+  def diff_external_pseudo(self, item, cmd_line):
+    ret = None
+    cur = self.db_cursor()
+    sql = """select *
+               from (
+             select prototype, pseudocode, address, 1
+               from functions
+              where address = ?
+                and pseudocode is not null
+       union select prototype, pseudocode, address, 2
+               from diff.functions
+              where address = ?
+                and pseudocode is not null)
+              order by 4 asc"""
+    ea1 = str(int(item[1], 16))
+    ea2 = str(int(item[3], 16))
+    cur.execute(sql, (ea1, ea2))
+    rows = cur.fetchall()
+    if len(rows) != 2:
+      warning("Sorry, there is no pseudo-code available for either the first or the second database.")
+    else:
+      row1 = rows[0]
+      row2 = rows[1]
+      
+      filename1 = "main_%s.cpp" % item[1]
+      filename2 = "diff_%s.cpp" % item[3]
+      
+      with open(filename1, "w") as f_source:
+        with open(filename2, "w") as f_dest:
+          f_source.writelines("%s\n%s" % (row1["prototype"], row1["pseudocode"]))
+          f_dest.writelines("%s\n%s" % (row2["prototype"],   row2["pseudocode"]))
+      
+      line = cmd_line.replace("$1", filename1)
+      line = line.replace("$2", filename2)
+      ret = os.system(line)
+
+    cur.close()
+    return ret
 
   def graph_diff(self, ea1, name1, ea2, name2):
     g1 = self.get_graph(str(ea1), True)
