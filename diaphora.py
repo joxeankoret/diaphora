@@ -45,7 +45,7 @@ except ImportError:
   is_ida = False
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.0.6"
+VERSION_VALUE = "2.0.7"
 COPYRIGHT_VALUE="Copyright(c) 2015-2021 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
