@@ -1662,6 +1662,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     return True
 
+  def get_disasm(self, ea):
+    mnem = print_insn_mnem(ea)
+    op1  = print_operand(ea, 0)
+    op2  = print_operand(ea, 1)
+    line = "%s %s" % (mnem.ljust(8), op1)
+    if op2 != "":
+      line += ", %s" % op2
+    return line
+
   def read_function(self, f, discard=False):
     name = get_func_name(int(f))
     true_name = name
@@ -1753,7 +1762,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       for x in list(Heads(block.start_ea, block.end_ea)):
         mnem = print_insn_mnem(x)
-        disasm = GetDisasm(x)
+        try:
+          disasm = GetDisasm(x)
+        except UnicodeDecodeError:
+          # This is a workaround for a rare error getting the disassembly for a
+          # line with some UTF-8 characters that Python fails to handle properly
+          disasm = self.get_disasm(x)
+
         size += get_item_size(x)
         instructions += 1
 
