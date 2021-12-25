@@ -1252,13 +1252,18 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, name, mtype, mdis, mcmt, mitp = ins_data2
+    ea2, cmt1, cmt2, operandNames, name, mtype, mdis, mcmt, mitp = ins_data2
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
 
     if cmt2 is not None and get_cmt(ea1, 1) is None:
       set_cmt(ea1, cmt2, 1)
+
+    operandNames = json.loads(operandNames)
+    for index, operandName in enumerate(operandNames):
+      if(operandName):
+        ida_bytes.set_forced_operand(ea1, index, operandNames[index])
 
     if mcmt is not None:
       cfunc = decompile(ea1)
@@ -1321,12 +1326,18 @@ class CIDABinDiff(diaphora.CBinDiff):
     if import_syms[ea][2] is not None:
       return True
 
+    # Has operand Name
+    operandNames = import_syms[ea][3]
+    for operandName in operandNames:
+      if(operandName):
+        return True
+
     # Has a name
-    if import_syms[ea][3] is not None:
+    if import_syms[ea][4] is not None:
       return True
 
     # Has pseudocode comment
-    if import_syms[ea][6] is not None:
+    if import_syms[ea][7] is not None:
       return True
 
     return False
@@ -1335,7 +1346,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur = self.db_cursor()
     try:
       # Check first if we have any importable items
-      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
+      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operandNames operandNames, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                   from diff.function_bblocks bb,
                        diff.functions f,
                        diff.bb_instructions bbi,
@@ -1346,6 +1357,7 @@ class CIDABinDiff(diaphora.CBinDiff):
                    and f.address = ?
                    and (ins.comment1 is not null
                      or ins.comment2 is not null
+                     or ins.operandNames is not null
                      or ins.name is not null
                      or pseudocomment is not null) """
       cur.execute(sql, (str(ea2),))
@@ -1353,10 +1365,10 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["operandNames"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
-        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
+        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operandNames operandNames, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                     from function_bblocks bb,
                          functions f,
                          bb_instructions bbi,
@@ -1370,7 +1382,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["operandNames"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
