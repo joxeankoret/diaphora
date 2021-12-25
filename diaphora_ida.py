@@ -1791,10 +1791,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         if decoded_size <= 0:
           decoded_size = 1
 
-        for oper in ins.ops:
-          if oper.type == o_imm:
-            if self.is_constant(oper, x) and self.constant_filter(oper.value):
-              constants.append(oper.value)
+
+        for operand in ins.ops:
+          if operand.type == o_imm:
+            if self.is_constant(operand, x) and self.constant_filter(operand.value):
+              constants.append(operand.value)
 
           drefs = list(DataRefsFrom(x))
           if len(drefs) > 0:
@@ -1853,7 +1854,18 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
-        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name, tmp_type])
+
+        operandsNames = []
+        # save operandsNames
+        for index, operand in enumerate(ins.ops):
+
+          if (ida_bytes.is_forced_operand(ins.ip, index)):
+            operandName = ida_bytes.get_forced_operand(ins.ip, index) if ida_bytes.is_forced_operand(ins.ip, index) else ""
+            operandsNames.append(operandName)
+          else:
+            operandsNames.append("")
+
+        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, operandsNames, tmp_name, tmp_type])
 
         switch = get_switch_info(x)
         if switch:
