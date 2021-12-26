@@ -1410,6 +1410,8 @@ class CIDABinDiff(diaphora.CBinDiff):
             address1 = json.loads(diff_rows[0]["assembly_addrs"])
             address2 = json.loads(diff_rows[1]["assembly_addrs"])
 
+
+
             diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
             for x in diff_list:
               left, right, ignore = x
@@ -1423,19 +1425,34 @@ class CIDABinDiff(diaphora.CBinDiff):
               # which another line number in both databases.
               ea1 = address1[int(left_line)-1]
               ea2 = address2[int(right_line)-1]
+
+              # print("Import instruction at address: " + hex(ea2))
+              # print("Row " + hex(ea2) + " is changed: " + str(changed))
+              # if changed or is_importable:
+              ea1 = str(ea1)
+              ea2 = str(ea2)
+              is_importable = False
+              previous_db_row = None
+              current_db_row = None
               changed = left[1].startswith('\x00-') and right[1].startswith('\x00+')
-              is_importable = self.row_is_importable(ea2, import_syms)
-              if changed or is_importable:
-                ea1 = str(ea1)
-                ea2 = str(ea2)
-                if ea1 in matched_syms and ea2 in import_syms:
-                  self.import_instruction(matched_syms[ea1], import_syms[ea2])
-                if ea2 in matched_syms and ea1 in import_syms:
-                  self.import_instruction(matched_syms[ea2], import_syms[ea1])
+              # print("Row " + ea1 + " is importable: " + str(is_importable) + " address: " + str(import_syms[str(ea1)]))  #
+              if ea1 in matched_syms and ea2 in import_syms:
+                previous_db_row = ea2
+                current_db_row = ea1
+              if ea2 in matched_syms and ea1 in import_syms:
+                previous_db_row = ea1
+                current_db_row = ea2
+
+              if(previous_db_row is not None and current_db_row is not None):
+                is_importable = self.row_is_importable(previous_db_row, import_syms)
+                print("Row " + previous_db_row + " is importable: " + str(is_importable) + " address: " + str(import_syms[str(previous_db_row)][0]))
+                if(changed):
+                  self.import_instruction(matched_syms[current_db_row], import_syms[previous_db_row])
     finally:
       cur.close()
 
   def do_import_one(self, ea1, ea2, force = False):
+    # print("Start to import instruction at address: " + hex(int(ea1)))
     cur = self.db_cursor()
     sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
     cur.execute(sql, (str(ea2),))
