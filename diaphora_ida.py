@@ -1260,10 +1260,10 @@ class CIDABinDiff(diaphora.CBinDiff):
     if cmt2 is not None and get_cmt(ea1, 1) is None:
       set_cmt(ea1, cmt2, 1)
 
-    operandNames = json.loads(operandNames)
-    for index, operandName in enumerate(operandNames):
-      if(operandName):
-        ida_bytes.set_forced_operand(ea1, index, operandNames[index])
+    for operandName in operandNames:
+      index, name = operandName
+      if(name):
+        ida_bytes.set_forced_operand(ea1, index, name)
 
     if mcmt is not None:
       cfunc = decompile(ea1)
@@ -1318,6 +1318,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     if not ea in import_syms:
       return False
 
+    operandNames = import_syms[ea][3]
+    print("Type of operandNames is: " + str(type(operandNames)))
+
     # Has cmt1
     if import_syms[ea][1] is not None:
       return True
@@ -1328,8 +1331,10 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     # Has operand Name
     operandNames = import_syms[ea][3]
+    print("Type of operandNames is: " + str(type(operandNames)))
     for operandName in operandNames:
-      if(operandName):
+      if(operandName[1] != ""):
+        print("Type of operandNames is: " + type(operandNames))
         return True
 
     # Has a name
@@ -1365,7 +1370,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["operandNames"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operandNames"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
         sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operandNames operandNames, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
@@ -1382,7 +1387,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["operandNames"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operandNames"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
@@ -1870,12 +1875,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         operandsNames = []
         # save operandsNames
         for index, operand in enumerate(ins.ops):
-
           if (ida_bytes.is_forced_operand(ins.ip, index)):
             operandName = ida_bytes.get_forced_operand(ins.ip, index) if ida_bytes.is_forced_operand(ins.ip, index) else ""
-            operandsNames.append(operandName)
-          else:
-            operandsNames.append("")
+            operandsNames.append([index, operandName])
 
         instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, operandsNames, tmp_name, tmp_type])
 
