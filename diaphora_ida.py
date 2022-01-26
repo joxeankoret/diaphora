@@ -1696,6 +1696,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       line += ", %s" % op2
     return line
 
+  def get_stack_variables(self, function_ea):
+    function_frame = idc.get_func_attr(function_ea, FUNCATTR_FRAME)
+
+    return StructMembers(function_frame)
+
   def read_function(self, f, discard=False):
     name = get_func_name(int(f))
     true_name = name
@@ -1758,6 +1763,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_degree = {}
     bb_edges = []
     constants = []
+    stack_variables = self.get_stack_variables(f)
+    stack_variables_xrefs = dict() # key: stack_variable_offset, value: tuple(instruction_address, operand_number)
+
+    # stackVariables_instructionXRefs = []
 
     # The callees will be calculated later
     callees = list()
@@ -2081,6 +2090,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
              assembly_addrs, kgh_hash, None,
+             stack_variables,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -2137,6 +2147,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["assembly_addrs"],
       d["kgh_hash"],
       d["userdata"],
+      d["stack_variables"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
@@ -2150,7 +2161,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
-    assembly_addrs, kgh_hash, userdata, callers, callees, basic_blocks_data,
+    assembly_addrs, kgh_hash, userdata, stack_variables, callers, callees, basic_blocks_data,
     bb_relations) = l
     d = dict(
           name = name,
@@ -2195,6 +2206,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           seg_rva = seg_rva,
           assembly_addrs = assembly_addrs,
           kgh_hash = kgh_hash,
+          stack_variables = stack_variables,
           callers = callers,
           callees = callees,
           basic_blocks_data = basic_blocks_data,

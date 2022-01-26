@@ -444,6 +444,14 @@ class CBinDiff:
                 constant text not null)"""
     cur.execute(sql)
 
+    sql = """create table if not exists stack_variables (
+                id integer primary_key,
+                func_id integer not null references functions(id) on delete cascade,
+                offset integer not null,
+                name text not null,
+                size integer not null)"""
+    cur.execute(sql)
+
     cur.execute("select 1 from version")
     row = cur.fetchone()
     if not row:
@@ -628,11 +636,11 @@ class CBinDiff:
       log("WARNING: Trying to save a non resolved function?")
       return
 
-    # Phase 1: Fix data types and insert the function row.
+    # Fix data types and insert the function row.
     cur = self.db_cursor()
     new_props = []
-    # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
-    for prop in props[:len(props)-4]:
+    # The last 5 fields are stack_variables, callers, callees, basic_blocks_data, bb_relations
+    for prop in props[:len(props)-5]:
       # XXX: Fixme! This is a hack for 64 bit architectures kernels
       if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
         prop = str(prop)
@@ -668,7 +676,7 @@ class CBinDiff:
 
     func_id = cur.lastrowid
 
-    # Phase 2: Save the callers and callees of the function
+    # Save the callers and callees of the function
     callers, callees = props[len(props)-4:len(props)-2]
     sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
     for caller in callers:
@@ -677,7 +685,7 @@ class CBinDiff:
     for callee in callees:
       cur.execute(sql, (func_id, str(callee), 'callee'))
 
-    # Phase 3: Insert the constants of the function
+    # Insert the constants of the function
     sql = "insert into constants (func_id, constant) values (?, ?)"
     props_dict = self.create_function_dictionary(props)
     for constant in props_dict["constants"]:
@@ -691,7 +699,14 @@ class CBinDiff:
       if should_add:
         cur.execute(sql, (func_id, constant))
 
-    # Phase 4: Save the basic blocks relationships
+    # Insert stack variables
+    for stack_variable in props_dict["stack_variables"]:
+      offset, name, size = stack_variable
+      sql = "insert into stack_variables (func_id, offset, name, size) values (?, ?, ?, ?)"
+      cur.execute(sql, (func_id, offset, name, size))
+
+
+    # Save the basic blocks relationships
     if not self.function_summaries_only:
       # The last 2 fields are basic_blocks_data & bb_relations
       bb_data, bb_relations = props[len(props)-2:]
@@ -763,11 +778,14 @@ class CBinDiff:
             # key doesnt exist because it doesnt have forward references to any bb
             log("Error: %s" % str(sys.exc_info()[1]))
 
-      # And finally insert the functions to basic blocks relations
+      # Insert the functions to basic blocks relations
       sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
       for key in bb_ids:
         bb_id = bb_ids[key]
         cur_execute(sql, (func_id, bb_id))
+
+
+    # Insert the stack variables to instructions relations
 
     cur.close()
 
