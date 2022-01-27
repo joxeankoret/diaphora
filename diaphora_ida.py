@@ -33,6 +33,7 @@ from idaapi import *
 from idautils import *
 
 import idaapi
+import ida_frame
 
 idaapi.require("diaphora")
 
@@ -1763,10 +1764,21 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     bb_degree = {}
     bb_edges = []
     constants = []
-    stack_variables = self.get_stack_variables(f)
-    stack_variables_xrefs = dict() # key: stack_variable_offset, value: tuple(instruction_address, operand_number)
+    stack_variables = list()
 
-    # stackVariables_instructionXRefs = []
+    # export stack variables
+    function_frame = ida_frame.get_frame(f)
+
+    for frame_member in function_frame.members:
+      stack_variable_xrefs = ida_frame.xreflist_t()
+      ida_frame.build_stkvar_xrefs(stack_variable_xrefs, func, frame_member)
+      stack_variable = StackVariable()
+      stack_variable.offset = frame_member.soff
+      stack_variable.name = idc.get_member_name(function_frame.id, frame_member.soff)
+      stack_variable.size = idc.get_member_size(function_frame.id, frame_member.soff)
+      stack_variable.cross_references = stack_variable_xrefs
+      stack_variables.append(stack_variable)
+
 
     # The callees will be calculated later
     callees = list()
@@ -2459,6 +2471,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       if ask_yn(0, "HIDECANCEL\nThe databases seems to be 100% equal. Do you want to continue anyway?") != 1:
         self.do_continue = False
     return are_equal
+
+#-------------------------------------------------------------------------------
+class StackVariable():
+  def __init__(self):
+    self.offset = int(0)
+    self.name = str("")
+    self.size = int(0)
+    self.cross_references = list()
+    pass
 
 #-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):

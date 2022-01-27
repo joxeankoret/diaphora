@@ -445,11 +445,22 @@ class CBinDiff:
     cur.execute(sql)
 
     sql = """create table if not exists stack_variables (
-                id integer primary_key,
+                id integer primary key,
                 func_id integer not null references functions(id) on delete cascade,
                 offset integer not null,
                 name text not null,
-                size integer not null)"""
+                size integer not null,
+                UNIQUE(func_id, offset)
+                )"""
+    cur.execute(sql)
+
+    sql = """create table if not exists stack_variables__instructions_operands_relations (
+                id integer primary key,
+                stack_variable_id integer references stack_variables(id) on delete cascade,
+                instruction_address text not null,
+                operand_number integer not null,
+                UNIQUE(stack_variable_id, instruction_address, operand_number)
+                )"""
     cur.execute(sql)
 
     cur.execute("select 1 from version")
@@ -701,10 +712,14 @@ class CBinDiff:
 
     # Insert stack variables
     for stack_variable in props_dict["stack_variables"]:
-      offset, name, size = stack_variable
-      sql = "insert into stack_variables (func_id, offset, name, size) values (?, ?, ?, ?)"
-      cur.execute(sql, (func_id, offset, name, size))
-
+      member_xrefs_string = ", ".join("{}(operand id: {})".format(hex(item.ea), item.opnum) for item in stack_variable.cross_references)
+      print(f"Function frame member: {stack_variable.name} at offset {stack_variable.offset} and size {stack_variable.size} has xrefs from addresses: {member_xrefs_string}")
+      sql = "insert or REPLACE into stack_variables (func_id, offset, name, size) values (?, ?, ?, ?)"
+      cur.execute(sql, (func_id, stack_variable.offset, stack_variable.name, stack_variable.size))
+      stack_variable_id = cur.lastrowid
+      sql = "insert into stack_variables__instructions_operands_relations (stack_variable_id, instruction_address, operand_number) values (?, ?, ?)"
+      for cross_reference in stack_variable.cross_references:
+        cur.execute(sql, (stack_variable_id, str(cross_reference.ea), cross_reference.opnum))
 
     # Save the basic blocks relationships
     if not self.function_summaries_only:
