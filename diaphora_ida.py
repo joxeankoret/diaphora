@@ -205,6 +205,19 @@ class command_handler_t(ida_kernwin.action_handler_t):
     return idaapi.AST_ENABLE_ALWAYS
 
 #-------------------------------------------------------------------------------
+class StackVariable():
+  def __init__(self):
+    self.offset = int(0)
+    self.name = str("")
+    self.size = int(0)
+    self.cross_references = list()
+
+class CrossReference():
+  def __init__(self, instruction_id: int, operand_number: int):
+    self.instruction_id = instruction_id
+    self.operand_number = operand_number
+
+#-------------------------------------------------------------------------------
 # Support for the removed AddCommand() API
 class CDiaphoraChooser(diaphora.CChooser, Choose):
   def __init__(self, title, bindiff, show_commands = True):
@@ -1349,6 +1362,21 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return False
 
+  def stack_variable_from_row(self, stack_variable_row) -> StackVariable:
+    stack_variable = StackVariable()
+
+    stack_variable.name = stack_variable_row["name"]
+    stack_variable.size = stack_variable_row["size"]
+    stack_variable.offset = stack_variable_row["offset"]
+    instruction_addresses = json.loads(stack_variable_row["instruction_addresses"])
+    operand_numbers = json.loads(stack_variable_row["operand_numbers"])
+    for index, _ in enumerate(instruction_addresses):
+      instruction_address = int(instruction_addresses[index])
+      operand_number = int(operand_numbers[index])
+      stack_variable.cross_references.append(CrossReference(instruction_address, operand_number))
+
+    return stack_variable
+
   def import_instruction_level(self, ea1, ea2, cur):
     cur = self.db_cursor()
     try:
@@ -1373,6 +1401,39 @@ class CIDABinDiff(diaphora.CBinDiff):
         import_syms = {}
         for row in import_rows:
           import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operandNames"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+
+
+        # Get stack variables for the function in the other(diff) database
+
+        # get function id
+        sql = """select f.id
+                 from diff.functions f
+                 where f.address = ?"""
+
+        cur.execute(sql, (str(ea2),))
+        function_id = cur.fetchone()["id"]
+
+        # get stack variables from diff database
+        sql = """ select stack_vars.offset offset,
+                         stack_vars.name name,
+                         stack_vars.size size,
+                         json_group_array(diff.stack_variables__instructions_operands_relations.instruction_address) AS instruction_addresses,
+                         json_group_array(diff.stack_variables__instructions_operands_relations.operand_number) AS operand_numbers
+                   from diff.stack_variables stack_vars
+                    join diff.stack_variables__instructions_operands_relations on (stack_vars.id == diff.stack_variables__instructions_operands_relations.stack_variable_id)
+                  where stack_vars.func_id == ?
+                  group by stack_vars.id
+                  """
+
+        cur.execute(sql, (str(function_id),))
+        import_stack_variables_rows = cur.fetchall()
+        stack_variables = list()
+        for stack_variable_row in import_stack_variables_rows:
+          stack_variable = self.stack_variable_from_row(stack_variable_row)
+          stack_variables.append(stack_variable)
+          print(f'Stack variable {stack_variable.name} at offset {hex(stack_variable.offset)} the size of {hex(stack_variable.size)} has references from: ')
+          for cross_reference in stack_variable.cross_references:
+            print(f'Instruction id: {hex(cross_reference.instruction_id)} and operand_number: {hex(cross_reference.operand_number)}')
 
 
         # Check in the current database
@@ -1768,16 +1829,16 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     # export stack variables
     function_frame = ida_frame.get_frame(f)
-
-    for frame_member in function_frame.members:
-      stack_variable_xrefs = ida_frame.xreflist_t()
-      ida_frame.build_stkvar_xrefs(stack_variable_xrefs, func, frame_member)
-      stack_variable = StackVariable()
-      stack_variable.offset = frame_member.soff
-      stack_variable.name = idc.get_member_name(function_frame.id, frame_member.soff)
-      stack_variable.size = idc.get_member_size(function_frame.id, frame_member.soff)
-      stack_variable.cross_references = stack_variable_xrefs
-      stack_variables.append(stack_variable)
+    if(function_frame is not None):
+      for frame_member in function_frame.members:
+        stack_variable_xrefs = ida_frame.xreflist_t()
+        ida_frame.build_stkvar_xrefs(stack_variable_xrefs, func, frame_member)
+        stack_variable = StackVariable()
+        stack_variable.offset = frame_member.soff
+        stack_variable.name = idc.get_member_name(function_frame.id, frame_member.soff)
+        stack_variable.size = idc.get_member_size(function_frame.id, frame_member.soff)
+        stack_variable.cross_references = stack_variable_xrefs
+        stack_variables.append(stack_variable)
 
 
     # The callees will be calculated later
@@ -2472,14 +2533,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         self.do_continue = False
     return are_equal
 
-#-------------------------------------------------------------------------------
-class StackVariable():
-  def __init__(self):
-    self.offset = int(0)
-    self.name = str("")
-    self.size = int(0)
-    self.cross_references = list()
-    pass
+
 
 #-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
