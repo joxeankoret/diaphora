@@ -213,8 +213,8 @@ class StackVariable():
     self.cross_references = list()
 
 class CrossReference():
-  def __init__(self, instruction_id: int, operand_number: int):
-    self.instruction_id = instruction_id
+  def __init__(self, instruction_address: int, operand_number: int):
+    self.instruction_address = instruction_address
     self.operand_number = operand_number
 
 #-------------------------------------------------------------------------------
@@ -1328,6 +1328,9 @@ class CIDABinDiff(diaphora.CBinDiff):
           mtype = mtype.decode("utf-8")
         SetType(tmp_ea, mtype)
 
+  def import_stack_variable(self, stack_variable: StackVariable, address_current_db: int):
+    pass
+
   def row_is_importable(self, ea2, import_syms):
     ea = str(ea2)
     if not ea in import_syms:
@@ -1402,40 +1405,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         for row in instructions_rows_import_db:
           import_symbols[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operandNames"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
-
-        # Get stack variables for the function in the other(diff) database
-
-        # get function id
-        sql = """select f.id
-                 from diff.functions f
-                 where f.address = ?"""
-
-        cur.execute(sql, (str(ea2),))
-        function_id = cur.fetchone()["id"]
-
-        # get stack variables from diff database
-        sql = """ select stack_vars.offset offset,
-                         stack_vars.name name,
-                         stack_vars.size size,
-                         json_group_array(diff.stack_variables__instructions_operands_relations.instruction_address) AS instruction_addresses,
-                         json_group_array(diff.stack_variables__instructions_operands_relations.operand_number) AS operand_numbers
-                   from diff.stack_variables stack_vars
-                    join diff.stack_variables__instructions_operands_relations on (stack_vars.id == diff.stack_variables__instructions_operands_relations.stack_variable_id)
-                  where stack_vars.func_id == ?
-                  group by stack_vars.id
-                  """
-
-        cur.execute(sql, (str(function_id),))
-        import_stack_variables_rows = cur.fetchall()
-        stack_variables = list()
-        for stack_variable_row in import_stack_variables_rows:
-          stack_variable = self.stack_variable_from_row(stack_variable_row)
-          stack_variables.append(stack_variable)
-          print(f'Stack variable {stack_variable.name} at offset {hex(stack_variable.offset)} the size of {hex(stack_variable.size)} has references from: ')
-          for cross_reference in stack_variable.cross_references:
-            print(f'Instruction id: {hex(cross_reference.instruction_id)} and operand_number: {hex(cross_reference.operand_number)}')
-
-
         # Check in the current database
         sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operandNames operandNames, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                     from function_bblocks bb,
@@ -1475,10 +1444,11 @@ class CIDABinDiff(diaphora.CBinDiff):
             function_assembly_current_db = rows_with_assembly_current_db["assembly"]
             function_assembly_import_db = rows_with_assembly_import_db["assembly"]
 
-            assembly_lines_addresses_current_db = json.loads(rows_with_assembly_current_db["assembly_addrs"])
-            assembly_lines_addresses_import_db = json.loads(rows_with_assembly_import_db["assembly_addrs"])
+            assembly_instructions_offsets_current_db = json.loads(rows_with_assembly_current_db["assembly_addrs"])
+            assembly_instructions_offsets_import_db = json.loads(rows_with_assembly_import_db["assembly_addrs"])
 
             matched_assembly_lines = difflib._mdiff(function_assembly_current_db.splitlines(1), function_assembly_import_db.splitlines(1))
+            import_to_current_db_assembly_instructions_dict = dict()
             for left_right_assembly_line in matched_assembly_lines:
               line_tuple_current_db, line_tuple_import_db, changed_flag = left_right_assembly_line
               line_number_current_db  = line_tuple_current_db[0]
@@ -1489,14 +1459,71 @@ class CIDABinDiff(diaphora.CBinDiff):
 
               # At this point, we know which line number matches with
               # which another line number in both databases.
-              assembly_line_address_current_db = assembly_lines_addresses_current_db[int(line_number_current_db)-1]
-              assembly_line_address_import_db = assembly_lines_addresses_import_db[int(line_number_import_db)-1]
+              assembly_instruction_offset_current_db = assembly_instructions_offsets_current_db[int(line_number_current_db)-1]
+              assembly_instruction_offset_import_db = assembly_instructions_offsets_import_db[int(line_number_import_db)-1]
+              import_to_current_db_assembly_instructions_dict[assembly_instruction_offset_import_db] = assembly_instruction_offset_current_db
 
-              assembly_line_address_current_db = str(assembly_line_address_current_db)
-              assembly_line_address_import_db = str(assembly_line_address_import_db)
+              assembly_instruction_offset_current_db = str(assembly_instruction_offset_current_db)
+              assembly_instruction_offset_import_db = str(assembly_instruction_offset_import_db)
 
-              if(assembly_line_address_current_db in current_symbols and assembly_line_address_import_db in import_symbols and changed_flag):
-                  self.import_instruction(current_symbols[assembly_line_address_current_db], import_symbols[assembly_line_address_import_db])
+              if(assembly_instruction_offset_current_db in current_symbols and assembly_instruction_offset_import_db in import_symbols and changed_flag):
+                  self.import_instruction(current_symbols[assembly_instruction_offset_current_db], import_symbols[assembly_instruction_offset_import_db])
+
+            print(f"Size of import_to_current_db_assembly_instructions_dict is {len(import_to_current_db_assembly_instructions_dict)}")
+
+            # dictionary with import to current database assembly instruction addresses
+
+            # for left_right_assembly_line in matched_assembly_lines:
+            #   line_tuple_current_db, line_tuple_import_db, changed_flag = left_right_assembly_line
+            #   line_number_import_db = line_tuple_import_db[0]
+            #   line_number_current_db  = line_tuple_current_db[0]
+            #   assembly_line_address_import_db = assembly_lines_addresses_import_db[int(line_number_import_db) - 1]
+            #   assembly_line_address_current_db = assembly_lines_addresses_current_db[int(line_number_current_db) - 1]
+            #   import_to_current_db_assembly_instructions_dict[assembly_line_address_import_db] = assembly_line_address_current_db
+
+            # Get stack variables for the function in the import database
+            # get function id
+            sql = """select f.id
+                     from diff.functions f
+                     where f.address = ?"""
+
+            cur.execute(sql, (str(ea2),))
+            function_id = cur.fetchone()["id"]
+
+            # get stack variables from import database
+            sql = """ select stack_vars.offset offset,
+                             stack_vars.name name,
+                             stack_vars.size size,
+                             json_group_array(diff.stack_variables__instructions_operands_relations.instruction_address) AS instruction_addresses,
+                             json_group_array(diff.stack_variables__instructions_operands_relations.operand_number) AS operand_numbers
+                       from diff.stack_variables stack_vars
+                        join diff.stack_variables__instructions_operands_relations on (stack_vars.id == diff.stack_variables__instructions_operands_relations.stack_variable_id)
+                      where stack_vars.func_id == ?
+                      group by stack_vars.id
+                      """
+
+            cur.execute(sql, (str(function_id),))
+            import_stack_variables_rows = cur.fetchall()
+            stack_variables = list()
+            for stack_variable_row in import_stack_variables_rows:
+              stack_variable = self.stack_variable_from_row(stack_variable_row)
+              stack_variables.append(stack_variable)
+
+            import_to_current_db_assembly_instructions_dict_keys = ', '.join(
+              [hex(item) for item in import_to_current_db_assembly_instructions_dict.keys()])
+            print(f"import_to_current_db_assembly_instructions_dict keys: {import_to_current_db_assembly_instructions_dict_keys}")
+
+            for stack_variable in stack_variables:
+              print(f"Importing stack variable with name {stack_variable.name} at offset {stack_variable.offset} of size {stack_variable.size}")
+              cross_references_string = ', '.join([(hex(item.instruction_address) + f" and operand_number: {hex(item.operand_number)}") for item in stack_variable.cross_references])
+              print(f"It has cross references in the import database: {cross_references_string}")
+              for cross_reference in stack_variable.cross_references:
+                print(f"Processing cross reference {hex(cross_reference.instruction_address)}")
+                if cross_reference in import_to_current_db_assembly_instructions_dict.keys():
+                  assembly_instruction_address_current_db = import_to_current_db_assembly_instructions_dict[cross_reference]
+                  print(f"""Cross reference {hex(cross_reference.instruction_address)} in import database
+                            has a respective instruction in the current database: {assembly_instruction_address_current_db}""")
+                  self.import_stack_variable(stack_variable, assembly_instruction_address_current_db)
     finally:
       cur.close()
 
