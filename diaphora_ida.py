@@ -1453,58 +1453,50 @@ class CIDABinDiff(diaphora.CBinDiff):
           for row in instructions_rows_current_db:
             current_symbols[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operandNames"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
-          # We have 'something' to import, let's diff the assembly...
           sql = """select *
-                     from (
-                   select assembly, assembly_addrs, 1
-                     from functions
-                    where address = ?
-                      and assembly is not null
-             union select assembly, assembly_addrs, 2
-                     from diff.functions
-                    where address = ?
-                      and assembly is not null)
-                    order by 2 asc"""
-          cur.execute(sql, (str(ea1), str(ea2)))
+                                         from (
+                                       select assembly, assembly_addrs
+                                         from functions
+                                        where address = ?
+                                          and assembly is not null)"""
+          cur.execute(sql, (str(ea1),))
+          rows_with_assembly_current_db = cur.fetchone()
 
+          sql = """select *
+                                         from (
+                                       select assembly, assembly_addrs
+                                         from diff.functions
+                                        where address = ?
+                                          and assembly is not null)"""
+          cur.execute(sql, (str(ea2),))
+          rows_with_assembly_import_db = cur.fetchone()
 
+          if len(rows_with_assembly_import_db) > 0 and len(rows_with_assembly_current_db) > 0:
+            function_assembly_current_db = rows_with_assembly_current_db["assembly"]
+            function_assembly_import_db = rows_with_assembly_import_db["assembly"]
 
-          rows_with_assembly_and_addresses_from_both_databases = cur.fetchall()
-          if len(rows_with_assembly_and_addresses_from_both_databases) > 0:
-            function_assembly_current_db = rows_with_assembly_and_addresses_from_both_databases[0]["assembly"]
-            function_assembly_import_db = rows_with_assembly_and_addresses_from_both_databases[1]["assembly"]
-
-            assembly_addresses_current_db = json.loads(rows_with_assembly_and_addresses_from_both_databases[0]["assembly_addrs"])
-            assembly_addresses_import_db = json.loads(rows_with_assembly_and_addresses_from_both_databases[1]["assembly_addrs"])
+            assembly_lines_addresses_current_db = json.loads(rows_with_assembly_current_db["assembly_addrs"])
+            assembly_lines_addresses_import_db = json.loads(rows_with_assembly_import_db["assembly_addrs"])
 
             matched_assembly_lines = difflib._mdiff(function_assembly_current_db.splitlines(1), function_assembly_import_db.splitlines(1))
             for left_right_assembly_line in matched_assembly_lines:
-              line_tuple_current_db, line_tuple_previous_db, changed_flag = left_right_assembly_line
+              line_tuple_current_db, line_tuple_import_db, changed_flag = left_right_assembly_line
               line_number_current_db  = line_tuple_current_db[0]
-              line_number_import_db = line_tuple_previous_db[0]
+              line_number_import_db = line_tuple_import_db[0]
 
               if line_number_import_db == "" or line_number_current_db == "":
                 continue
 
               # At this point, we know which line number matches with
               # which another line number in both databases.
-              assembly_line_address_current_db = assembly_addresses_current_db[int(line_number_current_db)-1]
-              assembly_line_address_import_db = assembly_addresses_import_db[int(line_number_import_db)-1]
+              assembly_line_address_current_db = assembly_lines_addresses_current_db[int(line_number_current_db)-1]
+              assembly_line_address_import_db = assembly_lines_addresses_import_db[int(line_number_import_db)-1]
 
               assembly_line_address_current_db = str(assembly_line_address_current_db)
               assembly_line_address_import_db = str(assembly_line_address_import_db)
-              previous_db_row = None
-              current_db_row = None
 
-              # if assembly_line_address_current_db in current_symbols and assembly_line_address_import_db in import_symbols:
-              #   current_db_row = assembly_line_address_current_db
-              #   previous_db_row = assembly_line_address_import_db
-              if assembly_line_address_import_db in current_symbols and assembly_line_address_current_db in import_symbols:
-                previous_db_row = assembly_line_address_current_db
-                current_db_row = assembly_line_address_import_db
-
-              if(previous_db_row is not None and current_db_row is not None and changed_flag):
-                  self.import_instruction(current_symbols[current_db_row], import_symbols[previous_db_row])
+              if(assembly_line_address_current_db in current_symbols and assembly_line_address_import_db in import_symbols and changed_flag):
+                  self.import_instruction(current_symbols[assembly_line_address_current_db], import_symbols[assembly_line_address_import_db])
     finally:
       cur.close()
 
