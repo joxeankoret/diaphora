@@ -1465,44 +1465,45 @@ class CIDABinDiff(diaphora.CBinDiff):
                     where address = ?
                       and assembly is not null)
                     order by 2 asc"""
-
           cur.execute(sql, (str(ea1), str(ea2)))
+
+
+
           rows_with_assembly_and_addresses_from_both_databases = cur.fetchall()
           if len(rows_with_assembly_and_addresses_from_both_databases) > 0:
             function_assembly_current_db = rows_with_assembly_and_addresses_from_both_databases[0]["assembly"]
-            function_assembly_other_db = rows_with_assembly_and_addresses_from_both_databases[1]["assembly"]
+            function_assembly_import_db = rows_with_assembly_and_addresses_from_both_databases[1]["assembly"]
 
             assembly_addresses_current_db = json.loads(rows_with_assembly_and_addresses_from_both_databases[0]["assembly_addrs"])
             assembly_addresses_import_db = json.loads(rows_with_assembly_and_addresses_from_both_databases[1]["assembly_addrs"])
 
-            matched_assembly_lines = difflib._mdiff(function_assembly_current_db.splitlines(1), function_assembly_other_db.splitlines(1))
+            matched_assembly_lines = difflib._mdiff(function_assembly_current_db.splitlines(1), function_assembly_import_db.splitlines(1))
             for left_right_assembly_line in matched_assembly_lines:
-              line_tuple_previous_db, line_tuple_current_db, changed_flag = left_right_assembly_line
-              line_number_previous_db  = line_tuple_previous_db[0]
-              line_number_current_db = line_tuple_current_db[0]
+              line_tuple_current_db, line_tuple_previous_db, changed_flag = left_right_assembly_line
+              line_number_current_db  = line_tuple_current_db[0]
+              line_number_import_db = line_tuple_previous_db[0]
 
-              if line_number_current_db == "" or line_number_previous_db == "":
+              if line_number_import_db == "" or line_number_current_db == "":
                 continue
 
               # At this point, we know which line number matches with
               # which another line number in both databases.
               assembly_line_address_current_db = assembly_addresses_current_db[int(line_number_current_db)-1]
-              assembly_line_address_import_db = assembly_addresses_import_db[int(line_number_previous_db)-1]
+              assembly_line_address_import_db = assembly_addresses_import_db[int(line_number_import_db)-1]
 
               assembly_line_address_current_db = str(assembly_line_address_current_db)
               assembly_line_address_import_db = str(assembly_line_address_import_db)
               previous_db_row = None
               current_db_row = None
-              changed = line_tuple_previous_db[1].startswith('\x00-') and line_tuple_current_db[1].startswith('\x00+')
 
-              if assembly_line_address_current_db in current_symbols and assembly_line_address_import_db in import_symbols:
-                previous_db_row = assembly_line_address_import_db
-                current_db_row = assembly_line_address_current_db
+              # if assembly_line_address_current_db in current_symbols and assembly_line_address_import_db in import_symbols:
+              #   current_db_row = assembly_line_address_current_db
+              #   previous_db_row = assembly_line_address_import_db
               if assembly_line_address_import_db in current_symbols and assembly_line_address_current_db in import_symbols:
                 previous_db_row = assembly_line_address_current_db
                 current_db_row = assembly_line_address_import_db
 
-              if(previous_db_row is not None and current_db_row is not None and changed):
+              if(previous_db_row is not None and current_db_row is not None and changed_flag):
                   self.import_instruction(current_symbols[current_db_row], import_symbols[previous_db_row])
     finally:
       cur.close()
