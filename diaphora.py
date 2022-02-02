@@ -712,8 +712,6 @@ class CBinDiff:
 
     # Insert stack variables
     for stack_variable in props_dict["stack_variables"]:
-      member_xrefs_string = ", ".join("{}(operand id: {})".format(hex(item.ea), item.opnum) for item in stack_variable.cross_references)
-      # print(f"Function frame member: {stack_variable.name} at offset {stack_variable.offset} and size {stack_variable.size} has xrefs from addresses: {member_xrefs_string}")
       sql = "insert or REPLACE into stack_variables (func_id, offset, name, size) values (?, ?, ?, ?)"
       cur.execute(sql, (func_id, stack_variable.offset, stack_variable.name, stack_variable.size))
       stack_variable_id = cur.lastrowid

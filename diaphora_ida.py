@@ -1337,7 +1337,6 @@ class CIDABinDiff(diaphora.CBinDiff):
       return False
 
     operandNames = import_syms[ea][3]
-    print("Type of operandNames is: " + str(type(operandNames)))
 
     # Has cmt1
     if import_syms[ea][1] is not None:
@@ -1349,10 +1348,8 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     # Has operand Name
     operandNames = import_syms[ea][3]
-    print("Type of operandNames is: " + str(type(operandNames)))
     for operandName in operandNames:
       if(operandName[1] != ""):
-        print("Type of operandNames is: " + type(operandNames))
         return True
 
     # Has a name
@@ -1469,18 +1466,6 @@ class CIDABinDiff(diaphora.CBinDiff):
               if(assembly_instruction_offset_current_db in current_symbols and assembly_instruction_offset_import_db in import_symbols and changed_flag):
                   self.import_instruction(current_symbols[assembly_instruction_offset_current_db], import_symbols[assembly_instruction_offset_import_db])
 
-            print(f"Size of import_to_current_db_assembly_instructions_dict is {len(import_to_current_db_assembly_instructions_dict)}")
-
-            # dictionary with import to current database assembly instruction addresses
-
-            # for left_right_assembly_line in matched_assembly_lines:
-            #   line_tuple_current_db, line_tuple_import_db, changed_flag = left_right_assembly_line
-            #   line_number_import_db = line_tuple_import_db[0]
-            #   line_number_current_db  = line_tuple_current_db[0]
-            #   assembly_line_address_import_db = assembly_lines_addresses_import_db[int(line_number_import_db) - 1]
-            #   assembly_line_address_current_db = assembly_lines_addresses_current_db[int(line_number_current_db) - 1]
-            #   import_to_current_db_assembly_instructions_dict[assembly_line_address_import_db] = assembly_line_address_current_db
-
             # Get stack variables for the function in the import database
             # get function id
             sql = """select f.id
@@ -1509,20 +1494,10 @@ class CIDABinDiff(diaphora.CBinDiff):
               stack_variable = self.stack_variable_from_row(stack_variable_row)
               stack_variables.append(stack_variable)
 
-            import_to_current_db_assembly_instructions_dict_keys = ', '.join(
-              [hex(item) for item in import_to_current_db_assembly_instructions_dict.keys()])
-            print(f"import_to_current_db_assembly_instructions_dict keys: {import_to_current_db_assembly_instructions_dict_keys}")
-
             for stack_variable in stack_variables:
-              print(f"Importing stack variable with name {stack_variable.name} at offset {stack_variable.offset} of size {stack_variable.size}")
-              cross_references_string = ', '.join([(hex(item.instruction_address) + f" and operand_number: {hex(item.operand_number)}") for item in stack_variable.cross_references])
-              print(f"It has cross references in the import database: {cross_references_string}")
               for cross_reference in stack_variable.cross_references:
-                print(f"Processing cross reference {hex(cross_reference.instruction_address)}")
                 if cross_reference in import_to_current_db_assembly_instructions_dict.keys():
                   assembly_instruction_address_current_db = import_to_current_db_assembly_instructions_dict[cross_reference]
-                  print(f"""Cross reference {hex(cross_reference.instruction_address)} in import database
-                            has a respective instruction in the current database: {assembly_instruction_address_current_db}""")
                   self.import_stack_variable(stack_variable, assembly_instruction_address_current_db)
     finally:
       cur.close()
