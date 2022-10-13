@@ -263,8 +263,14 @@ class CIDAChooser(CDiaphoraChooser):
   def OnDeleteLine(self, items):
     for n in sorted(items, reverse=True):
       if n >= 0:
-        name1 = self.items[n][2]
-        name2 = self.items[n][4]
+        def getItem(index):
+          try:
+            return self.items[n][index]
+          except IndexError:
+            return None
+        
+        name1 = getItem(2)
+        name2 = getItem(4)
 
         del self.items[n]
         
