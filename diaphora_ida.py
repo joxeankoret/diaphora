@@ -939,6 +939,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     self.__init__(main_db)
     self.attach_database(diff_db)
+    self.last_diff_db = diff_db
 
     if create_choosers:
       self.create_choosers()
@@ -2342,13 +2343,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       main_db = row["main_db"]
       diff_db = row["diff_db"]
-      if not os.path.exists(main_db):
+      if main_db is None or not os.path.exists(main_db):
         log("Primary database %s not found." % main_db)
         main_db = ask_file(0, main_db, "Select the primary database path")
         if main_db is None:
           return False
 
-      if not os.path.exists(diff_db):
+      if diff_db is None or not os.path.exists(diff_db):
         diff_db = ask_file(0, main_db, "Select the secondary database path")
         if diff_db is None:
           return False
