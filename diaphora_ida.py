@@ -28,7 +28,13 @@ import traceback
 import threading
 from hashlib import md5
 
-import diaphora
+from idc import *
+from idaapi import *
+from idautils import *
+
+import idaapi
+
+idaapi.require("diaphora")
 
 from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
@@ -38,12 +44,6 @@ from others.tarjan_sort import strongly_connected_components, robust_topological
 
 from jkutils.factor import primesbelow as primes
 from jkutils.graph_hashes import CKoretKaramitasHash
-
-from idc import *
-from idaapi import *
-from idautils import *
-
-import idaapi
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
