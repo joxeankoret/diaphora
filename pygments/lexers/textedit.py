@@ -1,24 +1,22 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.textedit
     ~~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for languages related to text processing.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 from bisect import bisect
 
-from pygments.lexer import RegexLexer, include, default, bygroups, using, this
-from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
-
+from pygments.lexer import RegexLexer, bygroups, default, include, this, using
 from pygments.lexers.python import PythonLexer
+from pygments.token import Comment, Error, Keyword, Name, Number, Operator, \
+    Punctuation, String, Text, Whitespace
 
-__all__ = ['AwkLexer', 'VimLexer']
+__all__ = ['AwkLexer', 'SedLexer', 'VimLexer']
 
 
 class AwkLexer(RegexLexer):
@@ -69,11 +67,46 @@ class AwkLexer(RegexLexer):
             (r'[0-9][0-9]*\.[0-9]+([eE][0-9]+)?[fd]?', Number.Float),
             (r'0x[0-9a-fA-F]+', Number.Hex),
             (r'[0-9]+', Number.Integer),
-            (r'"(\\\\|\\"|[^"])*"', String.Double),
-            (r"'(\\\\|\\'|[^'])*'", String.Single),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
         ]
     }
 
+
+class SedLexer(RegexLexer):
+    """
+    Lexer for Sed script files.
+    """
+    name = 'Sed'
+    aliases = ['sed', 'gsed', 'ssed']
+    filenames = ['*.sed', '*.[gs]sed']
+    mimetypes = ['text/x-sed']
+    flags = re.MULTILINE
+
+    # Match the contents within delimiters such as /<contents>/
+    _inside_delims = r'((?:(?:\\[^\n]|[^\\])*?\\\n)*?(?:\\.|[^\\])*?)'
+
+    tokens = {
+        'root': [
+            (r'\s+', Whitespace),
+            (r'#.*$', Comment.Single),
+            (r'[0-9]+', Number.Integer),
+            (r'\$', Operator),
+            (r'[{};,!]', Punctuation),
+            (r'[dDFgGhHlnNpPqQxz=]', Keyword),
+            (r'([berRtTvwW:])([^;\n]*)', bygroups(Keyword, String.Single)),
+            (r'([aci])((?:.*?\\\n)*(?:.*?[^\\]$))', bygroups(Keyword, String.Double)),
+            (r'([qQ])([0-9]*)', bygroups(Keyword, Number.Integer)),
+            (r'(/)' + _inside_delims + r'(/)', bygroups(Punctuation, String.Regex, Punctuation)),
+            (r'(\\(.))' + _inside_delims + r'(\2)',
+             bygroups(Punctuation, None, String.Regex, Punctuation)),
+            (r'(y)(.)' + _inside_delims + r'(\2)' + _inside_delims + r'(\2)',
+             bygroups(Keyword, Punctuation, String.Single, Punctuation, String.Single, Punctuation)),
+            (r'(s)(.)' + _inside_delims + r'(\2)' + _inside_delims + r'(\2)((?:[gpeIiMm]|[0-9])*)',
+             bygroups(Keyword, Punctuation, String.Regex, Punctuation, String.Single, Punctuation,
+                      Keyword))
+        ]
+    }
 
 class VimLexer(RegexLexer):
     """
@@ -102,9 +135,9 @@ class VimLexer(RegexLexer):
 
             (r'[ \t]+', Text),
             # TODO: regexes can have other delims
-            (r'/(\\\\|\\/|[^\n/])*/', String.Regex),
-            (r'"(\\\\|\\"|[^\n"])*"', String.Double),
-            (r"'(''|[^\n'])*'", String.Single),
+            (r'/[^/\\\n]*(?:\\[\s\S][^/\\\n]*)*/', String.Regex),
+            (r'"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"', String.Double),
+            (r"'[^\n']*(?:''[^\n']*)*'", String.Single),
 
             # Who decided that doublequote was a good comment character??
             (r'(?<=\s)"[^\-:.%#=*].*', Comment),
@@ -121,7 +154,7 @@ class VimLexer(RegexLexer):
     }
 
     def __init__(self, **options):
-        from pygments.lexers._vim_builtins import command, option, auto
+        from pygments.lexers._vim_builtins import auto, command, option
         self._cmd = command
         self._opt = option
         self._aut = auto

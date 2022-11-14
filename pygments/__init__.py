@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     Pygments
     ~~~~~~~~
@@ -17,24 +16,20 @@
     * it is usable as a command-line tool and as a library
     * ... and it highlights even Brainfuck!
 
-    The `Pygments tip`_ is installable with ``easy_install Pygments==dev``.
+    The `Pygments master branch`_ is installable with ``easy_install Pygments==dev``.
 
-    .. _Pygments tip:
-       http://bitbucket.org/birkenfeld/pygments-main/get/tip.zip#egg=Pygments-dev
+    .. _Pygments master branch:
+       https://github.com/pygments/pygments/archive/master.zip#egg=Pygments-dev
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
+from io import StringIO, BytesIO
 
-__version__ = '2.1a0'
+__version__ = '2.13.0'
 __docformat__ = 'restructuredtext'
 
 __all__ = ['lex', 'format', 'highlight']
-
-
-import sys
-
-from pygments.util import StringIO, BytesIO
 
 
 def lex(code, lexer):
@@ -43,16 +38,16 @@ def lex(code, lexer):
     """
     try:
         return lexer.get_tokens(code)
-    except TypeError as err:
-        if isinstance(err.args[0], str) and \
-           ('unbound method get_tokens' in err.args[0] or
-                'missing 1 required positional argument' in err.args[0]):
+    except TypeError:
+        # Heuristic to catch a common mistake.
+        from pygments.lexer import RegexLexer
+        if isinstance(lexer, type) and issubclass(lexer, RegexLexer):
             raise TypeError('lex() argument must be a lexer instance, '
                             'not a class')
         raise
 
 
-def format(tokens, formatter, outfile=None):
+def format(tokens, formatter, outfile=None):  # pylint: disable=redefined-builtin
     """
     Format a tokenlist ``tokens`` with the formatter ``formatter``.
 
@@ -67,10 +62,10 @@ def format(tokens, formatter, outfile=None):
             return realoutfile.getvalue()
         else:
             formatter.format(tokens, outfile)
-    except TypeError as err:
-        if isinstance(err.args[0], str) and \
-           ('unbound method format' in err.args[0] or
-                'missing 1 required positional argument' in err.args[0]):
+    except TypeError:
+        # Heuristic to catch a common mistake.
+        from pygments.formatter import Formatter
+        if isinstance(formatter, type) and issubclass(formatter, Formatter):
             raise TypeError('format() argument must be a formatter instance, '
                             'not a class')
         raise
@@ -85,8 +80,3 @@ def highlight(code, lexer, formatter, outfile=None):
     it is returned as a string.
     """
     return format(lex(code, lexer), formatter, outfile)
-
-
-if __name__ == '__main__':  # pragma: no cover
-    from pygments.cmdline import main
-    sys.exit(main(sys.argv))

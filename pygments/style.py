@@ -1,16 +1,58 @@
-# -*- coding: utf-8 -*-
 """
     pygments.style
     ~~~~~~~~~~~~~~
 
     Basic style object.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 from pygments.token import Token, STANDARD_TYPES
-from pygments.util import add_metaclass
+
+# Default mapping of ansixxx to RGB colors.
+_ansimap = {
+    # dark
+    'ansiblack': '000000',
+    'ansired': '7f0000',
+    'ansigreen': '007f00',
+    'ansiyellow': '7f7fe0',
+    'ansiblue': '00007f',
+    'ansimagenta': '7f007f',
+    'ansicyan': '007f7f',
+    'ansigray': 'e5e5e5',
+    # normal
+    'ansibrightblack': '555555',
+    'ansibrightred': 'ff0000',
+    'ansibrightgreen': '00ff00',
+    'ansibrightyellow': 'ffff00',
+    'ansibrightblue': '0000ff',
+    'ansibrightmagenta': 'ff00ff',
+    'ansibrightcyan': '00ffff',
+    'ansiwhite': 'ffffff',
+}
+# mapping of deprecated #ansixxx colors to new color names
+_deprecated_ansicolors = {
+    # dark
+    '#ansiblack': 'ansiblack',
+    '#ansidarkred': 'ansired',
+    '#ansidarkgreen': 'ansigreen',
+    '#ansibrown': 'ansiyellow',
+    '#ansidarkblue': 'ansiblue',
+    '#ansipurple': 'ansimagenta',
+    '#ansiteal': 'ansicyan',
+    '#ansilightgray': 'ansigray',
+    # normal
+    '#ansidarkgray': 'ansibrightblack',
+    '#ansired': 'ansibrightred',
+    '#ansigreen': 'ansibrightgreen',
+    '#ansiyellow': 'ansibrightyellow',
+    '#ansiblue': 'ansibrightblue',
+    '#ansifuchsia': 'ansibrightmagenta',
+    '#ansiturquoise': 'ansibrightcyan',
+    '#ansiwhite': 'ansiwhite',
+}
+ansicolors = set(_ansimap)
 
 
 class StyleMeta(type):
@@ -22,14 +64,18 @@ class StyleMeta(type):
                 obj.styles[token] = ''
 
         def colorformat(text):
+            if text in ansicolors:
+                return text
             if text[0:1] == '#':
                 col = text[1:]
                 if len(col) == 6:
                     return col
                 elif len(col) == 3:
-                    return col[0]*2 + col[1]*2 + col[2]*2
+                    return col[0] * 2 + col[1] * 2 + col[2] * 2
             elif text == '':
                 return ''
+            elif text.startswith('var') or text.startswith('calc'):
+                return text
             assert False, "wrong color format %r" % text
 
         _styles = obj._styles = {}
@@ -40,7 +86,7 @@ class StyleMeta(type):
                     continue
                 ndef = _styles.get(token.parent, None)
                 styledefs = obj.styles.get(token, '').split()
-                if  not ndef or token is None:
+                if not ndef or token is None:
                     ndef = ['', 0, 0, 0, '', '', 0, 0, 0]
                 elif 'noinherit' in styledefs and token is not Token:
                     ndef = _styles[Token][:]
@@ -79,16 +125,32 @@ class StyleMeta(type):
 
     def style_for_token(cls, token):
         t = cls._styles[token]
+        ansicolor = bgansicolor = None
+        color = t[0]
+        if color in _deprecated_ansicolors:
+            color = _deprecated_ansicolors[color]
+        if color in ansicolors:
+            ansicolor = color
+            color = _ansimap[color]
+        bgcolor = t[4]
+        if bgcolor in _deprecated_ansicolors:
+            bgcolor = _deprecated_ansicolors[bgcolor]
+        if bgcolor in ansicolors:
+            bgansicolor = bgcolor
+            bgcolor = _ansimap[bgcolor]
+
         return {
-            'color':        t[0] or None,
+            'color':        color or None,
             'bold':         bool(t[1]),
             'italic':       bool(t[2]),
             'underline':    bool(t[3]),
-            'bgcolor':      t[4] or None,
+            'bgcolor':      bgcolor or None,
             'border':       t[5] or None,
             'roman':        bool(t[6]) or None,
             'sans':         bool(t[7]) or None,
             'mono':         bool(t[8]) or None,
+            'ansicolor':    ansicolor,
+            'bgansicolor':  bgansicolor,
         }
 
     def list_styles(cls):
@@ -105,8 +167,7 @@ class StyleMeta(type):
         return len(cls._styles)
 
 
-@add_metaclass(StyleMeta)
-class Style(object):
+class Style(metaclass=StyleMeta):
 
     #: overall background color (``None`` means transparent)
     background_color = '#ffffff'
@@ -114,5 +175,23 @@ class Style(object):
     #: highlight background color
     highlight_color = '#ffffcc'
 
+    #: line number font color
+    line_number_color = 'inherit'
+
+    #: line number background color
+    line_number_background_color = 'transparent'
+
+    #: special line number font color
+    line_number_special_color = '#000000'
+
+    #: special line number background color
+    line_number_special_background_color = '#ffffc0'
+
     #: Style definitions for individual token types.
     styles = {}
+
+    # Attribute for lexers defined within Pygments. If set
+    # to True, the style is not shown in the style gallery
+    # on the website. This is intended for language-specific
+    # styles.
+    web_style_gallery_exclude = False

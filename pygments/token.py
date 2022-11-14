@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """
     pygments.token
     ~~~~~~~~~~~~~~
 
     Basic token types and the standard tokens.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
+
 
 class _TokenType(tuple):
     parent = None
@@ -43,31 +43,39 @@ class _TokenType(tuple):
     def __repr__(self):
         return 'Token' + (self and '.' or '') + '.'.join(self)
 
+    def __copy__(self):
+        # These instances are supposed to be singletons
+        return self
 
-Token       = _TokenType()
+    def __deepcopy__(self, memo):
+        # These instances are supposed to be singletons
+        return self
+
+
+Token = _TokenType()
 
 # Special token types
-Text        = Token.Text
-Whitespace  = Text.Whitespace
-Escape      = Token.Escape
-Error       = Token.Error
+Text = Token.Text
+Whitespace = Text.Whitespace
+Escape = Token.Escape
+Error = Token.Error
 # Text that doesn't belong to this lexer (e.g. HTML in PHP)
-Other       = Token.Other
+Other = Token.Other
 
 # Common token types for source code
-Keyword     = Token.Keyword
-Name        = Token.Name
-Literal     = Token.Literal
-String      = Literal.String
-Number      = Literal.Number
+Keyword = Token.Keyword
+Name = Token.Name
+Literal = Token.Literal
+String = Literal.String
+Number = Literal.Number
 Punctuation = Token.Punctuation
-Operator    = Token.Operator
-Comment     = Token.Comment
+Operator = Token.Operator
+Comment = Token.Comment
 
 # Generic types for non-source code
-Generic     = Token.Generic
+Generic = Token.Generic
 
-# String and some others are not direct childs of Token.
+# String and some others are not direct children of Token.
 # alias them:
 Token.Token = Token
 Token.String = String
@@ -139,6 +147,7 @@ STANDARD_TYPES = {
     Name.Entity:                   'ni',
     Name.Exception:                'ne',
     Name.Function:                 'nf',
+    Name.Function.Magic:           'fm',
     Name.Property:                 'py',
     Name.Label:                    'nl',
     Name.Namespace:                'nn',
@@ -148,13 +157,16 @@ STANDARD_TYPES = {
     Name.Variable.Class:           'vc',
     Name.Variable.Global:          'vg',
     Name.Variable.Instance:        'vi',
+    Name.Variable.Magic:           'vm',
 
     Literal:                       'l',
     Literal.Date:                  'ld',
 
     String:                        's',
+    String.Affix:                  'sa',
     String.Backtick:               'sb',
     String.Char:                   'sc',
+    String.Delimiter:              'dl',
     String.Doc:                    'sd',
     String.Double:                 's2',
     String.Escape:                 'se',
@@ -177,10 +189,13 @@ STANDARD_TYPES = {
     Operator.Word:                 'ow',
 
     Punctuation:                   'p',
+    Punctuation.Marker:            'pm',
 
     Comment:                       'c',
+    Comment.Hashbang:              'ch',
     Comment.Multiline:             'cm',
     Comment.Preproc:               'cp',
+    Comment.PreprocFile:           'cpf',
     Comment.Single:                'c1',
     Comment.Special:               'cs',
 

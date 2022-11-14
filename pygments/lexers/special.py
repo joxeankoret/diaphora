@@ -1,22 +1,22 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.special
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Special lexers.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
+import ast
 import re
 
 from pygments.lexer import Lexer
-from pygments.token import Token, Error, Text
-from pygments.util import get_choice_opt, text_type, BytesIO
+from pygments.token import Token, Error, Text, Generic
+from pygments.util import get_choice_opt
 
 
-__all__ = ['TextLexer', 'RawTokenLexer']
+__all__ = ['TextLexer', 'OutputLexer', 'RawTokenLexer']
 
 
 class TextLexer(Lexer):
@@ -27,21 +27,36 @@ class TextLexer(Lexer):
     aliases = ['text']
     filenames = ['*.txt']
     mimetypes = ['text/plain']
+    priority = 0.01
 
     def get_tokens_unprocessed(self, text):
         yield 0, Text, text
 
+    def analyse_text(text):
+        return TextLexer.priority
+
+
+class OutputLexer(Lexer):
+    """
+    Simple lexer that highlights everything as ``Token.Generic.Output``.
+
+    .. versionadded:: 2.10
+    """
+    name = 'Text output'
+    aliases = ['output']
+
+    def get_tokens_unprocessed(self, text):
+        yield 0, Generic.Output, text
+
 
 _ttype_cache = {}
 
-line_re = re.compile(b'.*?\n')
+line_re = re.compile('.*?\n')
 
 
 class RawTokenLexer(Lexer):
     """
-    Recreate a token stream formatted with the `RawTokenFormatter`.  This
-    lexer raises exceptions during parsing if the token stream in the
-    file is malformed.
+    Recreate a token stream formatted with the `RawTokenFormatter`.
 
     Additional options accepted:
 
@@ -50,7 +65,7 @@ class RawTokenLexer(Lexer):
         the given compression algorithm before lexing (default: ``""``).
     """
     name = 'Raw token data'
-    aliases = ['raw']
+    aliases = []
     filenames = []
     mimetypes = ['application/x-pygments-tokens']
 
@@ -60,20 +75,23 @@ class RawTokenLexer(Lexer):
         Lexer.__init__(self, **options)
 
     def get_tokens(self, text):
-        if isinstance(text, text_type):
-            # raw token stream never has any non-ASCII characters
-            text = text.encode('ascii')
-        if self.compress == 'gz':
-            import gzip
-            gzipfile = gzip.GzipFile('', 'rb', 9, BytesIO(text))
-            text = gzipfile.read()
-        elif self.compress == 'bz2':
-            import bz2
-            text = bz2.decompress(text)
+        if self.compress:
+            if isinstance(text, str):
+                text = text.encode('latin1')
+            try:
+                if self.compress == 'gz':
+                    import gzip
+                    text = gzip.decompress(text)
+                elif self.compress == 'bz2':
+                    import bz2
+                    text = bz2.decompress(text)
+            except OSError:
+                yield Error, text.decode('latin1')
+        if isinstance(text, bytes):
+            text = text.decode('latin1')
 
-        # do not call Lexer.get_tokens() because we do not want Unicode
-        # decoding to occur, and stripping is not optional.
-        text = text.strip(b'\n') + b'\n'
+        # do not call Lexer.get_tokens() because stripping is not optional.
+        text = text.strip('\n') + '\n'
         for i, t, v in self.get_tokens_unprocessed(text):
             yield t, v
 
@@ -81,11 +99,7 @@ class RawTokenLexer(Lexer):
         length = 0
         for match in line_re.finditer(text):
             try:
-                ttypestr, val = match.group().split(b'\t', 1)
-            except ValueError:
-                val = match.group().decode('ascii', 'replace')
-                ttype = Error
-            else:
+                ttypestr, val = match.group().rstrip().split('\t', 1)
                 ttype = _ttype_cache.get(ttypestr)
                 if not ttype:
                     ttype = Token
@@ -95,6 +109,11 @@ class RawTokenLexer(Lexer):
                             raise ValueError('malformed token name')
                         ttype = getattr(ttype, ttype_)
                     _ttype_cache[ttypestr] = ttype
-                val = val[2:-2].decode('unicode-escape')
+                val = ast.literal_eval(val)
+                if not isinstance(val, str):
+                    raise ValueError('expected str')
+            except (SyntaxError, ValueError):
+                val = match.group()
+                ttype = Error
             yield length, ttype, val
             length += len(val)

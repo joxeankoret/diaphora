@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.business
     ~~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for "business-oriented" languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -13,7 +12,7 @@ import re
 
 from pygments.lexer import RegexLexer, include, words, bygroups
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation, Error
+    Number, Punctuation, Error, Whitespace
 
 from pygments.lexers._openedge_builtins import OPENEDGEKEYWORDS
 
@@ -50,16 +49,16 @@ class CobolLexer(RegexLexer):
             include('nums'),
             (r'[a-z0-9]([\w\-]*[a-z0-9]+)?', Name.Variable),
             # (r'[\s]+', Text),
-            (r'[ \t]+', Text),
+            (r'[ \t]+', Whitespace),
         ],
         'comment': [
             (r'(^.{6}[*/].*\n|^.{6}|\*>.*\n)', Comment),
         ],
         'core': [
             # Figurative constants
-            (r'(^|(?<=[^0-9a-z_\-]))(ALL\s+)?'
+            (r'(^|(?<=[^\w\-]))(ALL\s+)?'
              r'((ZEROES)|(HIGH-VALUE|LOW-VALUE|QUOTE|SPACE|ZERO)(S)?)'
-             r'\s*($|(?=[^0-9a-z_\-]))',
+             r'\s*($|(?=[^\w\-]))',
              Name.Constant),
 
             # Reserved words STATEMENTS and other bolds
@@ -79,8 +78,8 @@ class CobolLexer(RegexLexer):
                 'RETURN', 'REWRITE', 'SCREEN', 'SD', 'SEARCH', 'SECTION', 'SET',
                 'SORT', 'START', 'STOP', 'STRING', 'SUBTRACT', 'SUPPRESS',
                 'TERMINATE', 'THEN', 'UNLOCK', 'UNSTRING', 'USE', 'VALIDATE',
-                'WORKING-STORAGE', 'WRITE'), prefix=r'(^|(?<=[^0-9a-z_\-]))',
-                suffix=r'\s*($|(?=[^0-9a-z_\-]))'),
+                'WORKING-STORAGE', 'WRITE'), prefix=r'(^|(?<=[^\w\-]))',
+                suffix=r'\s*($|(?=[^\w\-]))'),
              Keyword.Reserved),
 
             # Reserved words
@@ -89,33 +88,33 @@ class CobolLexer(RegexLexer):
                 'ALPHABET', 'ALPHABETIC', 'ALPHABETIC-LOWER', 'ALPHABETIC-UPPER',
                 'ALPHANUMERIC', 'ALPHANUMERIC-EDITED', 'ALSO', 'ALTER', 'ALTERNATE'
                 'ANY', 'ARE', 'AREA', 'AREAS', 'ARGUMENT-NUMBER', 'ARGUMENT-VALUE', 'AS',
-                'ASCENDING', 'ASSIGN', 'AT', 'AUTO', 'AUTO-SKIP', 'AUTOMATIC', 'AUTOTERMINATE',
-                'BACKGROUND-COLOR', 'BASED', 'BEEP', 'BEFORE', 'BELL',
+                'ASCENDING', 'ASSIGN', 'AT', 'AUTO', 'AUTO-SKIP', 'AUTOMATIC',
+                'AUTOTERMINATE', 'BACKGROUND-COLOR', 'BASED', 'BEEP', 'BEFORE', 'BELL',
                 'BLANK', 'BLINK', 'BLOCK', 'BOTTOM', 'BY', 'BYTE-LENGTH', 'CHAINING',
-                'CHARACTER', 'CHARACTERS', 'CLASS', 'CODE', 'CODE-SET', 'COL', 'COLLATING',
-                'COLS', 'COLUMN', 'COLUMNS', 'COMMA', 'COMMAND-LINE', 'COMMIT', 'COMMON',
-                'CONSTANT', 'CONTAINS', 'CONTENT', 'CONTROL',
+                'CHARACTER', 'CHARACTERS', 'CLASS', 'CODE', 'CODE-SET', 'COL',
+                'COLLATING', 'COLS', 'COLUMN', 'COLUMNS', 'COMMA', 'COMMAND-LINE',
+                'COMMIT', 'COMMON', 'CONSTANT', 'CONTAINS', 'CONTENT', 'CONTROL',
                 'CONTROLS', 'CONVERTING', 'COPY', 'CORR', 'CORRESPONDING', 'COUNT', 'CRT',
-                'CURRENCY', 'CURSOR', 'CYCLE', 'DATE', 'DAY', 'DAY-OF-WEEK', 'DE', 'DEBUGGING',
-                'DECIMAL-POINT', 'DECLARATIVES', 'DEFAULT', 'DELIMITED',
+                'CURRENCY', 'CURSOR', 'CYCLE', 'DATE', 'DAY', 'DAY-OF-WEEK', 'DE',
+                'DEBUGGING', 'DECIMAL-POINT', 'DECLARATIVES', 'DEFAULT', 'DELIMITED',
                 'DELIMITER', 'DEPENDING', 'DESCENDING', 'DETAIL', 'DISK',
                 'DOWN', 'DUPLICATES', 'DYNAMIC', 'EBCDIC',
                 'ENTRY', 'ENVIRONMENT-NAME', 'ENVIRONMENT-VALUE', 'EOL', 'EOP',
                 'EOS', 'ERASE', 'ERROR', 'ESCAPE', 'EXCEPTION',
-                'EXCLUSIVE', 'EXTEND', 'EXTERNAL',
-                'FILE-ID', 'FILLER', 'FINAL', 'FIRST', 'FIXED', 'FLOAT-LONG', 'FLOAT-SHORT',
-                'FOOTING', 'FOR', 'FOREGROUND-COLOR', 'FORMAT', 'FROM', 'FULL', 'FUNCTION',
-                'FUNCTION-ID', 'GIVING', 'GLOBAL', 'GROUP',
+                'EXCLUSIVE', 'EXTEND', 'EXTERNAL', 'FILE-ID', 'FILLER', 'FINAL',
+                'FIRST', 'FIXED', 'FLOAT-LONG', 'FLOAT-SHORT',
+                'FOOTING', 'FOR', 'FOREGROUND-COLOR', 'FORMAT', 'FROM', 'FULL',
+                'FUNCTION', 'FUNCTION-ID', 'GIVING', 'GLOBAL', 'GROUP',
                 'HEADING', 'HIGHLIGHT', 'I-O', 'ID',
                 'IGNORE', 'IGNORING', 'IN', 'INDEX', 'INDEXED', 'INDICATE',
-                'INITIAL', 'INITIALIZED', 'INPUT',
-                'INTO', 'INTRINSIC', 'INVALID', 'IS', 'JUST', 'JUSTIFIED', 'KEY', 'LABEL',
+                'INITIAL', 'INITIALIZED', 'INPUT', 'INTO', 'INTRINSIC', 'INVALID',
+                'IS', 'JUST', 'JUSTIFIED', 'KEY', 'LABEL',
                 'LAST', 'LEADING', 'LEFT', 'LENGTH', 'LIMIT', 'LIMITS', 'LINAGE',
                 'LINAGE-COUNTER', 'LINE', 'LINES', 'LOCALE', 'LOCK',
-                'LOWLIGHT', 'MANUAL', 'MEMORY', 'MINUS', 'MODE',
-                'MULTIPLE', 'NATIONAL', 'NATIONAL-EDITED', 'NATIVE',
-                'NEGATIVE', 'NEXT', 'NO', 'NULL', 'NULLS', 'NUMBER', 'NUMBERS', 'NUMERIC',
-                'NUMERIC-EDITED', 'OBJECT-COMPUTER', 'OCCURS', 'OF', 'OFF', 'OMITTED', 'ON', 'ONLY',
+                'LOWLIGHT', 'MANUAL', 'MEMORY', 'MINUS', 'MODE', 'MULTIPLE',
+                'NATIONAL', 'NATIONAL-EDITED', 'NATIVE', 'NEGATIVE', 'NEXT', 'NO',
+                'NULL', 'NULLS', 'NUMBER', 'NUMBERS', 'NUMERIC', 'NUMERIC-EDITED',
+                'OBJECT-COMPUTER', 'OCCURS', 'OF', 'OFF', 'OMITTED', 'ON', 'ONLY',
                 'OPTIONAL', 'ORDER', 'ORGANIZATION', 'OTHER', 'OUTPUT', 'OVERFLOW',
                 'OVERLINE', 'PACKED-DECIMAL', 'PADDING', 'PAGE', 'PARAGRAPH',
                 'PLUS', 'POINTER', 'POSITION', 'POSITIVE', 'PRESENT', 'PREVIOUS',
@@ -130,47 +129,49 @@ class CobolLexer(RegexLexer):
                 'SEQUENCE', 'SEQUENTIAL', 'SHARING', 'SIGN', 'SIGNED', 'SIGNED-INT',
                 'SIGNED-LONG', 'SIGNED-SHORT', 'SIZE', 'SORT-MERGE', 'SOURCE',
                 'SOURCE-COMPUTER', 'SPECIAL-NAMES', 'STANDARD',
-                'STANDARD-1', 'STANDARD-2', 'STATUS', 'SUM',
+                'STANDARD-1', 'STANDARD-2', 'STATUS', 'SUBKEY', 'SUM',
                 'SYMBOLIC', 'SYNC', 'SYNCHRONIZED', 'TALLYING', 'TAPE',
                 'TEST', 'THROUGH', 'THRU', 'TIME', 'TIMES', 'TO', 'TOP', 'TRAILING',
                 'TRANSFORM', 'TYPE', 'UNDERLINE', 'UNIT', 'UNSIGNED',
                 'UNSIGNED-INT', 'UNSIGNED-LONG', 'UNSIGNED-SHORT', 'UNTIL', 'UP',
                 'UPDATE', 'UPON', 'USAGE', 'USING', 'VALUE', 'VALUES', 'VARYING',
                 'WAIT', 'WHEN', 'WITH', 'WORDS', 'YYYYDDD', 'YYYYMMDD'),
-                prefix=r'(^|(?<=[^0-9a-z_\-]))', suffix=r'\s*($|(?=[^0-9a-z_\-]))'),
+                prefix=r'(^|(?<=[^\w\-]))', suffix=r'\s*($|(?=[^\w\-]))'),
              Keyword.Pseudo),
 
             # inactive reserved words
             (words((
-                'ACTIVE-CLASS', 'ALIGNED', 'ANYCASE', 'ARITHMETIC', 'ATTRIBUTE', 'B-AND',
-                'B-NOT', 'B-OR', 'B-XOR', 'BIT', 'BOOLEAN', 'CD', 'CENTER', 'CF', 'CH', 'CHAIN', 'CLASS-ID',
-                'CLASSIFICATION', 'COMMUNICATION', 'CONDITION', 'DATA-POINTER',
-                'DESTINATION', 'DISABLE', 'EC', 'EGI', 'EMI', 'ENABLE', 'END-RECEIVE',
-                'ENTRY-CONVENTION', 'EO', 'ESI', 'EXCEPTION-OBJECT', 'EXPANDS', 'FACTORY',
-                'FLOAT-BINARY-16', 'FLOAT-BINARY-34', 'FLOAT-BINARY-7',
-                'FLOAT-DECIMAL-16', 'FLOAT-DECIMAL-34', 'FLOAT-EXTENDED', 'FORMAT',
-                'FUNCTION-POINTER', 'GET', 'GROUP-USAGE', 'IMPLEMENTS', 'INFINITY',
-                'INHERITS', 'INTERFACE', 'INTERFACE-ID', 'INVOKE', 'LC_ALL', 'LC_COLLATE',
+                'ACTIVE-CLASS', 'ALIGNED', 'ANYCASE', 'ARITHMETIC', 'ATTRIBUTE',
+                'B-AND', 'B-NOT', 'B-OR', 'B-XOR', 'BIT', 'BOOLEAN', 'CD', 'CENTER',
+                'CF', 'CH', 'CHAIN', 'CLASS-ID', 'CLASSIFICATION', 'COMMUNICATION',
+                'CONDITION', 'DATA-POINTER', 'DESTINATION', 'DISABLE', 'EC', 'EGI',
+                'EMI', 'ENABLE', 'END-RECEIVE', 'ENTRY-CONVENTION', 'EO', 'ESI',
+                'EXCEPTION-OBJECT', 'EXPANDS', 'FACTORY', 'FLOAT-BINARY-16',
+                'FLOAT-BINARY-34', 'FLOAT-BINARY-7', 'FLOAT-DECIMAL-16',
+                'FLOAT-DECIMAL-34', 'FLOAT-EXTENDED', 'FORMAT', 'FUNCTION-POINTER',
+                'GET', 'GROUP-USAGE', 'IMPLEMENTS', 'INFINITY', 'INHERITS',
+                'INTERFACE', 'INTERFACE-ID', 'INVOKE', 'LC_ALL', 'LC_COLLATE',
                 'LC_CTYPE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME',
-                'LINE-COUNTER', 'MESSAGE', 'METHOD', 'METHOD-ID', 'NESTED', 'NONE', 'NORMAL',
-                'OBJECT', 'OBJECT-REFERENCE', 'OPTIONS', 'OVERRIDE', 'PAGE-COUNTER', 'PF', 'PH',
-                'PROPERTY', 'PROTOTYPE', 'PURGE', 'QUEUE', 'RAISE', 'RAISING', 'RECEIVE',
-                'RELATION', 'REPLACE', 'REPRESENTS-NOT-A-NUMBER', 'RESET', 'RESUME', 'RETRY',
-                'RF', 'RH', 'SECONDS', 'SEGMENT', 'SELF', 'SEND', 'SOURCES', 'STATEMENT', 'STEP',
-                'STRONG', 'SUB-QUEUE-1', 'SUB-QUEUE-2', 'SUB-QUEUE-3', 'SUPER', 'SYMBOL',
-                'SYSTEM-DEFAULT', 'TABLE', 'TERMINAL', 'TEXT', 'TYPEDEF', 'UCS-4', 'UNIVERSAL',
-                'USER-DEFAULT', 'UTF-16', 'UTF-8', 'VAL-STATUS', 'VALID', 'VALIDATE',
-                'VALIDATE-STATUS'),
-                prefix=r'(^|(?<=[^0-9a-z_\-]))', suffix=r'\s*($|(?=[^0-9a-z_\-]))'),
+                'LINE-COUNTER', 'MESSAGE', 'METHOD', 'METHOD-ID', 'NESTED', 'NONE',
+                'NORMAL', 'OBJECT', 'OBJECT-REFERENCE', 'OPTIONS', 'OVERRIDE',
+                'PAGE-COUNTER', 'PF', 'PH', 'PROPERTY', 'PROTOTYPE', 'PURGE',
+                'QUEUE', 'RAISE', 'RAISING', 'RECEIVE', 'RELATION', 'REPLACE',
+                'REPRESENTS-NOT-A-NUMBER', 'RESET', 'RESUME', 'RETRY', 'RF', 'RH',
+                'SECONDS', 'SEGMENT', 'SELF', 'SEND', 'SOURCES', 'STATEMENT',
+                'STEP', 'STRONG', 'SUB-QUEUE-1', 'SUB-QUEUE-2', 'SUB-QUEUE-3',
+                'SUPER', 'SYMBOL', 'SYSTEM-DEFAULT', 'TABLE', 'TERMINAL', 'TEXT',
+                'TYPEDEF', 'UCS-4', 'UNIVERSAL', 'USER-DEFAULT', 'UTF-16', 'UTF-8',
+                'VAL-STATUS', 'VALID', 'VALIDATE', 'VALIDATE-STATUS'),
+                   prefix=r'(^|(?<=[^\w\-]))', suffix=r'\s*($|(?=[^\w\-]))'),
              Error),
 
             # Data Types
-            (r'(^|(?<=[^0-9a-z_\-]))'
+            (r'(^|(?<=[^\w\-]))'
              r'(PIC\s+.+?(?=(\s|\.\s))|PICTURE\s+.+?(?=(\s|\.\s))|'
              r'(COMPUTATIONAL)(-[1-5X])?|(COMP)(-[1-5X])?|'
              r'BINARY-C-LONG|'
              r'BINARY-CHAR|BINARY-DOUBLE|BINARY-LONG|BINARY-SHORT|'
-             r'BINARY)\s*($|(?=[^0-9a-z_\-]))', Keyword.Type),
+             r'BINARY)\s*($|(?=[^\w\-]))', Keyword.Type),
 
             # Operators
             (r'(\*\*|\*|\+|-|/|<=|>=|<|>|==|/=|=)', Operator),
@@ -180,7 +181,7 @@ class CobolLexer(RegexLexer):
             (r'([(),;:&%.])', Punctuation),
 
             # Intrinsics
-            (r'(^|(?<=[^0-9a-z_\-]))(ABS|ACOS|ANNUITY|ASIN|ATAN|BYTE-LENGTH|'
+            (r'(^|(?<=[^\w\-]))(ABS|ACOS|ANNUITY|ASIN|ATAN|BYTE-LENGTH|'
              r'CHAR|COMBINED-DATETIME|CONCATENATE|COS|CURRENT-DATE|'
              r'DATE-OF-INTEGER|DATE-TO-YYYYMMDD|DAY-OF-INTEGER|DAY-TO-YYYYDDD|'
              r'EXCEPTION-(?:FILE|LOCATION|STATEMENT|STATUS)|EXP10|EXP|E|'
@@ -192,13 +193,13 @@ class CobolLexer(RegexLexer):
              r'STANDARD-DEVIATION|STORED-CHAR-LENGTH|SUBSTITUTE(?:-CASE)?|'
              r'SUM|TAN|TEST-DATE-YYYYMMDD|TEST-DAY-YYYYDDD|TRIM|'
              r'UPPER-CASE|VARIANCE|WHEN-COMPILED|YEAR-TO-YYYY)\s*'
-             r'($|(?=[^0-9a-z_\-]))', Name.Function),
+             r'($|(?=[^\w\-]))', Name.Function),
 
             # Booleans
-            (r'(^|(?<=[^0-9a-z_\-]))(true|false)\s*($|(?=[^0-9a-z_\-]))', Name.Builtin),
+            (r'(^|(?<=[^\w\-]))(true|false)\s*($|(?=[^\w\-]))', Name.Builtin),
             # Comparing Operators
-            (r'(^|(?<=[^0-9a-z_\-]))(equal|equals|ne|lt|le|gt|ge|'
-             r'greater|less|than|not|and|or)\s*($|(?=[^0-9a-z_\-]))', Operator.Word),
+            (r'(^|(?<=[^\w\-]))(equal|equals|ne|lt|le|gt|ge|'
+             r'greater|less|than|not|and|or)\s*($|(?=[^\w\-]))', Operator.Word),
         ],
 
         # \"[^\"\n]*\"|\'[^\'\n]*\'
@@ -244,16 +245,17 @@ class ABAPLexer(RegexLexer):
     """
     name = 'ABAP'
     aliases = ['abap']
-    filenames = ['*.abap']
+    filenames = ['*.abap', '*.ABAP']
     mimetypes = ['text/x-abap']
 
     flags = re.IGNORECASE | re.MULTILINE
 
     tokens = {
         'common': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'^\*.*$', Comment.Single),
             (r'\".*?\n', Comment.Single),
+            (r'##\w+', Comment.Special),
         ],
         'variable-names': [
             (r'<\S+>', Name.Variable),
@@ -262,26 +264,32 @@ class ABAPLexer(RegexLexer):
         'root': [
             include('common'),
             # function calls
-            (r'(CALL\s+(?:BADI|CUSTOMER-FUNCTION|FUNCTION))(\s+)(\'?\S+\'?)',
-             bygroups(Keyword, Text, Name.Function)),
+            (r'CALL\s+(?:BADI|CUSTOMER-FUNCTION|FUNCTION)',
+             Keyword),
             (r'(CALL\s+(?:DIALOG|SCREEN|SUBSCREEN|SELECTION-SCREEN|'
              r'TRANSACTION|TRANSFORMATION))\b',
              Keyword),
             (r'(FORM|PERFORM)(\s+)(\w+)',
-             bygroups(Keyword, Text, Name.Function)),
+             bygroups(Keyword, Whitespace, Name.Function)),
             (r'(PERFORM)(\s+)(\()(\w+)(\))',
-             bygroups(Keyword, Text, Punctuation, Name.Variable, Punctuation)),
+             bygroups(Keyword, Whitespace, Punctuation, Name.Variable, Punctuation)),
             (r'(MODULE)(\s+)(\S+)(\s+)(INPUT|OUTPUT)',
-             bygroups(Keyword, Text, Name.Function, Text, Keyword)),
+             bygroups(Keyword, Whitespace, Name.Function, Whitespace, Keyword)),
 
             # method implementation
             (r'(METHOD)(\s+)([\w~]+)',
-             bygroups(Keyword, Text, Name.Function)),
+             bygroups(Keyword, Whitespace, Name.Function)),
             # method calls
             (r'(\s+)([\w\-]+)([=\-]>)([\w\-~]+)',
-             bygroups(Text, Name.Variable, Operator, Name.Function)),
+             bygroups(Whitespace, Name.Variable, Operator, Name.Function)),
             # call methodnames returning style
             (r'(?<=(=|-)>)([\w\-~]+)(?=\()', Name.Function),
+
+            # text elements
+            (r'(TEXT)(-)(\d{3})',
+             bygroups(Keyword, Punctuation, Number.Integer)),
+            (r'(TEXT)(-)(\w{3})',
+             bygroups(Keyword, Punctuation, Name.Variable)),
 
             # keywords with dashes in them.
             # these need to be first, because for instance the -ID part
@@ -299,13 +307,13 @@ class ABAPLexer(RegexLexer):
              r'OUTPUT-LENGTH|PRINT-CONTROL|'
              r'SELECT-OPTIONS|START-OF-SELECTION|SUBTRACT-CORRESPONDING|'
              r'SYNTAX-CHECK|SYSTEM-EXCEPTIONS|'
-             r'TYPE-POOL|TYPE-POOLS'
+             r'TYPE-POOL|TYPE-POOLS|NO-DISPLAY'
              r')\b', Keyword),
 
             # keyword kombinations
-            (r'CREATE\s+(PUBLIC|PRIVATE|DATA|OBJECT)|'
-             r'((PUBLIC|PRIVATE|PROTECTED)\s+SECTION|'
-             r'(TYPE|LIKE)(\s+(LINE\s+OF|REF\s+TO|'
+            (r'(?<![-\>])(CREATE\s+(PUBLIC|PRIVATE|DATA|OBJECT)|'
+             r'(PUBLIC|PRIVATE|PROTECTED)\s+SECTION|'
+             r'(TYPE|LIKE)\s+((LINE\s+OF|REF\s+TO|'
              r'(SORTED|STANDARD|HASHED)\s+TABLE\s+OF))?|'
              r'FROM\s+(DATABASE|MEMORY)|CALL\s+METHOD|'
              r'(GROUP|ORDER) BY|HAVING|SEPARATED BY|'
@@ -341,10 +349,16 @@ class ABAPLexer(RegexLexer):
              r'(BEGIN|END)\s+OF|'
              r'DELETE(\s+ADJACENT\s+DUPLICATES\sFROM)?|'
              r'COMPARING(\s+ALL\s+FIELDS)?|'
-             r'INSERT(\s+INITIAL\s+LINE\s+INTO|\s+LINES\s+OF)?|'
+             r'(INSERT|APPEND)(\s+INITIAL\s+LINE\s+(IN)?TO|\s+LINES\s+OF)?|'
              r'IN\s+((BYTE|CHARACTER)\s+MODE|PROGRAM)|'
              r'END-OF-(DEFINITION|PAGE|SELECTION)|'
              r'WITH\s+FRAME(\s+TITLE)|'
+             r'(REPLACE|FIND)\s+((FIRST|ALL)\s+OCCURRENCES?\s+OF\s+)?(SUBSTRING|REGEX)?|'
+             r'MATCH\s+(LENGTH|COUNT|LINE|OFFSET)|'
+             r'(RESPECTING|IGNORING)\s+CASE|'
+             r'IN\s+UPDATE\s+TASK|'
+             r'(SOURCE|RESULT)\s+(XML)?|'
+             r'REFERENCE\s+INTO|'
 
              # simple kombinations
              r'AND\s+(MARK|RETURN)|CLIENT\s+SPECIFIED|CORRESPONDING\s+FIELDS\s+OF|'
@@ -353,39 +367,41 @@ class ABAPLexer(RegexLexer):
              r'MODIFY\s+SCREEN|NESTING\s+LEVEL|NO\s+INTERVALS|OF\s+STRUCTURE|'
              r'RADIOBUTTON\s+GROUP|RANGE\s+OF|REF\s+TO|SUPPRESS DIALOG|'
              r'TABLE\s+OF|UPPER\s+CASE|TRANSPORTING\s+NO\s+FIELDS|'
-             r'VALUE\s+CHECK|VISIBLE\s+LENGTH|HEADER\s+LINE)\b', Keyword),
+             r'VALUE\s+CHECK|VISIBLE\s+LENGTH|HEADER\s+LINE|COMMON\s+PART)\b', Keyword),
 
             # single word keywords.
-            (r'(^|(?<=(\s|\.)))(ABBREVIATED|ADD|ALIASES|APPEND|ASSERT|'
-             r'ASSIGN(ING)?|AT(\s+FIRST)?|'
+            (r'(^|(?<=(\s|\.)))(ABBREVIATED|ABSTRACT|ADD|ALIASES|ALIGN|ALPHA|'
+             r'ASSERT|AS|ASSIGN(ING)?|AT(\s+FIRST)?|'
              r'BACK|BLOCK|BREAK-POINT|'
              r'CASE|CATCH|CHANGING|CHECK|CLASS|CLEAR|COLLECT|COLOR|COMMIT|'
              r'CREATE|COMMUNICATION|COMPONENTS?|COMPUTE|CONCATENATE|CONDENSE|'
-             r'CONSTANTS|CONTEXTS|CONTINUE|CONTROLS|'
-             r'DATA|DECIMALS|DEFAULT|DEFINE|DEFINITION|DEFERRED|DEMAND|'
-             r'DETAIL|DIRECTORY|DIVIDE|DO|'
-             r'ELSE(IF)?|ENDAT|ENDCASE|ENDCLASS|ENDDO|ENDFORM|ENDFUNCTION|'
-             r'ENDIF|ENDLOOP|ENDMETHOD|ENDMODULE|ENDSELECT|ENDTRY|'
-             r'ENHANCEMENT|EVENTS|EXCEPTIONS|EXIT|EXPORT|EXPORTING|EXTRACT|'
-             r'FETCH|FIELDS?|FIND|FOR|FORM|FORMAT|FREE|FROM|'
+             r'CONSTANTS|CONTEXTS|CONTINUE|CONTROLS|COUNTRY|CURRENCY|'
+             r'DATA|DATE|DECIMALS|DEFAULT|DEFINE|DEFINITION|DEFERRED|DEMAND|'
+             r'DETAIL|DIRECTORY|DIVIDE|DO|DUMMY|'
+             r'ELSE(IF)?|ENDAT|ENDCASE|ENDCATCH|ENDCLASS|ENDDO|ENDFORM|ENDFUNCTION|'
+             r'ENDIF|ENDINTERFACE|ENDLOOP|ENDMETHOD|ENDMODULE|ENDSELECT|ENDTRY|ENDWHILE|'
+             r'ENHANCEMENT|EVENTS|EXACT|EXCEPTIONS?|EXIT|EXPONENT|EXPORT|EXPORTING|EXTRACT|'
+             r'FETCH|FIELDS?|FOR|FORM|FORMAT|FREE|FROM|FUNCTION|'
              r'HIDE|'
              r'ID|IF|IMPORT|IMPLEMENTATION|IMPORTING|IN|INCLUDE|INCLUDING|'
              r'INDEX|INFOTYPES|INITIALIZATION|INTERFACE|INTERFACES|INTO|'
-             r'LENGTH|LINES|LOAD|LOCAL|'
+             r'LANGUAGE|LEAVE|LENGTH|LINES|LOAD|LOCAL|'
              r'JOIN|'
              r'KEY|'
-             r'MAXIMUM|MESSAGE|METHOD[S]?|MINIMUM|MODULE|MODIFY|MOVE|MULTIPLY|'
-             r'NODES|'
-             r'OBLIGATORY|OF|OFF|ON|OVERLAY|'
-             r'PACK|PARAMETERS|PERCENTAGE|POSITION|PROGRAM|PROVIDE|PUBLIC|PUT|'
-             r'RAISE|RAISING|RANGES|READ|RECEIVE|REFRESH|REJECT|REPORT|RESERVE|'
-             r'RESUME|RETRY|RETURN|RETURNING|RIGHT|ROLLBACK|'
-             r'SCROLL|SEARCH|SELECT|SHIFT|SINGLE|SKIP|SORT|SPLIT|STATICS|STOP|'
-             r'SUBMIT|SUBTRACT|SUM|SUMMARY|SUMMING|SUPPLY|'
-             r'TABLE|TABLES|TIMES|TITLE|TO|TOP-OF-PAGE|TRANSFER|TRANSLATE|TRY|TYPES|'
+             r'NEXT|'
+             r'MAXIMUM|MESSAGE|METHOD[S]?|MINIMUM|MODULE|MODIFIER|MODIFY|MOVE|MULTIPLY|'
+             r'NODES|NUMBER|'
+             r'OBLIGATORY|OBJECT|OF|OFF|ON|OTHERS|OVERLAY|'
+             r'PACK|PAD|PARAMETERS|PERCENTAGE|POSITION|PROGRAM|PROVIDE|PUBLIC|PUT|PF\d\d|'
+             r'RAISE|RAISING|RANGES?|READ|RECEIVE|REDEFINITION|REFRESH|REJECT|REPORT|RESERVE|'
+             r'RESUME|RETRY|RETURN|RETURNING|RIGHT|ROLLBACK|REPLACE|'
+             r'SCROLL|SEARCH|SELECT|SHIFT|SIGN|SINGLE|SIZE|SKIP|SORT|SPLIT|STATICS|STOP|'
+             r'STYLE|SUBMATCHES|SUBMIT|SUBTRACT|SUM(?!\()|SUMMARY|SUMMING|SUPPLY|'
+             r'TABLE|TABLES|TIMESTAMP|TIMES?|TIMEZONE|TITLE|\??TO|'
+             r'TOP-OF-PAGE|TRANSFER|TRANSLATE|TRY|TYPES|'
              r'ULINE|UNDER|UNPACK|UPDATE|USING|'
-             r'VALUE|VALUES|VIA|'
-             r'WAIT|WHEN|WHERE|WHILE|WITH|WINDOW|WRITE)\b', Keyword),
+             r'VALUE|VALUES|VIA|VARYING|VARY|'
+             r'WAIT|WHEN|WHERE|WIDTH|WHILE|WITH|WINDOW|WRITE|XSD|ZERO)\b', Keyword),
 
             # builtins
             (r'(abs|acos|asin|atan|'
@@ -411,18 +427,21 @@ class ABAPLexer(RegexLexer):
 
             # operators which look like variable names before
             # parsing variable names.
-            (r'(?<=(\s|.))(AND|EQ|NE|GT|LT|GE|LE|CO|CN|CA|NA|CS|NOT|NS|CP|NP|'
+            (r'(?<=(\s|.))(AND|OR|EQ|NE|GT|LT|GE|LE|CO|CN|CA|NA|CS|NOT|NS|CP|NP|'
              r'BYTE-CO|BYTE-CN|BYTE-CA|BYTE-NA|BYTE-CS|BYTE-NS|'
-             r'IS\s+(NOT\s+)?(INITIAL|ASSIGNED|REQUESTED|BOUND))\b', Operator),
+             r'IS\s+(NOT\s+)?(INITIAL|ASSIGNED|REQUESTED|BOUND))\b', Operator.Word),
 
             include('variable-names'),
 
-            # standard oparators after variable names,
+            # standard operators after variable names,
             # because < and > are part of field symbols.
-            (r'[?*<>=\-+]', Operator),
+            (r'[?*<>=\-+&]', Operator),
             (r"'(''|[^'])*'", String.Single),
             (r"`([^`])*`", String.Single),
-            (r'[/;:()\[\],.]', Punctuation)
+            (r"([|}])([^{}|]*?)([|{])",
+             bygroups(Punctuation, String.Single, Punctuation)),
+            (r'[/;:()\[\],.]', Punctuation),
+            (r'(!)(\w+)', bygroups(Operator, Name)),
         ],
     }
 
@@ -439,15 +458,15 @@ class OpenEdgeLexer(RegexLexer):
     filenames = ['*.p', '*.cls']
     mimetypes = ['text/x-openedge', 'application/x-openedge']
 
-    types = (r'(?i)(^|(?<=[^0-9a-z_\-]))(CHARACTER|CHAR|CHARA|CHARAC|CHARACT|CHARACTE|'
+    types = (r'(?i)(^|(?<=[^\w\-]))(CHARACTER|CHAR|CHARA|CHARAC|CHARACT|CHARACTE|'
              r'COM-HANDLE|DATE|DATETIME|DATETIME-TZ|'
              r'DECIMAL|DEC|DECI|DECIM|DECIMA|HANDLE|'
              r'INT64|INTEGER|INT|INTE|INTEG|INTEGE|'
-             r'LOGICAL|LONGCHAR|MEMPTR|RAW|RECID|ROWID)\s*($|(?=[^0-9a-z_\-]))')
+             r'LOGICAL|LONGCHAR|MEMPTR|RAW|RECID|ROWID)\s*($|(?=[^\w\-]))')
 
     keywords = words(OPENEDGEKEYWORDS,
-                     prefix=r'(?i)(^|(?<=[^0-9a-z_\-]))',
-                     suffix=r'\s*($|(?=[^0-9a-z_\-]))')
+                     prefix=r'(?i)(^|(?<=[^\w\-]))',
+                     suffix=r'\s*($|(?=[^\w\-]))')
 
     tokens = {
         'root': [
@@ -458,11 +477,11 @@ class OpenEdgeLexer(RegexLexer):
             (r'(?i)(DEFINE|DEF|DEFI|DEFIN)\b', Keyword.Declaration),
             (types, Keyword.Type),
             (keywords, Name.Builtin),
-            (r'"(\\\\|\\"|[^"])*"', String.Double),
-            (r"'(\\\\|\\'|[^'])*'", String.Single),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
             (r'[0-9][0-9]*\.[0-9]+([eE][0-9]+)?[fd]?', Number.Float),
             (r'[0-9]+', Number.Integer),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'[+*/=-]', Operator),
             (r'[.:()]', Punctuation),
             (r'.', Name.Variable),  # Lazy catch-all
@@ -480,11 +499,26 @@ class OpenEdgeLexer(RegexLexer):
         ],
     }
 
+    def analyse_text(text):
+        """Try to identify OpenEdge ABL based on a few common constructs."""
+        result = 0
+
+        if 'END.' in text:
+            result += 0.05
+
+        if 'END PROCEDURE.' in text:
+            result += 0.05
+
+        if 'ELSE DO:' in text:
+            result += 0.05
+
+        return result
+
 
 class GoodDataCLLexer(RegexLexer):
     """
     Lexer for `GoodData-CL
-    <http://github.com/gooddata/GoodData-CL/raw/master/cli/src/main/resources/\
+    <https://github.com/gooddata/GoodData-CL/raw/master/cli/src/main/resources/\
 com/gooddata/processor/COMMANDS.txt>`_
     script files.
 
@@ -518,7 +552,7 @@ com/gooddata/processor/COMMANDS.txt>`_
             (r'"', String, 'string-literal'),
             (r'[0-9]+(?:\.[0-9]+)?(?:e[+-]?[0-9]{1,3})?', Number),
             # Space is not significant
-            (r'\s', Text)
+            (r'\s', Whitespace)
         ],
         'string-literal': [
             (r'\\[tnrfbae"\\]', String.Escape),
@@ -582,7 +616,7 @@ class MaqlLexer(RegexLexer):
             # Punctuation
             (r'[,;()]', Punctuation),
             # Space is not significant
-            (r'\s+', Text)
+            (r'\s+', Whitespace)
         ],
         'string-literal': [
             (r'\\[tnrfbae"\\]', String.Escape),

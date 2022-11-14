@@ -1,32 +1,34 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.basic
     ~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for BASIC like languages (other than VB.net).
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 
 from pygments.lexer import RegexLexer, bygroups, default, words, include
-from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+from pygments.token import Comment, Error, Keyword, Name, Number, \
+    Punctuation, Operator, String, Text, Whitespace
+from pygments.lexers import _vbscript_builtins
+
 
 __all__ = ['BlitzBasicLexer', 'BlitzMaxLexer', 'MonkeyLexer', 'CbmBasicV2Lexer',
-           'QBasicLexer']
+           'QBasicLexer', 'VBScriptLexer', 'BBCBasicLexer']
 
 
 class BlitzMaxLexer(RegexLexer):
     """
-    For `BlitzMax <http://blitzbasic.com>`_ source code.
+    For BlitzMax source code.
 
     .. versionadded:: 1.4
     """
 
     name = 'BlitzMax'
+    url = 'http://blitzbasic.com'
     aliases = ['blitzmax', 'bmax']
     filenames = ['*.bmx']
     mimetypes = ['text/x-bmx']
@@ -44,8 +46,8 @@ class BlitzMaxLexer(RegexLexer):
     tokens = {
         'root': [
             # Text
-            (r'[ \t]+', Text),
-            (r'\.\.\n', Text),  # Line continuation
+            (r'\s+', Whitespace),
+            (r'(\.\.)(\n)', bygroups(Text, Whitespace)),  # Line continuation
             # Comments
             (r"'.*?\n", Comment.Single),
             (r'([ \t]*)\bRem\n(\n|.)*?\s*\bEnd([ \t]*)Rem', Comment.Multiline),
@@ -65,19 +67,19 @@ class BlitzMaxLexer(RegexLexer):
             (r'(?:\?[\w \t]*)', Comment.Preproc),
             # Identifiers
             (r'\b(New)\b([ \t]?)([(]?)(%s)' % (bmax_name),
-             bygroups(Keyword.Reserved, Text, Punctuation, Name.Class)),
+             bygroups(Keyword.Reserved, Whitespace, Punctuation, Name.Class)),
             (r'\b(Import|Framework|Module)([ \t]+)(%s\.%s)' %
              (bmax_name, bmax_name),
-             bygroups(Keyword.Reserved, Text, Keyword.Namespace)),
-            (bmax_func, bygroups(Name.Function, Text, Keyword.Type,
-                                 Operator, Text, Punctuation, Text,
-                                 Keyword.Type, Name.Class, Text,
-                                 Keyword.Type, Text, Punctuation)),
-            (bmax_var, bygroups(Name.Variable, Text, Keyword.Type, Operator,
-                                Text, Punctuation, Text, Keyword.Type,
-                                Name.Class, Text, Keyword.Type)),
+             bygroups(Keyword.Reserved, Whitespace, Keyword.Namespace)),
+            (bmax_func, bygroups(Name.Function, Whitespace, Keyword.Type,
+                                 Operator, Whitespace, Punctuation, Whitespace,
+                                 Keyword.Type, Name.Class, Whitespace,
+                                 Keyword.Type, Whitespace, Punctuation)),
+            (bmax_var, bygroups(Name.Variable, Whitespace, Keyword.Type, Operator,
+                                Whitespace, Punctuation, Whitespace, Keyword.Type,
+                                Name.Class, Whitespace, Keyword.Type)),
             (r'\b(Type|Extends)([ \t]+)(%s)' % (bmax_name),
-             bygroups(Keyword.Reserved, Text, Name.Class)),
+             bygroups(Keyword.Reserved, Whitespace, Name.Class)),
             # Keywords
             (r'\b(Ptr)\b', Keyword.Type),
             (r'\b(Pi|True|False|Null|Self|Super)\b', Keyword.Constant),
@@ -112,12 +114,13 @@ class BlitzMaxLexer(RegexLexer):
 
 class BlitzBasicLexer(RegexLexer):
     """
-    For `BlitzBasic <http://blitzbasic.com>`_ source code.
+    For BlitzBasic source code.
 
     .. versionadded:: 2.0
     """
 
     name = 'BlitzBasic'
+    url = 'http://blitzbasic.com'
     aliases = ['blitzbasic', 'b3d', 'bplus']
     filenames = ['*.bb', '*.decls']
     mimetypes = ['text/x-bb']
@@ -131,7 +134,7 @@ class BlitzBasicLexer(RegexLexer):
     tokens = {
         'root': [
             # Text
-            (r'[ \t]+', Text),
+            (r'\s+', Whitespace),
             # Comments
             (r";.*?\n", Comment.Single),
             # Data types
@@ -153,19 +156,19 @@ class BlitzBasicLexer(RegexLexer):
             (r'\.([ \t]*)(%s)' % bb_name, Name.Label),
             # Identifiers
             (r'\b(New)\b([ \t]+)(%s)' % (bb_name),
-             bygroups(Keyword.Reserved, Text, Name.Class)),
+             bygroups(Keyword.Reserved, Whitespace, Name.Class)),
             (r'\b(Gosub|Goto)\b([ \t]+)(%s)' % (bb_name),
-             bygroups(Keyword.Reserved, Text, Name.Label)),
+             bygroups(Keyword.Reserved, Whitespace, Name.Label)),
             (r'\b(Object)\b([ \t]*)([.])([ \t]*)(%s)\b' % (bb_name),
-             bygroups(Operator, Text, Punctuation, Text, Name.Class)),
+             bygroups(Operator, Whitespace, Punctuation, Whitespace, Name.Class)),
             (r'\b%s\b([ \t]*)(\()' % bb_var,
-             bygroups(Name.Function, Text, Keyword.Type, Text, Punctuation,
-                      Text, Name.Class, Text, Punctuation)),
+             bygroups(Name.Function, Whitespace, Keyword.Type, Whitespace, Punctuation,
+                      Whitespace, Name.Class, Whitespace, Punctuation)),
             (r'\b(Function)\b([ \t]+)%s' % bb_var,
-             bygroups(Keyword.Reserved, Text, Name.Function, Text, Keyword.Type,
-                      Text, Punctuation, Text, Name.Class)),
+             bygroups(Keyword.Reserved, Whitespace, Name.Function, Whitespace, Keyword.Type,
+                      Whitespace, Punctuation, Whitespace, Name.Class)),
             (r'\b(Type)([ \t]+)(%s)' % (bb_name),
-             bygroups(Keyword.Reserved, Text, Name.Class)),
+             bygroups(Keyword.Reserved, Whitespace, Name.Class)),
             # Keywords
             (r'\b(Pi|True|False|Null)\b', Keyword.Constant),
             (r'\b(Local|Global|Const|Field|Dim)\b', Keyword.Declaration),
@@ -178,13 +181,13 @@ class BlitzBasicLexer(RegexLexer):
              Keyword.Reserved),
             # Final resolve (for variable names and such)
             # (r'(%s)' % (bb_name), Name.Variable),
-            (bb_var, bygroups(Name.Variable, Text, Keyword.Type,
-                              Text, Punctuation, Text, Name.Class)),
+            (bb_var, bygroups(Name.Variable, Whitespace, Keyword.Type,
+                              Whitespace, Punctuation, Whitespace, Name.Class)),
         ],
         'string': [
             (r'""', String.Double),
             (r'"C?', String.Double, '#pop'),
-            (r'[^"]+', String.Double),
+            (r'[^"\n]+', String.Double),
         ],
     }
 
@@ -218,7 +221,7 @@ class MonkeyLexer(RegexLexer):
     tokens = {
         'root': [
             # Text
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             # Comments
             (r"'.*", Comment),
             (r'(?i)^#rem\b', Comment.Multiline, 'comment'),
@@ -245,14 +248,14 @@ class MonkeyLexer(RegexLexer):
             (r'\b(?:HOST|LANG|TARGET|CONFIG)\b', Name.Constant),
             # Keywords
             (r'(?i)^(Import)(\s+)(.*)(\n)',
-             bygroups(Keyword.Namespace, Text, Name.Namespace, Text)),
+             bygroups(Keyword.Namespace, Whitespace, Name.Namespace, Whitespace)),
             (r'(?i)^Strict\b.*\n', Keyword.Reserved),
             (r'(?i)(Const|Local|Global|Field)(\s+)',
-             bygroups(Keyword.Declaration, Text), 'variables'),
+             bygroups(Keyword.Declaration, Whitespace), 'variables'),
             (r'(?i)(New|Class|Interface|Extends|Implements)(\s+)',
-             bygroups(Keyword.Reserved, Text), 'classname'),
+             bygroups(Keyword.Reserved, Whitespace), 'classname'),
             (r'(?i)(Function|Method)(\s+)',
-             bygroups(Keyword.Reserved, Text), 'funcname'),
+             bygroups(Keyword.Reserved, Whitespace), 'funcname'),
             (r'(?i)(?:End|Return|Public|Private|Extern|Property|'
              r'Final|Abstract)\b', Keyword.Reserved),
             # Flow Control stuff
@@ -261,7 +264,7 @@ class MonkeyLexer(RegexLexer):
              r'While|Wend|'
              r'Repeat|Until|Forever|'
              r'For|To|Until|Step|EachIn|Next|'
-             r'Exit|Continue)\s+', Keyword.Reserved),
+             r'Exit|Continue)(?=\s)', Keyword.Reserved),
             # not used yet
             (r'(?i)\b(?:Module|Inline)\b', Keyword.Reserved),
             # Array
@@ -278,7 +281,7 @@ class MonkeyLexer(RegexLexer):
         'funcname': [
             (r'(?i)%s\b' % name_function, Name.Function),
             (r':', Punctuation, 'classname'),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'\(', Punctuation, 'variables'),
             (r'\)', Punctuation, '#pop')
         ],
@@ -288,19 +291,19 @@ class MonkeyLexer(RegexLexer):
             (r'%s\b' % name_class, Name.Class),
             # array (of given size)
             (r'(\[)(\s*)(\d*)(\s*)(\])',
-             bygroups(Punctuation, Text, Number.Integer, Text, Punctuation)),
+             bygroups(Punctuation, Whitespace, Number.Integer, Whitespace, Punctuation)),
             # generics
-            (r'\s+(?!<)', Text, '#pop'),
+            (r'\s+(?!<)', Whitespace, '#pop'),
             (r'<', Punctuation, '#push'),
             (r'>', Punctuation, '#pop'),
-            (r'\n', Text, '#pop'),
+            (r'\n', Whitespace, '#pop'),
             default('#pop')
         ],
         'variables': [
             (r'%s\b' % name_constant, Name.Constant),
             (r'%s\b' % name_variable, Name.Variable),
             (r'%s' % keyword_type_special, Keyword.Type),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r':', Punctuation, 'classname'),
             (r',', Punctuation, '#push'),
             default('#pop')
@@ -334,7 +337,7 @@ class CbmBasicV2Lexer(RegexLexer):
     tokens = {
         'root': [
             (r'rem.*\n', Comment.Single),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'new|run|end|for|to|next|step|go(to|sub)?|on|return|stop|cont'
              r'|if|then|input#?|read|wait|load|save|verify|poke|sys|print#?'
              r'|list|clr|cmd|open|close|get#?', Keyword.Reserved),
@@ -350,10 +353,10 @@ class CbmBasicV2Lexer(RegexLexer):
         ]
     }
 
-    def analyse_text(self, text):
+    def analyse_text(text):
         # if it starts with a line number, it shouldn't be a "modern" Basic
         # like VB.net
-        if re.match(r'\d+', text):
+        if re.match(r'^\d+', text):
             return 0.2
 
 
@@ -497,4 +500,164 @@ class QBasicLexer(RegexLexer):
 
     def analyse_text(text):
         if '$DYNAMIC' in text or '$STATIC' in text:
+            return 0.9
+
+
+class VBScriptLexer(RegexLexer):
+    """
+    VBScript is scripting language that is modeled on Visual Basic.
+
+    .. versionadded:: 2.4
+    """
+    name = 'VBScript'
+    aliases = ['vbscript']
+    filenames = ['*.vbs', '*.VBS']
+    flags = re.IGNORECASE
+
+    tokens = {
+        'root': [
+            (r"'[^\n]*", Comment.Single),
+            (r'\s+', Whitespace),
+            ('"', String.Double, 'string'),
+            ('&h[0-9a-f]+', Number.Hex),
+            # Float variant 1, for example: 1., 1.e2, 1.2e3
+            (r'[0-9]+\.[0-9]*(e[+-]?[0-9]+)?', Number.Float),
+            (r'\.[0-9]+(e[+-]?[0-9]+)?', Number.Float),  # Float variant 2, for example: .1, .1e2
+            (r'[0-9]+e[+-]?[0-9]+', Number.Float),  # Float variant 3, for example: 123e45
+            (r'[0-9]+', Number.Integer),
+            ('#.+#', String),  # date or time value
+            (r'(dim)(\s+)([a-z_][a-z0-9_]*)',
+             bygroups(Keyword.Declaration, Whitespace, Name.Variable), 'dim_more'),
+            (r'(function|sub)(\s+)([a-z_][a-z0-9_]*)',
+             bygroups(Keyword.Declaration, Whitespace, Name.Function)),
+            (r'(class)(\s+)([a-z_][a-z0-9_]*)',
+             bygroups(Keyword.Declaration, Whitespace, Name.Class)),
+            (r'(const)(\s+)([a-z_][a-z0-9_]*)',
+             bygroups(Keyword.Declaration, Whitespace, Name.Constant)),
+            (r'(end)(\s+)(class|function|if|property|sub|with)',
+             bygroups(Keyword, Whitespace, Keyword)),
+            (r'(on)(\s+)(error)(\s+)(goto)(\s+)(0)',
+             bygroups(Keyword, Whitespace, Keyword, Whitespace, Keyword, Whitespace, Number.Integer)),
+            (r'(on)(\s+)(error)(\s+)(resume)(\s+)(next)',
+             bygroups(Keyword, Whitespace, Keyword, Whitespace, Keyword, Whitespace, Keyword)),
+            (r'(option)(\s+)(explicit)', bygroups(Keyword, Whitespace, Keyword)),
+            (r'(property)(\s+)(get|let|set)(\s+)([a-z_][a-z0-9_]*)',
+             bygroups(Keyword.Declaration, Whitespace, Keyword.Declaration, Whitespace, Name.Property)),
+            (r'rem\s.*[^\n]*', Comment.Single),
+            (words(_vbscript_builtins.KEYWORDS, suffix=r'\b'), Keyword),
+            (words(_vbscript_builtins.OPERATORS), Operator),
+            (words(_vbscript_builtins.OPERATOR_WORDS, suffix=r'\b'), Operator.Word),
+            (words(_vbscript_builtins.BUILTIN_CONSTANTS, suffix=r'\b'), Name.Constant),
+            (words(_vbscript_builtins.BUILTIN_FUNCTIONS, suffix=r'\b'), Name.Builtin),
+            (words(_vbscript_builtins.BUILTIN_VARIABLES, suffix=r'\b'), Name.Builtin),
+            (r'[a-z_][a-z0-9_]*', Name),
+            (r'\b_\n', Operator),
+            (words(r'(),.:'), Punctuation),
+            (r'.+(\n)?', Error)
+        ],
+        'dim_more': [
+            (r'(\s*)(,)(\s*)([a-z_][a-z0-9]*)',
+             bygroups(Whitespace, Punctuation, Whitespace, Name.Variable)),
+            default('#pop'),
+        ],
+        'string': [
+            (r'[^"\n]+', String.Double),
+            (r'\"\"', String.Double),
+            (r'"', String.Double, '#pop'),
+            (r'\n', Error, '#pop'),  # Unterminated string
+        ],
+    }
+
+
+class BBCBasicLexer(RegexLexer):
+    """
+    BBC Basic was supplied on the BBC Micro, and later Acorn RISC OS.
+    It is also used by BBC Basic For Windows.
+
+    .. versionadded:: 2.4
+    """
+    base_keywords = ['OTHERWISE', 'AND', 'DIV', 'EOR', 'MOD', 'OR', 'ERROR',
+                     'LINE', 'OFF', 'STEP', 'SPC', 'TAB', 'ELSE', 'THEN',
+                     'OPENIN', 'PTR', 'PAGE', 'TIME', 'LOMEM', 'HIMEM', 'ABS',
+                     'ACS', 'ADVAL', 'ASC', 'ASN', 'ATN', 'BGET', 'COS', 'COUNT',
+                     'DEG', 'ERL', 'ERR', 'EVAL', 'EXP', 'EXT', 'FALSE', 'FN',
+                     'GET', 'INKEY', 'INSTR', 'INT', 'LEN', 'LN', 'LOG', 'NOT',
+                     'OPENUP', 'OPENOUT', 'PI', 'POINT', 'POS', 'RAD', 'RND',
+                     'SGN', 'SIN', 'SQR', 'TAN', 'TO', 'TRUE', 'USR', 'VAL',
+                     'VPOS', 'CHR$', 'GET$', 'INKEY$', 'LEFT$', 'MID$',
+                     'RIGHT$', 'STR$', 'STRING$', 'EOF', 'PTR', 'PAGE', 'TIME',
+                     'LOMEM', 'HIMEM', 'SOUND', 'BPUT', 'CALL', 'CHAIN', 'CLEAR',
+                     'CLOSE', 'CLG', 'CLS', 'DATA', 'DEF', 'DIM', 'DRAW', 'END',
+                     'ENDPROC', 'ENVELOPE', 'FOR', 'GOSUB', 'GOTO', 'GCOL', 'IF',
+                     'INPUT', 'LET', 'LOCAL', 'MODE', 'MOVE', 'NEXT', 'ON',
+                     'VDU', 'PLOT', 'PRINT', 'PROC', 'READ', 'REM', 'REPEAT',
+                     'REPORT', 'RESTORE', 'RETURN', 'RUN', 'STOP', 'COLOUR',
+                     'TRACE', 'UNTIL', 'WIDTH', 'OSCLI']
+
+    basic5_keywords = ['WHEN', 'OF', 'ENDCASE', 'ENDIF', 'ENDWHILE', 'CASE',
+                       'CIRCLE', 'FILL', 'ORIGIN', 'POINT', 'RECTANGLE', 'SWAP',
+                       'WHILE', 'WAIT', 'MOUSE', 'QUIT', 'SYS', 'INSTALL',
+                       'LIBRARY', 'TINT', 'ELLIPSE', 'BEATS', 'TEMPO', 'VOICES',
+                       'VOICE', 'STEREO', 'OVERLAY', 'APPEND', 'AUTO', 'CRUNCH',
+                       'DELETE', 'EDIT', 'HELP', 'LIST', 'LOAD', 'LVAR', 'NEW',
+                       'OLD', 'RENUMBER', 'SAVE', 'TEXTLOAD', 'TEXTSAVE',
+                       'TWIN', 'TWINO', 'INSTALL', 'SUM', 'BEAT']
+
+
+    name = 'BBC Basic'
+    aliases = ['bbcbasic']
+    filenames = ['*.bbc']
+
+    tokens = {
+        'root': [
+            (r"[0-9]+", Name.Label),
+            (r"(\*)([^\n]*)",
+             bygroups(Keyword.Pseudo, Comment.Special)),
+            default('code'),
+        ],
+
+        'code': [
+            (r"(REM)([^\n]*)",
+             bygroups(Keyword.Declaration, Comment.Single)),
+            (r'\n', Whitespace, 'root'),
+            (r'\s+', Whitespace),
+            (r':', Comment.Preproc),
+
+            # Some special cases to make functions come out nicer
+            (r'(DEF)(\s*)(FN|PROC)([A-Za-z_@][\w@]*)',
+             bygroups(Keyword.Declaration, Whitespace, Keyword.Declaration, Name.Function)),
+            (r'(FN|PROC)([A-Za-z_@][\w@]*)',
+             bygroups(Keyword, Name.Function)),
+
+            (r'(GOTO|GOSUB|THEN|RESTORE)(\s*)(\d+)',
+             bygroups(Keyword, Whitespace, Name.Label)),
+
+            (r'(TRUE|FALSE)', Keyword.Constant),
+            (r'(PAGE|LOMEM|HIMEM|TIME|WIDTH|ERL|ERR|REPORT\$|POS|VPOS|VOICES)', Keyword.Pseudo),
+
+            (words(base_keywords), Keyword),
+            (words(basic5_keywords), Keyword),
+
+            ('"', String.Double, 'string'),
+
+            ('%[01]{1,32}', Number.Bin),
+            ('&[0-9a-f]{1,8}', Number.Hex),
+
+            (r'[+-]?[0-9]+\.[0-9]*(E[+-]?[0-9]+)?', Number.Float),
+            (r'[+-]?\.[0-9]+(E[+-]?[0-9]+)?', Number.Float),
+            (r'[+-]?[0-9]+E[+-]?[0-9]+', Number.Float),
+            (r'[+-]?\d+', Number.Integer),
+
+            (r'([A-Za-z_@][\w@]*[%$]?)', Name.Variable),
+            (r'([+\-]=|[$!|?+\-*/%^=><();]|>=|<=|<>|<<|>>|>>>|,)', Operator),
+        ],
+        'string': [
+            (r'[^"\n]+', String.Double),
+            (r'"', String.Double, '#pop'),
+            (r'\n', Error, 'root'),  # Unterminated string
+        ],
+    }
+
+    def analyse_text(text):
+        if text.startswith('10REM >') or text.startswith('REM >'):
             return 0.9

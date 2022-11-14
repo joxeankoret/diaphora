@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.inferno
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Inferno os and all the related stuff.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -13,14 +12,14 @@ import re
 
 from pygments.lexer import RegexLexer, include, bygroups, default
 from pygments.token import Punctuation, Text, Comment, Operator, Keyword, \
-    Name, String, Number
+    Name, String, Number, Whitespace
 
 __all__ = ['LimboLexer']
 
 
 class LimboLexer(RegexLexer):
     """
-    Lexer for `Limbo programming language <http://www.vitanuova.com/inferno/limbo.html>`_
+    Lexer for Limbo programming language
 
     TODO:
         - maybe implement better var declaration highlighting
@@ -29,16 +28,17 @@ class LimboLexer(RegexLexer):
     .. versionadded:: 2.0
     """
     name = 'Limbo'
+    url = 'http://www.vitanuova.com/inferno/limbo.html'
     aliases = ['limbo']
     filenames = ['*.b']
     mimetypes = ['text/limbo']
 
     tokens = {
         'whitespace': [
-            (r'^(\s*)([a-zA-Z_]\w*:(\s*)\n)',
-             bygroups(Text, Name.Label)),
-            (r'\n', Text),
-            (r'\s+', Text),
+            (r'^(\s*)([a-zA-Z_]\w*:)(\s*\n)',
+             bygroups(Whitespace, Name.Label, Whitespace)),
+            (r'\n', Whitespace),
+            (r'\s+', Whitespace),
             (r'#(\n|(.|\n)*?[^\\]\n)', Comment.Single),
         ],
         'string': [
@@ -64,7 +64,7 @@ class LimboLexer(RegexLexer):
             (r'(byte|int|big|real|string|array|chan|list|adt'
              r'|fn|ref|of|module|self|type)\b', Keyword.Type),
             (r'(con|iota|nil)\b', Keyword.Constant),
-            ('[a-zA-Z_]\w*', Name),
+            (r'[a-zA-Z_]\w*', Name),
         ],
         'statement' : [
             include('whitespace'),

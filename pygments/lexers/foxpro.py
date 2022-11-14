@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.foxpro
     ~~~~~~~~~~~~~~~~~~~~~~
 
     Simple lexer for Microsoft Visual FoxPro source code.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -36,7 +35,7 @@ class FoxProLexer(RegexLexer):
 
     tokens = {
         'root': [
-            (r';\s*\n', Punctuation), # consume newline
+            (r';\s*\n', Punctuation),  # consume newline
             (r'(^|\n)\s*', Text, 'newline'),
 
             # Square brackets may be used for array indices

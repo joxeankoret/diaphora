@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.make
     ~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Makefiles and similar.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -14,7 +13,7 @@ import re
 from pygments.lexer import Lexer, RegexLexer, include, bygroups, \
     do_insertions, using
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Punctuation
+    Punctuation, Whitespace
 from pygments.lexers.shell import BashLexer
 
 __all__ = ['MakefileLexer', 'BaseMakefileLexer', 'CMakeLexer']
@@ -57,8 +56,7 @@ class MakefileLexer(Lexer):
                 ins.append((len(done), [(0, Comment, line)]))
             else:
                 done += line
-        for item in do_insertions(ins, lex.get_tokens_unprocessed(done)):
-            yield item
+        yield from do_insertions(ins, lex.get_tokens_unprocessed(done))
 
     def analyse_text(text):
         # Many makefiles have $(BIG_CAPS) style variables
@@ -84,17 +82,17 @@ class BaseMakefileLexer(RegexLexer):
             (r'^(?:[\t ]+.*\n|\n)+', using(BashLexer)),
             # special variables
             (r'\$[<@$+%?|*]', Keyword),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'#.*?\n', Comment),
-            (r'(export)(\s+)(?=[\w${}\t -]+\n)',
+            (r'((?:un)?export)(\s+)(?=[\w${}\t -]+\n)',
              bygroups(Keyword, Text), 'export'),
-            (r'export\s+', Keyword),
+            (r'(?:un)?export\s+', Keyword),
             # assignment
-            (r'([\w${}.-]+)(\s*)([!?:+]?=)([ \t]*)((?:.*\\\n)+|.*\n)',
+            (r'([\w${}().-]+)(\s*)([!?:+]?=)([ \t]*)((?:.*\\\n)+|.*\n)',
              bygroups(Name.Variable, Text, Operator, Text, using(BashLexer))),
             # strings
-            (r'(?s)"(\\\\|\\.|[^"\\])*"', String.Double),
-            (r"(?s)'(\\\\|\\.|[^'\\])*'", String.Single),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
             # targets
             (r'([^\n:]+)(:+)([ \t]*)', bygroups(Name.Function, Operator, Text),
              'block-header'),
@@ -102,8 +100,8 @@ class BaseMakefileLexer(RegexLexer):
             (r'\$\(', Keyword, 'expansion'),
         ],
         'expansion': [
-            (r'[^$a-zA-Z_)]+', Text),
-            (r'[a-zA-Z_]+', Name.Variable),
+            (r'[^\w$().-]+', Text),
+            (r'[\w.-]+', Name.Variable),
             (r'\$', Keyword),
             (r'\(', Keyword, '#push'),
             (r'\)', Keyword, '#pop'),
@@ -111,7 +109,7 @@ class BaseMakefileLexer(RegexLexer):
         'export': [
             (r'[\w${}-]+', Name.Variable),
             (r'\n', Text, '#pop'),
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
         ],
         'block-header': [
             (r'[,|]', Punctuation),
@@ -127,11 +125,12 @@ class BaseMakefileLexer(RegexLexer):
 
 class CMakeLexer(RegexLexer):
     """
-    Lexer for `CMake <http://cmake.org/Wiki/CMake>`_ files.
+    Lexer for CMake files.
 
     .. versionadded:: 1.2
     """
     name = 'CMake'
+    url = 'https://cmake.org/documentation/'
     aliases = ['cmake']
     filenames = ['*.cmake', 'CMakeLists.txt']
     mimetypes = ['text/x-cmake']
@@ -173,6 +172,7 @@ class CMakeLexer(RegexLexer):
             (r'\(', Punctuation, '#push'),
             (r'\)', Punctuation, '#pop'),
             (r'(\$\{)(.+?)(\})', bygroups(Operator, Name.Variable, Operator)),
+            (r'(\$ENV\{)(.+?)(\})', bygroups(Operator, Name.Variable, Operator)),
             (r'(\$<)(.+?)(>)', bygroups(Operator, Name.Variable, Operator)),
             (r'(?s)".*?"', String.Double),
             (r'\\\S+', String),
@@ -189,13 +189,18 @@ class CMakeLexer(RegexLexer):
              r'MSVC70|MSVC71|MSVC80|MSVC90)\b', Keyword),
         ],
         'ws': [
-            (r'[ \t]+', Text),
+            (r'[ \t]+', Whitespace),
             (r'#.*\n', Comment),
         ]
     }
 
     def analyse_text(text):
-        exp = r'^ *CMAKE_MINIMUM_REQUIRED *\( *VERSION *\d(\.\d)* *( FATAL_ERROR)? *\) *$'
+        exp = (
+            r'^[ \t]*CMAKE_MINIMUM_REQUIRED[ \t]*'
+            r'\([ \t]*VERSION[ \t]*\d+(\.\d+)*[ \t]*'
+            r'([ \t]FATAL_ERROR)?[ \t]*\)[ \t]*'
+            r'(#[^\n]*)?$'
+       )
         if re.search(exp, text, flags=re.MULTILINE | re.IGNORECASE):
             return 0.8
         return 0.0

@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.modeling
     ~~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for modeling languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -13,7 +12,7 @@ import re
 
 from pygments.lexer import RegexLexer, include, bygroups, using, default
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Whitespace
 
 from pygments.lexers.html import HtmlLexer
 from pygments.lexers import _stan_builtins
@@ -23,11 +22,12 @@ __all__ = ['ModelicaLexer', 'BugsLexer', 'JagsLexer', 'StanLexer']
 
 class ModelicaLexer(RegexLexer):
     """
-    For `Modelica <http://www.modelica.org/>`_ source code.
+    For Modelica source code.
 
     .. versionadded:: 1.1
     """
     name = 'Modelica'
+    url = 'http://www.modelica.org/'
     aliases = ['modelica']
     filenames = ['*.mo']
     mimetypes = ['text/x-modelica']
@@ -38,7 +38,7 @@ class ModelicaLexer(RegexLexer):
 
     tokens = {
         'whitespace': [
-            (u'[\\s\ufeff]+', Text),
+            (r'[\s\ufeff]+', Text),
             (r'//[^\n]*\n?', Comment.Single),
             (r'/\*.*?\*/', Comment.Multiline)
         ],
@@ -62,8 +62,8 @@ class ModelicaLexer(RegexLexer):
              r'transpose|vector|zeros)\b', Name.Builtin),
             (r'(algorithm|annotation|break|connect|constant|constrainedby|der|'
              r'discrete|each|else|elseif|elsewhen|encapsulated|enumeration|'
-             r'equation|exit|expandable|extends|external|final|flow|for|if|'
-             r'import|impure|in|initial|inner|input|loop|nondiscrete|outer|'
+             r'equation|exit|expandable|extends|external|firstTick|final|flow|for|if|'
+             r'import|impure|in|initial|inner|input|interval|loop|nondiscrete|outer|'
              r'output|parameter|partial|protected|public|pure|redeclare|'
              r'replaceable|return|stream|then|when|while)\b',
              Keyword.Reserved),
@@ -98,7 +98,7 @@ class ModelicaLexer(RegexLexer):
 
 class BugsLexer(RegexLexer):
     """
-    Pygments Lexer for `OpenBugs <http://www.openbugs.net/>`_ and WinBugs
+    Pygments Lexer for OpenBugs and WinBugs
     models.
 
     .. versionadded:: 1.6
@@ -284,8 +284,8 @@ class StanLexer(RegexLexer):
     """Pygments Lexer for Stan models.
 
     The Stan modeling language is specified in the *Stan Modeling Language
-    User's Guide and Reference Manual, v2.5.0*,
-    `pdf <https://github.com/stan-dev/stan/releases/download/v2.5.0/stan-reference-2.5.0.pdf>`__.
+    User's Guide and Reference Manual, v2.17.0*,
+    `pdf <https://github.com/stan-dev/stan/releases/download/v2.17.0/stan-reference-2.17.0.pdf>`__.
 
     .. versionadded:: 1.6
     """
@@ -304,7 +304,6 @@ class StanLexer(RegexLexer):
             (r'(//|#).*$', Comment.Single),
         ],
         'root': [
-            # Stan is more restrictive on strings than this regex
             (r'"[^"]*"', String),
             # Comments
             include('comments'),
@@ -316,36 +315,50 @@ class StanLexer(RegexLexer):
                         'parameters', r'transformed\s+parameters',
                         'model', r'generated\s+quantities')),
              bygroups(Keyword.Namespace, Text, Punctuation)),
+            # target keyword
+            (r'target\s*\+=', Keyword),
             # Reserved Words
             (r'(%s)\b' % r'|'.join(_stan_builtins.KEYWORDS), Keyword),
             # Truncation
             (r'T(?=\s*\[)', Keyword),
             # Data types
             (r'(%s)\b' % r'|'.join(_stan_builtins.TYPES), Keyword.Type),
+             # < should be punctuation, but elsewhere I can't tell if it is in
+             # a range constraint
+            (r'(<)(\s*)(upper|lower|offset|multiplier)(\s*)(=)',
+             bygroups(Operator, Whitespace, Keyword, Whitespace, Punctuation)),
+            (r'(,)(\s*)(upper)(\s*)(=)',
+             bygroups(Punctuation, Whitespace, Keyword, Whitespace, Punctuation)),
             # Punctuation
-            (r"[;:,\[\]()]", Punctuation),
+            (r"[;,\[\]()]", Punctuation),
             # Builtin
-            (r'(%s)(?=\s*\()'
-             % r'|'.join(_stan_builtins.FUNCTIONS
-                         + _stan_builtins.DISTRIBUTIONS),
-             Name.Builtin),
+            (r'(%s)(?=\s*\()' % '|'.join(_stan_builtins.FUNCTIONS), Name.Builtin),
+            (r'(~)(\s*)(%s)(?=\s*\()' % '|'.join(_stan_builtins.DISTRIBUTIONS),
+                bygroups(Operator, Whitespace, Name.Builtin)),
             # Special names ending in __, like lp__
             (r'[A-Za-z]\w*__\b', Name.Builtin.Pseudo),
             (r'(%s)\b' % r'|'.join(_stan_builtins.RESERVED), Keyword.Reserved),
+            # user-defined functions
+            (r'[A-Za-z]\w*(?=\s*\()]', Name.Function),
+            # Imaginary Literals
+            (r'[0-9]+(\.[0-9]*)?([eE][+-]?[0-9]+)?i', Number.Float),
+            (r'\.[0-9]+([eE][+-]?[0-9]+)?i', Number.Float),
+            (r'[0-9]+i', Number.Float),
+            # Real Literals
+            (r'[0-9]+(\.[0-9]*)?([eE][+-]?[0-9]+)?', Number.Float),
+            (r'\.[0-9]+([eE][+-]?[0-9]+)?', Number.Float),
+            # Integer Literals
+            (r'[0-9]+', Number.Integer),
             # Regular variable names
             (r'[A-Za-z]\w*\b', Name),
-            # Real Literals
-            (r'-?[0-9]+(\.[0-9]+)?[eE]-?[0-9]+', Number.Float),
-            (r'-?[0-9]*\.[0-9]*', Number.Float),
-            # Integer Literals
-            (r'-?[0-9]+', Number.Integer),
             # Assignment operators
-            # SLexer makes these tokens Operators.
-            (r'<-|~', Operator),
+            (r'<-|(?:\+|-|\.?/|\.?\*|=)?=|~', Operator),
             # Infix, prefix and postfix operators (and = )
-            (r"\+|-|\.?\*|\.?/|\\|'|\^|==?|!=?|<=?|>=?|\|\||&&", Operator),
+            (r"\+|-|\.?\*|\.?/|\\|'|\.?\^|!=?|<=?|>=?|\|\||&&|%|\?|:|%/%|!", Operator),
             # Block delimiters
             (r'[{}]', Punctuation),
+            # Distribution |
+            (r'\|', Punctuation)
         ]
     }
 

@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.parsers
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for parser generators.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -28,22 +27,23 @@ __all__ = ['RagelLexer', 'RagelEmbeddedLexer', 'RagelCLexer', 'RagelDLexer',
            'RagelCppLexer', 'RagelObjectiveCLexer', 'RagelRubyLexer',
            'RagelJavaLexer', 'AntlrLexer', 'AntlrPythonLexer',
            'AntlrPerlLexer', 'AntlrRubyLexer', 'AntlrCppLexer',
-           # 'AntlrCLexer',
            'AntlrCSharpLexer', 'AntlrObjectiveCLexer',
            'AntlrJavaLexer', 'AntlrActionScriptLexer',
            'TreetopLexer', 'EbnfLexer']
 
 
 class RagelLexer(RegexLexer):
-    """
-    A pure `Ragel <http://www.complang.org/ragel/>`_ lexer.  Use this for
-    fragments of Ragel.  For ``.rl`` files, use RagelEmbeddedLexer instead
-    (or one of the language-specific subclasses).
+    """A pure `Ragel <www.colm.net/open-source/ragel>`_ lexer.  Use this
+    for fragments of Ragel.  For ``.rl`` files, use
+    :class:`RagelEmbeddedLexer` instead (or one of the
+    language-specific subclasses).
 
     .. versionadded:: 1.1
+
     """
 
     name = 'Ragel'
+    url = 'http://www.colm.net/open-source/ragel/'
     aliases = ['ragel']
     filenames = []
 
@@ -65,10 +65,10 @@ class RagelLexer(RegexLexer):
             (r'[+-]?[0-9]+', Number.Integer),
         ],
         'literals': [
-            (r'"(\\\\|\\"|[^"])*"', String),              # double quote string
-            (r"'(\\\\|\\'|[^'])*'", String),              # single quote string
-            (r'\[(\\\\|\\\]|[^\]])*\]', String),          # square bracket literals
-            (r'/(?!\*)(\\\\|\\/|[^/])*/', String.Regex),  # regular expressions
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
+            (r'\[(\\\\|\\[^\\]|[^\\\]])*\]', String),          # square bracket literals
+            (r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/', String.Regex),  # regular expressions
         ],
         'identifiers': [
             (r'[a-zA-Z_]\w*', Name.Variable),
@@ -107,15 +107,15 @@ class RagelLexer(RegexLexer):
                 r'[^\\]\\[{}]',  # allow escaped { or }
 
                 # strings and comments may safely contain unsafe characters
-                r'"(\\\\|\\"|[^"])*"',  # double quote string
-                r"'(\\\\|\\'|[^'])*'",  # single quote string
+                r'"(\\\\|\\[^\\]|[^"\\])*"',
+                r"'(\\\\|\\[^\\]|[^'\\])*'",
                 r'//.*$\n?',            # single line comment
                 r'/\*(.|\n)*?\*/',      # multi-line javadoc-style comment
                 r'\#.*$\n?',            # ruby comment
 
                 # regular expression: There's no reason for it to start
                 # with a * and this stops confusion with comments.
-                r'/(?!\*)(\\\\|\\/|[^/])*/',
+                r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/',
 
                 # / is safe now that we've handled regex and javadoc comments
                 r'/',
@@ -129,7 +129,7 @@ class RagelLexer(RegexLexer):
 
 class RagelEmbeddedLexer(RegexLexer):
     """
-    A lexer for `Ragel`_ embedded in a host language file.
+    A lexer for Ragel embedded in a host language file.
 
     This will only highlight Ragel statements. If you want host language
     highlighting then call the language-specific Ragel lexer.
@@ -148,12 +148,12 @@ class RagelEmbeddedLexer(RegexLexer):
                 r'%(?=[^%]|$)',   # a single % sign is okay, just not 2 of them
 
                 # strings and comments may safely contain unsafe characters
-                r'"(\\\\|\\"|[^"])*"',  # double quote string
-                r"'(\\\\|\\'|[^'])*'",  # single quote string
+                r'"(\\\\|\\[^\\]|[^"\\])*"',
+                r"'(\\\\|\\[^\\]|[^'\\])*'",
                 r'/\*(.|\n)*?\*/',      # multi-line javadoc-style comment
                 r'//.*$\n?',  # single line comment
                 r'\#.*$\n?',  # ruby/ragel comment
-                r'/(?!\*)(\\\\|\\/|[^/])*/',  # regular expression
+                r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/',  # regular expression
 
                 # / is safe now that we've handled regex and javadoc comments
                 r'/',
@@ -183,7 +183,7 @@ class RagelEmbeddedLexer(RegexLexer):
 
                     # specifically allow regex followed immediately by *
                     # so it doesn't get mistaken for a comment
-                    r'/(?!\*)(\\\\|\\/|[^/])*/\*',
+                    r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/\*',
 
                     # allow / as long as it's not followed by another / or by a *
                     r'/(?=[^/*]|$)',
@@ -194,9 +194,9 @@ class RagelEmbeddedLexer(RegexLexer):
                 )) + r')+',
 
                 # strings and comments may safely contain unsafe characters
-                r'"(\\\\|\\"|[^"])*"',      # double quote string
-                r"'(\\\\|\\'|[^'])*'",      # single quote string
-                r"\[(\\\\|\\\]|[^\]])*\]",  # square bracket literal
+                r'"(\\\\|\\[^\\]|[^"\\])*"',
+                r"'(\\\\|\\[^\\]|[^'\\])*'",
+                r"\[(\\\\|\\[^\\]|[^\]\\])*\]",  # square bracket literal
                 r'/\*(.|\n)*?\*/',          # multi-line javadoc-style comment
                 r'//.*$\n?',                # single line comment
                 r'\#.*$\n?',                # ruby/ragel comment
@@ -212,7 +212,7 @@ class RagelEmbeddedLexer(RegexLexer):
 
 class RagelRubyLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in a Ruby host file.
+    A lexer for Ragel in a Ruby host file.
 
     .. versionadded:: 1.1
     """
@@ -222,8 +222,7 @@ class RagelRubyLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelRubyLexer, self).__init__(RubyLexer, RagelEmbeddedLexer,
-                                             **options)
+        super().__init__(RubyLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: ruby' in text
@@ -231,7 +230,7 @@ class RagelRubyLexer(DelegatingLexer):
 
 class RagelCLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in a C host file.
+    A lexer for Ragel in a C host file.
 
     .. versionadded:: 1.1
     """
@@ -241,8 +240,7 @@ class RagelCLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelCLexer, self).__init__(CLexer, RagelEmbeddedLexer,
-                                          **options)
+        super().__init__(CLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: c' in text
@@ -250,7 +248,7 @@ class RagelCLexer(DelegatingLexer):
 
 class RagelDLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in a D host file.
+    A lexer for Ragel in a D host file.
 
     .. versionadded:: 1.1
     """
@@ -260,7 +258,7 @@ class RagelDLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelDLexer, self).__init__(DLexer, RagelEmbeddedLexer, **options)
+        super().__init__(DLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: d' in text
@@ -268,7 +266,7 @@ class RagelDLexer(DelegatingLexer):
 
 class RagelCppLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in a CPP host file.
+    A lexer for Ragel in a C++ host file.
 
     .. versionadded:: 1.1
     """
@@ -278,7 +276,7 @@ class RagelCppLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelCppLexer, self).__init__(CppLexer, RagelEmbeddedLexer, **options)
+        super().__init__(CppLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: c++' in text
@@ -286,7 +284,7 @@ class RagelCppLexer(DelegatingLexer):
 
 class RagelObjectiveCLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in an Objective C host file.
+    A lexer for Ragel in an Objective C host file.
 
     .. versionadded:: 1.1
     """
@@ -296,9 +294,7 @@ class RagelObjectiveCLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelObjectiveCLexer, self).__init__(ObjectiveCLexer,
-                                                   RagelEmbeddedLexer,
-                                                   **options)
+        super().__init__(ObjectiveCLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: objc' in text
@@ -306,7 +302,7 @@ class RagelObjectiveCLexer(DelegatingLexer):
 
 class RagelJavaLexer(DelegatingLexer):
     """
-    A lexer for `Ragel`_ in a Java host file.
+    A lexer for Ragel in a Java host file.
 
     .. versionadded:: 1.1
     """
@@ -316,8 +312,7 @@ class RagelJavaLexer(DelegatingLexer):
     filenames = ['*.rl']
 
     def __init__(self, **options):
-        super(RagelJavaLexer, self).__init__(JavaLexer, RagelEmbeddedLexer,
-                                             **options)
+        super().__init__(JavaLexer, RagelEmbeddedLexer, **options)
 
     def analyse_text(text):
         return '@LANG: java' in text
@@ -364,13 +359,13 @@ class AntlrLexer(RegexLexer):
             # tokensSpec
             (r'tokens\b', Keyword, 'tokens'),
             # attrScope
-            (r'(scope)(\s*)(' + _id + ')(\s*)(\{)',
+            (r'(scope)(\s*)(' + _id + r')(\s*)(\{)',
              bygroups(Keyword, Whitespace, Name.Variable, Whitespace,
                       Punctuation), 'action'),
             # exception
             (r'(catch|finally)\b', Keyword, 'exception'),
             # action
-            (r'(@' + _id + ')(\s*)(::)?(\s*)(' + _id + ')(\s*)(\{)',
+            (r'(@' + _id + r')(\s*)(::)?(\s*)(' + _id + r')(\s*)(\{)',
              bygroups(Name.Label, Whitespace, Punctuation, Whitespace,
                       Name.Label, Whitespace, Punctuation), 'action'),
             # rule
@@ -405,10 +400,10 @@ class AntlrLexer(RegexLexer):
             # L173 ANTLRv3.g from ANTLR book
             (r'(scope)(\s+)(\{)', bygroups(Keyword, Whitespace, Punctuation),
              'action'),
-            (r'(scope)(\s+)(' + _id + ')(\s*)(;)',
+            (r'(scope)(\s+)(' + _id + r')(\s*)(;)',
              bygroups(Keyword, Whitespace, Name.Label, Whitespace, Punctuation)),
             # ruleAction
-            (r'(@' + _id + ')(\s*)(\{)',
+            (r'(@' + _id + r')(\s*)(\{)',
              bygroups(Name.Label, Whitespace, Punctuation), 'action'),
             # finished prelims, go to rule alts!
             (r':', Punctuation, '#pop')
@@ -422,8 +417,8 @@ class AntlrLexer(RegexLexer):
             (r':', Punctuation),
 
             # literals
-            (r"'(\\\\|\\'|[^'])*'", String),
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
             (r'<<([^>]|>[^>])>>', String),
             # identifiers
             # Tokens start with capital letter.
@@ -442,7 +437,7 @@ class AntlrLexer(RegexLexer):
             include('comments'),
             (r'\{', Punctuation),
             (r'(' + _TOKEN_REF + r')(\s*)(=)?(\s*)(' + _STRING_LITERAL
-             + ')?(\s*)(;)',
+             + r')?(\s*)(;)',
              bygroups(Name.Label, Whitespace, Punctuation, Whitespace,
                       String, Whitespace, Punctuation)),
             (r'\}', Punctuation, '#pop'),
@@ -452,7 +447,7 @@ class AntlrLexer(RegexLexer):
             include('comments'),
             (r'\{', Punctuation),
             (r'(' + _id + r')(\s*)(=)(\s*)(' +
-             '|'.join((_id, _STRING_LITERAL, _INT, '\*')) + ')(\s*)(;)',
+             '|'.join((_id, _STRING_LITERAL, _INT, r'\*')) + r')(\s*)(;)',
              bygroups(Name.Variable, Whitespace, Punctuation, Whitespace,
                       Text, Whitespace, Punctuation)),
             (r'\}', Punctuation, '#pop'),
@@ -462,14 +457,14 @@ class AntlrLexer(RegexLexer):
                 r'[^${}\'"/\\]+',  # exclude unsafe characters
 
                 # strings and comments may safely contain unsafe characters
-                r'"(\\\\|\\"|[^"])*"',  # double quote string
-                r"'(\\\\|\\'|[^'])*'",  # single quote string
+                r'"(\\\\|\\[^\\]|[^"\\])*"',
+                r"'(\\\\|\\[^\\]|[^'\\])*'",
                 r'//.*$\n?',            # single line comment
                 r'/\*(.|\n)*?\*/',      # multi-line javadoc-style comment
 
                 # regular expression: There's no reason for it to start
                 # with a * and this stops confusion with comments.
-                r'/(?!\*)(\\\\|\\/|[^/])*/',
+                r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/',
 
                 # backslashes are okay, as long as we are not backslashing a %
                 r'\\(?!%)',
@@ -489,14 +484,14 @@ class AntlrLexer(RegexLexer):
                 r'[^$\[\]\'"/]+',  # exclude unsafe characters
 
                 # strings and comments may safely contain unsafe characters
-                r'"(\\\\|\\"|[^"])*"',  # double quote string
-                r"'(\\\\|\\'|[^'])*'",  # single quote string
+                r'"(\\\\|\\[^\\]|[^"\\])*"',
+                r"'(\\\\|\\[^\\]|[^'\\])*'",
                 r'//.*$\n?',            # single line comment
                 r'/\*(.|\n)*?\*/',      # multi-line javadoc-style comment
 
                 # regular expression: There's no reason for it to start
                 # with a * and this stops confusion with comments.
-                r'/(?!\*)(\\\\|\\/|[^/])*/',
+                r'/(?!\*)(\\\\|\\[^\\]|[^/\\])*/',
 
                 # Now that we've handled regex and javadoc comments
                 # it's safe to let / through.
@@ -515,34 +510,12 @@ class AntlrLexer(RegexLexer):
     def analyse_text(text):
         return re.search(r'^\s*grammar\s+[a-zA-Z0-9]+\s*;', text, re.M)
 
+
 # http://www.antlr.org/wiki/display/ANTLR3/Code+Generation+Targets
-
-# TH: I'm not aware of any language features of C++ that will cause
-# incorrect lexing of C files.  Antlr doesn't appear to make a distinction,
-# so just assume they're C++.  No idea how to make Objective C work in the
-# future.
-
-# class AntlrCLexer(DelegatingLexer):
-#    """
-#    ANTLR with C Target
-#
-#    .. versionadded:: 1.1
-#    """
-#
-#    name = 'ANTLR With C Target'
-#    aliases = ['antlr-c']
-#    filenames = ['*.G', '*.g']
-#
-#    def __init__(self, **options):
-#        super(AntlrCLexer, self).__init__(CLexer, AntlrLexer, **options)
-#
-#    def analyse_text(text):
-#        return re.match(r'^\s*language\s*=\s*C\s*;', text)
-
 
 class AntlrCppLexer(DelegatingLexer):
     """
-    `ANTLR`_ with CPP Target
+    ANTLR with C++ Target
 
     .. versionadded:: 1.1
     """
@@ -552,7 +525,7 @@ class AntlrCppLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrCppLexer, self).__init__(CppLexer, AntlrLexer, **options)
+        super().__init__(CppLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -561,7 +534,7 @@ class AntlrCppLexer(DelegatingLexer):
 
 class AntlrObjectiveCLexer(DelegatingLexer):
     """
-    `ANTLR`_ with Objective-C Target
+    ANTLR with Objective-C Target
 
     .. versionadded:: 1.1
     """
@@ -571,8 +544,7 @@ class AntlrObjectiveCLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrObjectiveCLexer, self).__init__(ObjectiveCLexer,
-                                                   AntlrLexer, **options)
+        super().__init__(ObjectiveCLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -581,7 +553,7 @@ class AntlrObjectiveCLexer(DelegatingLexer):
 
 class AntlrCSharpLexer(DelegatingLexer):
     """
-    `ANTLR`_ with C# Target
+    ANTLR with C# Target
 
     .. versionadded:: 1.1
     """
@@ -591,8 +563,7 @@ class AntlrCSharpLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrCSharpLexer, self).__init__(CSharpLexer, AntlrLexer,
-                                               **options)
+        super().__init__(CSharpLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -601,7 +572,7 @@ class AntlrCSharpLexer(DelegatingLexer):
 
 class AntlrPythonLexer(DelegatingLexer):
     """
-    `ANTLR`_ with Python Target
+    ANTLR with Python Target
 
     .. versionadded:: 1.1
     """
@@ -611,8 +582,7 @@ class AntlrPythonLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrPythonLexer, self).__init__(PythonLexer, AntlrLexer,
-                                               **options)
+        super().__init__(PythonLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -621,7 +591,7 @@ class AntlrPythonLexer(DelegatingLexer):
 
 class AntlrJavaLexer(DelegatingLexer):
     """
-    `ANTLR`_ with Java Target
+    ANTLR with Java Target
 
     .. versionadded:: 1.
     """
@@ -631,8 +601,7 @@ class AntlrJavaLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrJavaLexer, self).__init__(JavaLexer, AntlrLexer,
-                                             **options)
+        super().__init__(JavaLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         # Antlr language is Java by default
@@ -641,7 +610,7 @@ class AntlrJavaLexer(DelegatingLexer):
 
 class AntlrRubyLexer(DelegatingLexer):
     """
-    `ANTLR`_ with Ruby Target
+    ANTLR with Ruby Target
 
     .. versionadded:: 1.1
     """
@@ -651,8 +620,7 @@ class AntlrRubyLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrRubyLexer, self).__init__(RubyLexer, AntlrLexer,
-                                             **options)
+        super().__init__(RubyLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -661,7 +629,7 @@ class AntlrRubyLexer(DelegatingLexer):
 
 class AntlrPerlLexer(DelegatingLexer):
     """
-    `ANTLR`_ with Perl Target
+    ANTLR with Perl Target
 
     .. versionadded:: 1.1
     """
@@ -671,8 +639,7 @@ class AntlrPerlLexer(DelegatingLexer):
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
-        super(AntlrPerlLexer, self).__init__(PerlLexer, AntlrLexer,
-                                             **options)
+        super().__init__(PerlLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -681,19 +648,18 @@ class AntlrPerlLexer(DelegatingLexer):
 
 class AntlrActionScriptLexer(DelegatingLexer):
     """
-    `ANTLR`_ with ActionScript Target
+    ANTLR with ActionScript Target
 
     .. versionadded:: 1.1
     """
 
     name = 'ANTLR With ActionScript Target'
-    aliases = ['antlr-as', 'antlr-actionscript']
+    aliases = ['antlr-actionscript', 'antlr-as']
     filenames = ['*.G', '*.g']
 
     def __init__(self, **options):
         from pygments.lexers.actionscript import ActionScriptLexer
-        super(AntlrActionScriptLexer, self).__init__(ActionScriptLexer,
-                                                     AntlrLexer, **options)
+        super().__init__(ActionScriptLexer, AntlrLexer, **options)
 
     def analyse_text(text):
         return AntlrLexer.analyse_text(text) and \
@@ -703,7 +669,7 @@ class AntlrActionScriptLexer(DelegatingLexer):
 class TreetopBaseLexer(RegexLexer):
     """
     A base lexer for `Treetop <http://treetop.rubyforge.org/>`_ grammars.
-    Not for direct use; use TreetopLexer instead.
+    Not for direct use; use :class:`TreetopLexer` instead.
 
     .. versionadded:: 1.6
     """
@@ -736,8 +702,8 @@ class TreetopBaseLexer(RegexLexer):
         'rule': [
             include('space'),
             include('end'),
-            (r'"(\\\\|\\"|[^"])*"', String.Double),
-            (r"'(\\\\|\\'|[^'])*'", String.Single),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String.Double),
+            (r"'(\\\\|\\[^\\]|[^'\\])*'", String.Single),
             (r'([A-Za-z_]\w*)(:)', bygroups(Name.Label, Punctuation)),
             (r'[A-Za-z_]\w*', Name),
             (r'[()]', Punctuation),
@@ -781,7 +747,7 @@ class TreetopLexer(DelegatingLexer):
     filenames = ['*.treetop', '*.tt']
 
     def __init__(self, **options):
-        super(TreetopLexer, self).__init__(RubyLexer, TreetopBaseLexer, **options)
+        super().__init__(RubyLexer, TreetopBaseLexer, **options)
 
 
 class EbnfLexer(RegexLexer):

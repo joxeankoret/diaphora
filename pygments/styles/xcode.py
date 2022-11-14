@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.xcode
     ~~~~~~~~~~~~~~~~~~~~~
 
     Style similar to the `Xcode` default theme.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -18,8 +17,6 @@ class XcodeStyle(Style):
     """
     Style similar to the Xcode default colouring theme.
     """
-
-    default_style = ''
 
     styles = {
         Comment:                '#177500',

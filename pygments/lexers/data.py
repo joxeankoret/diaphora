@@ -1,29 +1,26 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.data
     ~~~~~~~~~~~~~~~~~~~~
 
     Lexers for data file format.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
-import re
+from pygments.lexer import Lexer, ExtendedRegexLexer, LexerContext, \
+    include, bygroups
+from pygments.token import Comment, Error, Keyword, Literal, Name, Number, \
+    Punctuation, String, Whitespace
 
-from pygments.lexer import RegexLexer, ExtendedRegexLexer, LexerContext, \
-    include, bygroups, inherit
-from pygments.token import Text, Comment, Keyword, Name, String, Number, \
-    Punctuation, Literal
-
-__all__ = ['YamlLexer', 'JsonLexer', 'JsonLdLexer']
+__all__ = ['YamlLexer', 'JsonLexer', 'JsonBareObjectLexer', 'JsonLdLexer']
 
 
 class YamlLexerContext(LexerContext):
     """Indentation context for the YAML lexer."""
 
     def __init__(self, *args, **kwds):
-        super(YamlLexerContext, self).__init__(*args, **kwds)
+        super().__init__(*args, **kwds)
         self.indent_stack = []
         self.indent = -1
         self.next_indent = 0
@@ -32,13 +29,14 @@ class YamlLexerContext(LexerContext):
 
 class YamlLexer(ExtendedRegexLexer):
     """
-    Lexer for `YAML <http://yaml.org/>`_, a human-friendly data serialization
+    Lexer for YAML, a human-friendly data serialization
     language.
 
     .. versionadded:: 0.11
     """
 
     name = 'YAML'
+    url = 'http://yaml.org/'
     aliases = ['yaml']
     filenames = ['*.yaml', '*.yml']
     mimetypes = ['text/x-yaml']
@@ -171,9 +169,9 @@ class YamlLexer(ExtendedRegexLexer):
         # the root rules
         'root': [
             # ignored whitespaces
-            (r'[ ]+(?=#|$)', Text),
+            (r'[ ]+(?=#|$)', Whitespace),
             # line breaks
-            (r'\n+', Text),
+            (r'\n+', Whitespace),
             # a comment
             (r'#[^\n]*', Comment.Single),
             # the '%YAML' directive
@@ -184,54 +182,57 @@ class YamlLexer(ExtendedRegexLexer):
             (r'^(?:---|\.\.\.)(?=[ ]|$)', reset_indent(Name.Namespace),
              'block-line'),
             # indentation spaces
-            (r'[ ]*(?!\s|$)', save_indent(Text, start=True),
+            (r'[ ]*(?!\s|$)', save_indent(Whitespace, start=True),
              ('block-line', 'indentation')),
         ],
 
         # trailing whitespaces after directives or a block scalar indicator
         'ignored-line': [
             # ignored whitespaces
-            (r'[ ]+(?=#|$)', Text),
+            (r'[ ]+(?=#|$)', Whitespace),
             # a comment
             (r'#[^\n]*', Comment.Single),
             # line break
-            (r'\n', Text, '#pop:2'),
+            (r'\n', Whitespace, '#pop:2'),
         ],
 
         # the %YAML directive
         'yaml-directive': [
             # the version number
             (r'([ ]+)([0-9]+\.[0-9]+)',
-             bygroups(Text, Number), 'ignored-line'),
+             bygroups(Whitespace, Number), 'ignored-line'),
         ],
 
-        # the %YAG directive
+        # the %TAG directive
         'tag-directive': [
             # a tag handle and the corresponding prefix
             (r'([ ]+)(!|![\w-]*!)'
              r'([ ]+)(!|!?[\w;/?:@&=+$,.!~*\'()\[\]%-]+)',
-             bygroups(Text, Keyword.Type, Text, Keyword.Type),
+             bygroups(Whitespace, Keyword.Type, Whitespace, Keyword.Type),
              'ignored-line'),
         ],
 
         # block scalar indicators and indentation spaces
         'indentation': [
             # trailing whitespaces are ignored
-            (r'[ ]*$', something(Text), '#pop:2'),
-            # whitespaces preceeding block collection indicators
-            (r'[ ]+(?=[?:-](?:[ ]|$))', save_indent(Text)),
+            (r'[ ]*$', something(Whitespace), '#pop:2'),
+            # whitespaces preceding block collection indicators
+            (r'[ ]+(?=[?:-](?:[ ]|$))', save_indent(Whitespace)),
             # block collection indicators
             (r'[?:-](?=[ ]|$)', set_indent(Punctuation.Indicator)),
             # the beginning a block line
-            (r'[ ]*', save_indent(Text), '#pop'),
+            (r'[ ]*', save_indent(Whitespace), '#pop'),
         ],
 
         # an indented line in the block context
         'block-line': [
             # the line end
-            (r'[ ]*(?=#|$)', something(Text), '#pop'),
+            (r'[ ]*(?=#|$)', something(Whitespace), '#pop'),
             # whitespaces separating tokens
-            (r'[ ]+', Text),
+            (r'[ ]+', Whitespace),
+            # key with colon
+            (r'''([^#,:?\[\]{}"'\n]+)(:)(?=[ ]|$)''',
+             bygroups(Name.Tag, set_indent(Punctuation, implicit=True))),
             # tags, anchors and aliases,
             include('descriptors'),
             # block collections and scalars
@@ -247,10 +248,10 @@ class YamlLexer(ExtendedRegexLexer):
         # tags, anchors, aliases
         'descriptors': [
             # a full-form tag
-            (r'!<[\w;/?:@&=+$,.!~*\'()\[\]%-]+>', Keyword.Type),
+            (r'!<[\w#;/?:@&=+$,.!~*\'()\[\]%-]+>', Keyword.Type),
             # a tag in the form '!', '!suffix' or '!handle!suffix'
-            (r'!(?:[\w-]+)?'
-             r'(?:![\w;/?:@&=+$,.!~*\'()\[\]%-]+)?', Keyword.Type),
+            (r'!(?:[\w-]+!)?'
+             r'[\w#;/?:@&=+$,.!~*\'()\[\]%-]*', Keyword.Type),
             # an anchor
             (r'&[\w-]+', Name.Label),
             # an alias
@@ -281,9 +282,9 @@ class YamlLexer(ExtendedRegexLexer):
         # the content of a flow collection
         'flow-collection': [
             # whitespaces
-            (r'[ ]+', Text),
+            (r'[ ]+', Whitespace),
             # line breaks
-            (r'\n+', Text),
+            (r'\n+', Whitespace),
             # a comment
             (r'#[^\n]*', Comment.Single),
             # simple indicators
@@ -308,6 +309,9 @@ class YamlLexer(ExtendedRegexLexer):
 
         # a flow mapping indicated by '{' and '}'
         'flow-mapping': [
+            # key with colon
+            (r'''([^,:?\[\]{}"'\n]+)(:)(?=[ ]|$)''',
+             bygroups(Name.Tag, Punctuation)),
             # include flow collection rules
             include('flow-collection'),
             # the closing indicator
@@ -317,12 +321,12 @@ class YamlLexer(ExtendedRegexLexer):
         # block scalar lines
         'block-scalar-content': [
             # line break
-            (r'\n', Text),
+            (r'\n', Whitespace),
             # empty line
             (r'^[ ]+$',
-             parse_block_scalar_empty_line(Text, Name.Constant)),
+             parse_block_scalar_empty_line(Whitespace, Name.Constant)),
             # indentation spaces (we may leave the state here)
-            (r'^[ ]*', parse_block_scalar_indent(Text)),
+            (r'^[ ]*', parse_block_scalar_indent(Whitespace)),
             # line content
             (r'[\S\t ]+', Name.Constant),
         ],
@@ -342,10 +346,10 @@ class YamlLexer(ExtendedRegexLexer):
         # ignored and regular whitespaces in quoted scalars
         'quoted-scalar-whitespaces': [
             # leading and trailing whitespaces are ignored
-            (r'^[ ]+', Text),
-            (r'[ ]+$', Text),
+            (r'^[ ]+', Whitespace),
+            (r'[ ]+$', Whitespace),
             # line breaks are ignored
-            (r'\n+', Text),
+            (r'\n+', Whitespace),
             # other whitespaces are a part of the value
             (r'[ ]+', Name.Variable),
         ],
@@ -380,25 +384,25 @@ class YamlLexer(ExtendedRegexLexer):
         # the beginning of a new line while scanning a plain scalar
         'plain-scalar-in-block-context-new-line': [
             # empty lines
-            (r'^[ ]+$', Text),
+            (r'^[ ]+$', Whitespace),
             # line breaks
-            (r'\n+', Text),
+            (r'\n+', Whitespace),
             # document start and document end indicators
             (r'^(?=---|\.\.\.)', something(Name.Namespace), '#pop:3'),
             # indentation spaces (we may leave the block line state here)
-            (r'^[ ]*', parse_plain_scalar_indent(Text), '#pop'),
+            (r'^[ ]*', parse_plain_scalar_indent(Whitespace), '#pop'),
         ],
 
         # a plain scalar in the block context
         'plain-scalar-in-block-context': [
             # the scalar ends with the ':' indicator
-            (r'[ ]*(?=:[ ]|:$)', something(Text), '#pop'),
+            (r'[ ]*(?=:[ ]|:$)', something(Whitespace), '#pop'),
             # the scalar ends with whitespaces followed by a comment
-            (r'[ ]+(?=#)', Text, '#pop'),
+            (r'[ ]+(?=#)', Whitespace, '#pop'),
             # trailing whitespaces are ignored
-            (r'[ ]+$', Text),
+            (r'[ ]+$', Whitespace),
             # line breaks are ignored
-            (r'\n+', Text, 'plain-scalar-in-block-context-new-line'),
+            (r'\n+', Whitespace, 'plain-scalar-in-block-context-new-line'),
             # other whitespaces are a part of the value
             (r'[ ]+', Literal.Scalar.Plain),
             # regular non-whitespace characters
@@ -408,14 +412,14 @@ class YamlLexer(ExtendedRegexLexer):
         # a plain scalar is the flow context
         'plain-scalar-in-flow-context': [
             # the scalar ends with an indicator character
-            (r'[ ]*(?=[,:?\[\]{}])', something(Text), '#pop'),
+            (r'[ ]*(?=[,:?\[\]{}])', something(Whitespace), '#pop'),
             # the scalar ends with a comment
-            (r'[ ]+(?=#)', Text, '#pop'),
+            (r'[ ]+(?=#)', Whitespace, '#pop'),
             # leading and trailing whitespaces are ignored
-            (r'^[ ]+', Text),
-            (r'[ ]+$', Text),
+            (r'^[ ]+', Whitespace),
+            (r'[ ]+$', Whitespace),
             # line breaks are ignored
-            (r'\n+', Text),
+            (r'\n+', Whitespace),
             # other whitespaces are a part of the value
             (r'[ ]+', Name.Variable),
             # regular non-whitespace characters
@@ -427,104 +431,337 @@ class YamlLexer(ExtendedRegexLexer):
     def get_tokens_unprocessed(self, text=None, context=None):
         if context is None:
             context = YamlLexerContext(text, 0)
-        return super(YamlLexer, self).get_tokens_unprocessed(text, context)
+        return super().get_tokens_unprocessed(text, context)
 
 
-class JsonLexer(RegexLexer):
+class JsonLexer(Lexer):
     """
     For JSON data structures.
+
+    Javascript-style comments are supported (like ``/* */`` and ``//``),
+    though comments are not part of the JSON specification.
+    This allows users to highlight JSON as it is used in the wild.
+
+    No validation is performed on the input JSON document.
 
     .. versionadded:: 1.5
     """
 
     name = 'JSON'
-    aliases = ['json']
-    filenames = ['*.json']
-    mimetypes = ['application/json']
+    url = 'https://www.json.org'
+    aliases = ['json', 'json-object']
+    filenames = ['*.json', 'Pipfile.lock']
+    mimetypes = ['application/json', 'application/json-object']
 
-    flags = re.DOTALL
+    # No validation of integers, floats, or constants is done.
+    # As long as the characters are members of the following
+    # sets, the token will be considered valid. For example,
+    #
+    #     "--1--" is parsed as an integer
+    #     "1...eee" is parsed as a float
+    #     "trustful" is parsed as a constant
+    #
+    integers = set('-0123456789')
+    floats = set('.eE+')
+    constants = set('truefalsenull')  # true|false|null
+    hexadecimals = set('0123456789abcdefABCDEF')
+    punctuations = set('{}[],')
+    whitespaces = {'\u0020', '\u000a', '\u000d', '\u0009'}
 
-    # integer part of a number
-    int_part = r'-?(0|[1-9]\d*)'
+    def get_tokens_unprocessed(self, text):
+        """Parse JSON data."""
 
-    # fractional part of a number
-    frac_part = r'\.\d+'
+        in_string = False
+        in_escape = False
+        in_unicode_escape = 0
+        in_whitespace = False
+        in_constant = False
+        in_number = False
+        in_float = False
+        in_punctuation = False
+        in_comment_single = False
+        in_comment_multiline = False
+        expecting_second_comment_opener = False  # // or /*
+        expecting_second_comment_closer = False  # */
 
-    # exponential part of a number
-    exp_part = r'[eE](\+|-)?\d+'
+        start = 0
 
-    tokens = {
-        'whitespace': [
-            (r'\s+', Text),
-        ],
+        # The queue is used to store data that may need to be tokenized
+        # differently based on what follows. In particular, JSON object
+        # keys are tokenized differently than string values, but cannot
+        # be distinguished until punctuation is encountered outside the
+        # string.
+        #
+        # A ":" character after the string indicates that the string is
+        # an object key; any other character indicates the string is a
+        # regular string value.
+        #
+        # The queue holds tuples that contain the following data:
+        #
+        #     (start_index, token_type, text)
+        #
+        # By default the token type of text in double quotes is
+        # String.Double. The token type will be replaced if a colon
+        # is encountered after the string closes.
+        #
+        queue = []
 
-        # represents a simple terminal value
-        'simplevalue': [
-            (r'(true|false|null)\b', Keyword.Constant),
-            (('%(int_part)s(%(frac_part)s%(exp_part)s|'
-              '%(exp_part)s|%(frac_part)s)') % vars(),
-             Number.Float),
-            (int_part, Number.Integer),
-            (r'"(\\\\|\\"|[^"])*"', String.Double),
-        ],
+        for stop, character in enumerate(text):
+            if in_string:
+                if in_unicode_escape:
+                    if character in self.hexadecimals:
+                        in_unicode_escape -= 1
+                        if not in_unicode_escape:
+                            in_escape = False
+                    else:
+                        in_unicode_escape = 0
+                        in_escape = False
+
+                elif in_escape:
+                    if character == 'u':
+                        in_unicode_escape = 4
+                    else:
+                        in_escape = False
+
+                elif character == '\\':
+                    in_escape = True
+
+                elif character == '"':
+                    queue.append((start, String.Double, text[start:stop + 1]))
+                    in_string = False
+                    in_escape = False
+                    in_unicode_escape = 0
+
+                continue
+
+            elif in_whitespace:
+                if character in self.whitespaces:
+                    continue
+
+                if queue:
+                    queue.append((start, Whitespace, text[start:stop]))
+                else:
+                    yield start, Whitespace, text[start:stop]
+                in_whitespace = False
+                # Fall through so the new character can be evaluated.
+
+            elif in_constant:
+                if character in self.constants:
+                    continue
+
+                yield start, Keyword.Constant, text[start:stop]
+                in_constant = False
+                # Fall through so the new character can be evaluated.
+
+            elif in_number:
+                if character in self.integers:
+                    continue
+                elif character in self.floats:
+                    in_float = True
+                    continue
+
+                if in_float:
+                    yield start, Number.Float, text[start:stop]
+                else:
+                    yield start, Number.Integer, text[start:stop]
+                in_number = False
+                in_float = False
+                # Fall through so the new character can be evaluated.
+
+            elif in_punctuation:
+                if character in self.punctuations:
+                    continue
+
+                yield start, Punctuation, text[start:stop]
+                in_punctuation = False
+                # Fall through so the new character can be evaluated.
+
+            elif in_comment_single:
+                if character != '\n':
+                    continue
+
+                if queue:
+                    queue.append((start, Comment.Single, text[start:stop]))
+                else:
+                    yield start, Comment.Single, text[start:stop]
+
+                in_comment_single = False
+                # Fall through so the new character can be evaluated.
+
+            elif in_comment_multiline:
+                if character == '*':
+                    expecting_second_comment_closer = True
+                elif expecting_second_comment_closer:
+                    expecting_second_comment_closer = False
+                    if character == '/':
+                        if queue:
+                            queue.append((start, Comment.Multiline, text[start:stop + 1]))
+                        else:
+                            yield start, Comment.Multiline, text[start:stop + 1]
+
+                        in_comment_multiline = False
+
+                continue
+
+            elif expecting_second_comment_opener:
+                expecting_second_comment_opener = False
+                if character == '/':
+                    in_comment_single = True
+                    continue
+                elif character == '*':
+                    in_comment_multiline = True
+                    continue
+
+                # Exhaust the queue. Accept the existing token types.
+                yield from queue
+                queue.clear()
+
+                yield start, Error, text[start:stop]
+                # Fall through so the new character can be evaluated.
+
+            start = stop
+
+            if character == '"':
+                in_string = True
+
+            elif character in self.whitespaces:
+                in_whitespace = True
+
+            elif character in {'f', 'n', 't'}:  # The first letters of true|false|null
+                # Exhaust the queue. Accept the existing token types.
+                yield from queue
+                queue.clear()
+
+                in_constant = True
+
+            elif character in self.integers:
+                # Exhaust the queue. Accept the existing token types.
+                yield from queue
+                queue.clear()
+
+                in_number = True
+
+            elif character == ':':
+                # Yield from the queue. Replace string token types.
+                for _start, _token, _text in queue:
+                    # There can be only three types of tokens before a ':':
+                    # Whitespace, Comment, or a quoted string.
+                    #
+                    # If it's a quoted string we emit Name.Tag.
+                    # Otherwise, we yield the original token.
+                    #
+                    # In all other cases this would be invalid JSON,
+                    # but this is not a validating JSON lexer, so it's OK.
+                    if _token is String.Double:
+                        yield _start, Name.Tag, _text
+                    else:
+                        yield _start, _token, _text
+                queue.clear()
+
+                in_punctuation = True
+
+            elif character in self.punctuations:
+                # Exhaust the queue. Accept the existing token types.
+                yield from queue
+                queue.clear()
+
+                in_punctuation = True
+
+            elif character == '/':
+                # This is the beginning of a comment.
+                expecting_second_comment_opener = True
+
+            else:
+                # Exhaust the queue. Accept the existing token types.
+                yield from queue
+                queue.clear()
+
+                yield start, Error, character
+
+        # Yield any remaining text.
+        yield from queue
+        if in_string:
+            yield start, Error, text[start:]
+        elif in_float:
+            yield start, Number.Float, text[start:]
+        elif in_number:
+            yield start, Number.Integer, text[start:]
+        elif in_constant:
+            yield start, Keyword.Constant, text[start:]
+        elif in_whitespace:
+            yield start, Whitespace, text[start:]
+        elif in_punctuation:
+            yield start, Punctuation, text[start:]
+        elif in_comment_single:
+            yield start, Comment.Single, text[start:]
+        elif in_comment_multiline:
+            yield start, Error, text[start:]
+        elif expecting_second_comment_opener:
+            yield start, Error, text[start:]
 
 
-        # the right hand side of an object, after the attribute name
-        'objectattribute': [
-            include('value'),
-            (r':', Punctuation),
-            # comma terminates the attribute but expects more
-            (r',', Punctuation, '#pop'),
-            # a closing bracket terminates the entire object, so pop twice
-            (r'\}', Punctuation, ('#pop', '#pop')),
-        ],
+class JsonBareObjectLexer(JsonLexer):
+    """
+    For JSON data structures (with missing object curly braces).
 
-        # a json object - { attr, attr, ... }
-        'objectvalue': [
-            include('whitespace'),
-            (r'"(\\\\|\\"|[^"])*"', Name.Tag, 'objectattribute'),
-            (r'\}', Punctuation, '#pop'),
-        ],
+    .. versionadded:: 2.2
 
-        # json array - [ value, value, ... }
-        'arrayvalue': [
-            include('whitespace'),
-            include('value'),
-            (r',', Punctuation),
-            (r'\]', Punctuation, '#pop'),
-        ],
+    .. deprecated:: 2.8.0
 
-        # a json value - either a simple value or a complex value (object or array)
-        'value': [
-            include('whitespace'),
-            include('simplevalue'),
-            (r'\{', Punctuation, 'objectvalue'),
-            (r'\[', Punctuation, 'arrayvalue'),
-        ],
+       Behaves the same as `JsonLexer` now.
+    """
 
-        # the root of a json document whould be a value
-        'root': [
-            include('value'),
-        ],
-    }
+    name = 'JSONBareObject'
+    aliases = []
+    filenames = []
+    mimetypes = []
+
 
 class JsonLdLexer(JsonLexer):
     """
-    For `JSON-LD <http://json-ld.org/>`_ linked data.
+    For JSON-LD linked data.
 
     .. versionadded:: 2.0
     """
 
     name = 'JSON-LD'
+    url = 'https://json-ld.org/'
     aliases = ['jsonld', 'json-ld']
     filenames = ['*.jsonld']
     mimetypes = ['application/ld+json']
 
-    tokens = {
-        'objectvalue': [
-            (r'"@(context|id|value|language|type|container|list|set|'
-             r'reverse|index|base|vocab|graph)"', Name.Decorator,
-             'objectattribute'),
-            inherit,
-        ],
+    json_ld_keywords = {
+        '"@%s"' % keyword
+        for keyword in (
+            'base',
+            'container',
+            'context',
+            'direction',
+            'graph',
+            'id',
+            'import',
+            'included',
+            'index',
+            'json',
+            'language',
+            'list',
+            'nest',
+            'none',
+            'prefix',
+            'propagate',
+            'protected',
+            'reverse',
+            'set',
+            'type',
+            'value',
+            'version',
+            'vocab',
+        )
     }
+
+    def get_tokens_unprocessed(self, text):
+        for start, token, value in super().get_tokens_unprocessed(text):
+            if token is Name.Tag and value in self.json_ld_keywords:
+                yield start, Name.Decorator, value
+            else:
+                yield start, token, value

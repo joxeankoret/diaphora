@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.friendly
     ~~~~~~~~~~~~~~~~~~~~~~~~
 
     A modern style based on the VIM pyte theme.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -20,7 +19,7 @@ class FriendlyStyle(Style):
     """
 
     background_color = "#f0f0f0"
-    default_style = ""
+    line_number_color = "#666666"
 
     styles = {
         Whitespace:                "#bbbbbb",

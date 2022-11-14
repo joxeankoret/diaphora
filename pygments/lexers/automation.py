@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.automation
     ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for automation scripting languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -18,12 +17,13 @@ __all__ = ['AutohotkeyLexer', 'AutoItLexer']
 
 class AutohotkeyLexer(RegexLexer):
     """
-    For `autohotkey <http://www.autohotkey.com/>`_ source code.
+    For autohotkey source code.
 
     .. versionadded:: 1.4
     """
     name = 'autohotkey'
-    aliases = ['ahk', 'autohotkey']
+    url = 'http://www.autohotkey.com/'
+    aliases = ['autohotkey', 'ahk']
     filenames = ['*.ahk', '*.ahkl']
     mimetypes = ['text/x-autohotkey']
 
@@ -31,8 +31,8 @@ class AutohotkeyLexer(RegexLexer):
         'root': [
             (r'^(\s*)(/\*)', bygroups(Text, Comment.Multiline), 'incomment'),
             (r'^(\s*)(\()', bygroups(Text, Generic), 'incontinuation'),
-            (r'\s+;.*?$', Comment.Singleline),
-            (r'^;.*?$', Comment.Singleline),
+            (r'\s+;.*?$', Comment.Single),
+            (r'^;.*?$', Comment.Single),
             (r'[]{}(),;[]', Punctuation),
             (r'(in|is|and|or|not)\b', Operator.Word),
             (r'\%[a-zA-Z_#@$][\w#@$]*\%', Name.Variable),
@@ -195,7 +195,7 @@ class AutohotkeyLexer(RegexLexer):
 
 class AutoItLexer(RegexLexer):
     """
-    For `AutoIt <http://www.autoitscript.com/site/autoit/>`_ files.
+    For AutoIt files.
 
     AutoIt is a freeware BASIC-like scripting language
     designed for automating the Windows GUI and general scripting
@@ -203,6 +203,7 @@ class AutoItLexer(RegexLexer):
     .. versionadded:: 1.6
     """
     name = 'AutoIt'
+    url = 'http://www.autoitscript.com/site/autoit/'
     aliases = ['autoit']
     filenames = ['*.au3']
     mimetypes = ['text/x-autoit']
@@ -316,7 +317,8 @@ class AutoItLexer(RegexLexer):
     tokens = {
         'root': [
             (r';.*\n', Comment.Single),
-            (r'(#comments-start|#cs).*?(#comments-end|#ce)', Comment.Multiline),
+            (r'(#comments-start|#cs)(.|\n)*?(#comments-end|#ce)',
+             Comment.Multiline),
             (r'[\[\]{}(),;]', Punctuation),
             (r'(and|or|not)\b', Operator.Word),
             (r'[$|@][a-zA-Z_]\w*', Name.Variable),
@@ -326,6 +328,7 @@ class AutoItLexer(RegexLexer):
             include('builtInFunctions'),
             include('builtInMarcros'),
             (r'"', String, combined('stringescape', 'dqs')),
+            (r"'", String, 'sqs'),
             include('numbers'),
             (r'[a-zA-Z_#@$][\w#@$]*', Name),
             (r'\\|\'', Text),
@@ -366,6 +369,11 @@ class AutoItLexer(RegexLexer):
         'dqs': [
             (r'"', String, '#pop'),
             include('strings')
+        ],
+        'sqs': [
+            (r'\'\'|\`([,%`abfnrtv])', String.Escape),
+            (r"'", String, '#pop'),
+            (r"[^'\n]+", String)
         ],
         'garbage': [
             (r'[^\S\n]', Text),

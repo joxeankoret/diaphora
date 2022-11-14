@@ -1,21 +1,19 @@
-# -*- coding: utf-8 -*-
 """
     pygments.util
     ~~~~~~~~~~~~~
 
     Utility functions.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
-import sys
+from io import TextIOWrapper
 
 
 split_path_re = re.compile(r'[/\\ ]')
-doctype_lookup_re = re.compile(r'''(?smx)
-    (<\?.*?\?>)?\s*
+doctype_lookup_re = re.compile(r'''
     <!DOCTYPE\s+(
      [a-zA-Z_][a-zA-Z0-9]*
      (?: \s+      # optional in HTML5
@@ -23,8 +21,9 @@ doctype_lookup_re = re.compile(r'''(?smx)
      "[^"]*")?
      )
      [^>]*>
-''')
-tag_re = re.compile(r'<(.+?)(\s.*?)?>.*?</.+?>(?uism)')
+''', re.DOTALL | re.MULTILINE | re.VERBOSE)
+tag_re = re.compile(r'<(.+?)(\s.*?)?>.*?</.+?>',
+                    re.IGNORECASE | re.DOTALL | re.MULTILINE)
 xml_decl_re = re.compile(r'\s*<\?xml[^>]*\?>', re.I)
 
 
@@ -52,7 +51,7 @@ def get_bool_opt(options, optname, default=None):
         return string
     elif isinstance(string, int):
         return bool(string)
-    elif not isinstance(string, string_types):
+    elif not isinstance(string, str):
         raise OptionError('Invalid type %r for option %s; use '
                           '1/0, yes/no, true/false, on/off' % (
                               string, optname))
@@ -82,7 +81,7 @@ def get_int_opt(options, optname, default=None):
 
 def get_list_opt(options, optname, default=None):
     val = options.get(optname, default)
-    if isinstance(val, string_types):
+    if isinstance(val, str):
         return val.split()
     elif isinstance(val, (list, tuple)):
         return list(val)
@@ -122,7 +121,7 @@ def make_analysator(f):
 
 
 def shebang_matches(text, regex):
-    """Check if the given regular expression matches the last part of the
+    r"""Check if the given regular expression matches the last part of the
     shebang if one exists.
 
         >>> from pygments.util import shebang_matches
@@ -160,7 +159,7 @@ def shebang_matches(text, regex):
                      if x and not x.startswith('-')][-1]
         except IndexError:
             return False
-        regex = re.compile('^%s(\.(exe|cmd|bat|bin))?$' % regex, re.IGNORECASE)
+        regex = re.compile(r'^%s(\.(exe|cmd|bat|bin))?$' % regex, re.IGNORECASE)
         if regex.search(found) is not None:
             return True
     return False
@@ -172,10 +171,10 @@ def doctype_matches(text, regex):
     Note that this method only checks the first part of a DOCTYPE.
     eg: 'html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"'
     """
-    m = doctype_lookup_re.match(text)
+    m = doctype_lookup_re.search(text)
     if m is None:
         return False
-    doctype = m.group(2)
+    doctype = m.group(1)
     return re.compile(regex, re.I).match(doctype.strip()) is not None
 
 
@@ -195,7 +194,7 @@ def looks_like_xml(text):
     try:
         return _looks_like_xml_cache[key]
     except KeyError:
-        m = doctype_lookup_re.match(text)
+        m = doctype_lookup_re.search(text)
         if m is not None:
             return True
         rv = tag_re.search(text[:1000]) is not None
@@ -203,54 +202,13 @@ def looks_like_xml(text):
         return rv
 
 
-# Python narrow build compatibility
-
-def _surrogatepair(c):
-    # Given a unicode character code
-    # with length greater than 16 bits,
-    # return the two 16 bit surrogate pair.
+def surrogatepair(c):
+    """Given a unicode character code with length greater than 16 bits,
+    return the two 16 bit surrogate pair.
+    """
     # From example D28 of:
     # http://www.unicode.org/book/ch03.pdf
     return (0xd7c0 + (c >> 10), (0xdc00 + (c & 0x3ff)))
-
-
-def unirange(a, b):
-    """Returns a regular expression string to match the given non-BMP range."""
-    if b < a:
-        raise ValueError("Bad character range")
-    if a < 0x10000 or b < 0x10000:
-        raise ValueError("unirange is only defined for non-BMP ranges")
-
-    if sys.maxunicode > 0xffff:
-        # wide build
-        return u'[%s-%s]' % (unichr(a), unichr(b))
-    else:
-        # narrow build stores surrogates, and the 're' module handles them
-        # (incorrectly) as characters.  Since there is still ordering among
-        # these characters, expand the range to one that it understands.  Some
-        # background in http://bugs.python.org/issue3665 and
-        # http://bugs.python.org/issue12749
-        #
-        # Additionally, the lower constants are using unichr rather than
-        # literals because jython [which uses the wide path] can't load this
-        # file if they are literals.
-        ah, al = _surrogatepair(a)
-        bh, bl = _surrogatepair(b)
-        if ah == bh:
-            return u'(?:%s[%s-%s])' % (unichr(ah), unichr(al), unichr(bl))
-        else:
-            buf = []
-            buf.append(u'%s[%s-%s]' %
-                       (unichr(ah), unichr(al),
-                        ah == bh and unichr(bl) or unichr(0xdfff)))
-            if ah - bh > 1:
-                buf.append(u'[%s-%s][%s-%s]' %
-                           unichr(ah+1), unichr(bh-1), unichr(0xdc00), unichr(0xdfff))
-            if ah != bh:
-                buf.append(u'%s[%s-%s]' %
-                           (unichr(bh), unichr(0xdc00), unichr(bl)))
-
-            return u'(?:' + u'|'.join(buf) + u')'
 
 
 def format_lines(var_name, seq, raw=False, indent_level=0):
@@ -288,7 +246,7 @@ def duplicates_removed(it, already_seen=()):
     return lst
 
 
-class Future(object):
+class Future:
     """Generic class to defer some work.
 
     Handled specially in RegexLexerMeta, to support regex string construction at
@@ -344,44 +302,7 @@ def terminal_encoding(term):
     return locale.getpreferredencoding()
 
 
-# Python 2/3 compatibility
-
-if sys.version_info < (3, 0):
-    unichr = unichr
-    xrange = xrange
-    string_types = (str, unicode)
-    text_type = unicode
-    u_prefix = 'u'
-    iteritems = dict.iteritems
-    itervalues = dict.itervalues
-    import StringIO
-    import cStringIO
-    # unfortunately, io.StringIO in Python 2 doesn't accept str at all
-    StringIO = StringIO.StringIO
-    BytesIO = cStringIO.StringIO
-else:
-    unichr = chr
-    xrange = range
-    string_types = (str,)
-    text_type = str
-    u_prefix = ''
-    iteritems = dict.items
-    itervalues = dict.values
-    from io import StringIO, BytesIO, TextIOWrapper
-
-    class UnclosingTextIOWrapper(TextIOWrapper):
-        # Don't close underlying buffer on destruction.
-        def close(self):
-            pass
-
-
-def add_metaclass(metaclass):
-    """Class decorator for creating a class with a metaclass."""
-    def wrapper(cls):
-        orig_vars = cls.__dict__.copy()
-        orig_vars.pop('__dict__', None)
-        orig_vars.pop('__weakref__', None)
-        for slots_var in orig_vars.get('__slots__', ()):
-            orig_vars.pop(slots_var)
-        return metaclass(cls.__name__, cls.__bases__, orig_vars)
-    return wrapper
+class UnclosingTextIOWrapper(TextIOWrapper):
+    # Don't close underlying buffer on destruction.
+    def close(self):
+        self.flush()

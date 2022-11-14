@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.int_fiction
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for interactive fiction languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -22,26 +21,27 @@ __all__ = ['Inform6Lexer', 'Inform6TemplateLexer', 'Inform7Lexer',
 
 class Inform6Lexer(RegexLexer):
     """
-    For `Inform 6 <http://inform-fiction.org/>`_ source code.
+    For Inform 6 source code.
 
     .. versionadded:: 2.0
     """
 
     name = 'Inform 6'
+    url = 'http://inform-fiction.org/'
     aliases = ['inform6', 'i6']
     filenames = ['*.inf']
 
-    flags = re.MULTILINE | re.DOTALL | re.UNICODE
+    flags = re.MULTILINE | re.DOTALL
 
     _name = r'[a-zA-Z_]\w*'
 
     # Inform 7 maps these four character classes to their ASCII
     # equivalents. To support Inform 6 inclusions within Inform 7,
     # Inform6Lexer maps them too.
-    _dash = u'\\-\u2010-\u2014'
-    _dquote = u'"\u201c\u201d'
-    _squote = u"'\u2018\u2019"
-    _newline = u'\\n\u0085\u2028\u2029'
+    _dash = '\\-\u2010-\u2014'
+    _dquote = '"\u201c\u201d'
+    _squote = "'\u2018\u2019"
+    _newline = '\\n\u0085\u2028\u2029'
 
     tokens = {
         'root': [
@@ -118,7 +118,7 @@ class Inform6Lexer(RegexLexer):
             include('_whitespace'),
             # Strings
             (r'[%s][^@][%s]' % (_squote, _squote), String.Char, '#pop'),
-            (r'([%s])(@\{[0-9a-fA-F]{1,4}\})([%s])' % (_squote, _squote),
+            (r'([%s])(@\{[0-9a-fA-F]*\})([%s])' % (_squote, _squote),
              bygroups(String.Char, String.Escape, String.Char), '#pop'),
             (r'([%s])(@.{2})([%s])' % (_squote, _squote),
              bygroups(String.Char, String.Escape, String.Char), '#pop'),
@@ -175,12 +175,16 @@ class Inform6Lexer(RegexLexer):
             # Other values
             (_name, Name, '#pop')
         ],
+        'value?': [
+            include('value'),
+            default('#pop')
+        ],
         # Strings
         'dictionary-word': [
             (r'[~^]+', String.Escape),
             (r'[^~^\\@({%s]+' % _squote, String.Single),
             (r'[({]', String.Single),
-            (r'@\{[0-9a-fA-F]{,4}\}', String.Escape),
+            (r'@\{[0-9a-fA-F]*\}', String.Escape),
             (r'@.{2}', String.Escape),
             (r'[%s]' % _squote, String.Single, '#pop')
         ],
@@ -191,8 +195,8 @@ class Inform6Lexer(RegexLexer):
             (r'\\', String.Escape),
             (r'@(\\\s*[%s]\s*)*@((\\\s*[%s]\s*)*[0-9])*' %
              (_newline, _newline), String.Escape),
-            (r'@(\\\s*[%s]\s*)*\{((\\\s*[%s]\s*)*[0-9a-fA-F]){,4}'
-             r'(\\\s*[%s]\s*)*\}' % (_newline, _newline, _newline),
+            (r'@(\\\s*[%s]\s*)*[({]((\\\s*[%s]\s*)*[0-9a-zA-Z_])*'
+             r'(\\\s*[%s]\s*)*[)}]' % (_newline, _newline, _newline),
              String.Escape),
             (r'@(\\\s*[%s]\s*)*.(\\\s*[%s]\s*)*.' % (_newline, _newline),
              String.Escape),
@@ -209,6 +213,13 @@ class Inform6Lexer(RegexLexer):
             include('_whitespace'),
             (_name, Name.Constant, '#pop'),
             include('value')
+        ],
+        'constant*': [
+            include('_whitespace'),
+            (r',', Punctuation),
+            (r'=', Punctuation, 'value?'),
+            (_name, Name.Constant, 'value?'),
+            default('#pop')
         ],
         '_global': [
             include('_whitespace'),
@@ -252,13 +263,13 @@ class Inform6Lexer(RegexLexer):
             (r'(?i)class\b', Keyword,
              ('object-body', 'duplicates', 'class-name')),
             (r'(?i)(constant|default)\b', Keyword,
-             ('default', 'expression', '_constant')),
+             ('default', 'constant*')),
             (r'(?i)(end\b)(.*)', bygroups(Keyword, Text)),
             (r'(?i)(extend|verb)\b', Keyword, 'grammar'),
             (r'(?i)fake_action\b', Keyword, ('default', '_constant')),
             (r'(?i)import\b', Keyword, 'manifest'),
-            (r'(?i)(include|link)\b', Keyword,
-             ('default', 'before-plain-string')),
+            (r'(?i)(include|link|origsource)\b', Keyword,
+             ('default', 'before-plain-string?')),
             (r'(?i)(lowstring|undef)\b', Keyword, ('default', '_constant')),
             (r'(?i)message\b', Keyword, ('default', 'diagnostic')),
             (r'(?i)(nearby|object)\b', Keyword,
@@ -285,6 +296,7 @@ class Inform6Lexer(RegexLexer):
             include('_whitespace'),
             (r';', Punctuation, '#pop'),
             (r'\*', Punctuation),
+            (r'"', String.Double, 'plain-string'),
             (_name, Name.Variable)
         ],
         # Array
@@ -364,11 +376,12 @@ class Inform6Lexer(RegexLexer):
         'diagnostic': [
             include('_whitespace'),
             (r'[%s]' % _dquote, String.Double, ('#pop', 'message-string')),
-            default(('#pop', 'before-plain-string', 'directive-keyword?'))
+            default(('#pop', 'before-plain-string?', 'directive-keyword?'))
         ],
-        'before-plain-string': [
+        'before-plain-string?': [
             include('_whitespace'),
-            (r'[%s]' % _dquote, String.Double, ('#pop', 'plain-string'))
+            (r'[%s]' % _dquote, String.Double, ('#pop', 'plain-string')),
+            default('#pop')
         ],
         'message-string': [
             (r'[~^]+', String.Escape),
@@ -380,11 +393,12 @@ class Inform6Lexer(RegexLexer):
             include('_whitespace'),
             (words((
                 'additive', 'alias', 'buffer', 'class', 'creature', 'data', 'error', 'fatalerror',
-                'first', 'has', 'held', 'initial', 'initstr', 'last', 'long', 'meta', 'multi',
-                'multiexcept', 'multiheld', 'multiinside', 'noun', 'number', 'only', 'private',
-                'replace', 'reverse', 'scope', 'score', 'special', 'string', 'table', 'terminating',
-                'time', 'topic', 'warning', 'with'), suffix=r'\b'),
+                'first', 'has', 'held', 'individual', 'initial', 'initstr', 'last', 'long', 'meta',
+                'multi', 'multiexcept', 'multiheld', 'multiinside', 'noun', 'number', 'only',
+                'private', 'replace', 'reverse', 'scope', 'score', 'special', 'string', 'table',
+                'terminating', 'time', 'topic', 'warning', 'with'), suffix=r'\b'),
              Keyword, '#pop'),
+            (r'static\b', Keyword),
             (r'[%s]{1,2}>|[+=]' % _dash, Punctuation, '#pop')
         ],
         '_directive-keyword': [
@@ -397,7 +411,8 @@ class Inform6Lexer(RegexLexer):
         ],
         'property-keyword*': [
             include('_whitespace'),
-            (r'(additive|long)\b', Keyword),
+            (words(('additive', 'individual', 'long'), suffix=r'\b(?!(\s*|(![^%s]*))*;)' % _newline),
+             Keyword),
             default('#pop')
         ],
         'trace-keyword?': [
@@ -513,19 +528,29 @@ class Inform6Lexer(RegexLexer):
         while objectloop_queue:
             yield objectloop_queue.pop(0)
 
+    def analyse_text(text):
+        """We try to find a keyword which seem relatively common, unfortunately
+        there is a decent overlap with Smalltalk keywords otherwise here.."""
+        result = 0
+        if re.search('\borigsource\b', text, re.IGNORECASE):
+            result += 0.05
+
+        return result
+
 
 class Inform7Lexer(RegexLexer):
     """
-    For `Inform 7 <http://inform7.com/>`_ source code.
+    For Inform 7 source code.
 
     .. versionadded:: 2.0
     """
 
     name = 'Inform 7'
+    url = 'http://inform7.com/'
     aliases = ['inform7', 'i7']
     filenames = ['*.ni', '*.i7x']
 
-    flags = re.MULTILINE | re.DOTALL | re.UNICODE
+    flags = re.MULTILINE | re.DOTALL
 
     _dash = Inform6Lexer._dash
     _dquote = Inform6Lexer._dquote
@@ -719,8 +744,7 @@ class Inform7Lexer(RegexLexer):
 
 class Inform6TemplateLexer(Inform7Lexer):
     """
-    For `Inform 6 template
-    <http://inform7.com/sources/src/i6template/Woven/index.html>`_ code.
+    For Inform 6 template code.
 
     .. versionadded:: 2.0
     """
@@ -735,7 +759,7 @@ class Inform6TemplateLexer(Inform7Lexer):
 
 class Tads3Lexer(RegexLexer):
     """
-    For `TADS 3 <http://www.tads.org/>`_ source code.
+    For TADS 3 source code.
     """
 
     name = 'TADS 3'
@@ -855,7 +879,7 @@ class Tads3Lexer(RegexLexer):
 
     tokens = {
         'root': [
-            (u'\ufeff', Text),
+            ('\ufeff', Text),
             (r'\{', Punctuation, 'object-body'),
             (r';+', Punctuation),
             (r'(?=(argcount|break|case|catch|continue|default|definingobj|'
@@ -910,7 +934,7 @@ class Tads3Lexer(RegexLexer):
         'block?/root': [
             (r'\{', Punctuation, ('#pop', 'block')),
             include('whitespace'),
-            (r'(?=[[\'"<(:])', Text,  # It might be a VerbRule macro.
+            (r'(?=[\[\'"<(:])', Text,  # It might be a VerbRule macro.
              ('#pop', 'object-body/no-braces', 'grammar', 'grammar-rules')),
             # It might be a macro like DefineAction.
             default(('#pop', 'object-body/no-braces'))
@@ -1340,3 +1364,17 @@ class Tads3Lexer(RegexLexer):
                 else:
                     token = Comment
             yield index, token, value
+
+    def analyse_text(text):
+        """This is a rather generic descriptive language without strong
+        identifiers. It looks like a 'GameMainDef' has to be present,
+        and/or a 'versionInfo' with an 'IFID' field."""
+        result = 0
+        if '__TADS' in text or 'GameMainDef' in text:
+            result += 0.2
+
+        # This is a fairly unique keyword which is likely used in source as well
+        if 'versionInfo' in text and 'IFID' in text:
+            result += 0.1
+
+        return result

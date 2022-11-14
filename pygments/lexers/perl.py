@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.perl
     ~~~~~~~~~~~~~~~~~~~~
 
-    Lexers for Perl and related languages.
+    Lexers for Perl, Raku and related languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -22,12 +21,13 @@ __all__ = ['PerlLexer', 'Perl6Lexer']
 
 class PerlLexer(RegexLexer):
     """
-    For `Perl <http://www.perl.org>`_ source code.
+    For Perl source code.
     """
 
     name = 'Perl'
+    url = 'https://www.perl.org'
     aliases = ['perl', 'pl']
-    filenames = ['*.pl', '*.pm', '*.t']
+    filenames = ['*.pl', '*.pm', '*.t', '*.perl']
     mimetypes = ['text/x-perl', 'application/x-perl']
 
     flags = re.DOTALL | re.MULTILINE
@@ -46,12 +46,13 @@ class PerlLexer(RegexLexer):
             (r'\$(\\\\|\\[^\\]|[^\\$])*\$[egimosx]*', String.Regex, '#pop'),
         ],
         'root': [
+            (r'\A\#!.+?$', Comment.Hashbang),
             (r'\#.*?$', Comment.Single),
             (r'^=[a-zA-Z0-9]+\s+.*?\n=cut', Comment.Multiline),
             (words((
                 'case', 'continue', 'do', 'else', 'elsif', 'for', 'foreach',
                 'if', 'last', 'my', 'next', 'our', 'redo', 'reset', 'then',
-                'unless', 'until', 'while', 'use', 'print', 'new', 'BEGIN',
+                'unless', 'until', 'while', 'print', 'new', 'BEGIN',
                 'CHECK', 'INIT', 'END', 'return'), suffix=r'\b'),
              Keyword),
             (r'(format)(\s+)(\w+)(\s*)(=)(\s*\n)',
@@ -93,10 +94,10 @@ class PerlLexer(RegexLexer):
                 'getservbyport', 'getservent', 'getsockname', 'getsockopt', 'glob', 'gmtime',
                 'goto', 'grep', 'hex', 'import', 'index', 'int', 'ioctl', 'join', 'keys', 'kill', 'last',
                 'lc', 'lcfirst', 'length', 'link', 'listen', 'local', 'localtime', 'log', 'lstat',
-                'map', 'mkdir', 'msgctl', 'msgget', 'msgrcv', 'msgsnd', 'my', 'next', 'no', 'oct', 'open',
-                'opendir', 'ord', 'our', 'pack', 'package', 'pipe', 'pop', 'pos', 'printf',
+                'map', 'mkdir', 'msgctl', 'msgget', 'msgrcv', 'msgsnd', 'my', 'next', 'oct', 'open',
+                'opendir', 'ord', 'our', 'pack', 'pipe', 'pop', 'pos', 'printf',
                 'prototype', 'push', 'quotemeta', 'rand', 'read', 'readdir',
-                'readline', 'readlink', 'readpipe', 'recv', 'redo', 'ref', 'rename', 'require',
+                'readline', 'readlink', 'readpipe', 'recv', 'redo', 'ref', 'rename',
                 'reverse', 'rewinddir', 'rindex', 'rmdir', 'scalar', 'seek', 'seekdir',
                 'select', 'semctl', 'semget', 'semop', 'send', 'setgrent', 'sethostent', 'setnetent',
                 'setpgrp', 'setpriority', 'setprotoent', 'setpwent', 'setservent',
@@ -108,7 +109,8 @@ class PerlLexer(RegexLexer):
                 'utime', 'values', 'vec', 'wait', 'waitpid', 'wantarray', 'warn', 'write'), suffix=r'\b'),
              Name.Builtin),
             (r'((__(DATA|DIE|WARN)__)|(STD(IN|OUT|ERR)))\b', Name.Builtin.Pseudo),
-            (r'<<([\'"]?)([a-zA-Z_]\w*)\1;?\n.*?\n\2\n', String),
+            (r'(<<)([\'"]?)([a-zA-Z_]\w*)(\2;?\n.*?\n)(\3)(\n)',
+             bygroups(String, String, String.Delimiter, String, String.Delimiter, Text)),
             (r'__END__', Comment.Preproc, 'end-part'),
             (r'\$\^[ADEFHILMOPSTWX]', Name.Variable.Global),
             (r"\$[\\\"\[\]'&`+*.,;=%~?@$!<>(^|/-](?!\w)", Name.Variable.Global),
@@ -129,8 +131,14 @@ class PerlLexer(RegexLexer):
             (r'(q|qq|qw|qr|qx)\[', String.Other, 'sb-string'),
             (r'(q|qq|qw|qr|qx)\<', String.Other, 'lt-string'),
             (r'(q|qq|qw|qr|qx)([\W_])(.|\n)*?\2', String.Other),
-            (r'package\s+', Keyword, 'modulename'),
-            (r'sub\s+', Keyword, 'funcname'),
+            (r'(package)(\s+)([a-zA-Z_]\w*(?:::[a-zA-Z_]\w*)*)',
+             bygroups(Keyword, Text, Name.Namespace)),
+            (r'(use|require|no)(\s+)([a-zA-Z_]\w*(?:::[a-zA-Z_]\w*)*)',
+             bygroups(Keyword, Text, Name.Namespace)),
+            (r'(sub)(\s+)', bygroups(Keyword, Text), 'funcname'),
+            (words((
+                'no', 'package', 'require', 'use'), suffix=r'\b'),
+             Keyword),
             (r'(\[\]|\*\*|::|<<|>>|>=|<=>|<=|={3}|!=|=~|'
              r'!~|&&?|\|\||\.{1,3})', Operator),
             (r'[-+/*%=<>&^|!\\~]=?', Operator),
@@ -150,13 +158,11 @@ class PerlLexer(RegexLexer):
             (r'[\w:]+', Name.Variable, '#pop'),
         ],
         'name': [
-            (r'\w+::', Name.Namespace),
+            (r'[a-zA-Z_]\w*(::[a-zA-Z_]\w*)*(::)?(?=\s*->)', Name.Namespace, '#pop'),
+            (r'[a-zA-Z_]\w*(::[a-zA-Z_]\w*)*::', Name.Namespace, '#pop'),
             (r'[\w:]+', Name, '#pop'),
             (r'[A-Z_]+(?=\W)', Name.Constant, '#pop'),
             (r'(?=\W)', Text, '#pop'),
-        ],
-        'modulename': [
-            (r'[a-zA-Z_]\w*', Name.Namespace, '#pop')
         ],
         'funcname': [
             (r'[a-zA-Z_]\w*[!?]?', Name.Function),
@@ -202,97 +208,206 @@ class PerlLexer(RegexLexer):
     def analyse_text(text):
         if shebang_matches(text, r'perl'):
             return True
-        if re.search('(?:my|our)\s+[$@%(]', text):
-            return 0.9
+
+        result = 0
+
+        if re.search(r'(?:my|our)\s+[$@%(]', text):
+            result += 0.9
+
+        if ':=' in text:
+            # := is not valid Perl, but it appears in unicon, so we should
+            # become less confident if we think we found Perl with :=
+            result /= 2
+
+        return result
 
 
 class Perl6Lexer(ExtendedRegexLexer):
     """
-    For `Perl 6 <http://www.perl6.org>`_ source code.
+    For Raku (a.k.a. Perl 6) source code.
 
     .. versionadded:: 2.0
     """
 
     name = 'Perl6'
-    aliases = ['perl6', 'pl6']
+    url = 'https://www.raku.org'
+    aliases = ['perl6', 'pl6', 'raku']
     filenames = ['*.pl', '*.pm', '*.nqp', '*.p6', '*.6pl', '*.p6l', '*.pl6',
-                 '*.6pm', '*.p6m', '*.pm6', '*.t']
+                 '*.6pm', '*.p6m', '*.pm6', '*.t', '*.raku', '*.rakumod',
+                 '*.rakutest', '*.rakudoc']
     mimetypes = ['text/x-perl6', 'application/x-perl6']
-    flags = re.MULTILINE | re.DOTALL | re.UNICODE
+    flags = re.MULTILINE | re.DOTALL
 
-    PERL6_IDENTIFIER_RANGE = "['\w:-]"
+    PERL6_IDENTIFIER_RANGE = r"['\w:-]"
 
     PERL6_KEYWORDS = (
-        'BEGIN', 'CATCH', 'CHECK', 'CONTROL', 'END', 'ENTER', 'FIRST', 'INIT',
-        'KEEP', 'LAST', 'LEAVE', 'NEXT', 'POST', 'PRE', 'START', 'TEMP',
-        'UNDO', 'as', 'assoc', 'async', 'augment', 'binary', 'break', 'but',
-        'cached', 'category', 'class', 'constant', 'contend', 'continue',
-        'copy', 'deep', 'default', 'defequiv', 'defer', 'die', 'do', 'else',
-        'elsif', 'enum', 'equiv', 'exit', 'export', 'fail', 'fatal', 'for',
-        'gather', 'given', 'goto', 'grammar', 'handles', 'has', 'if', 'inline',
-        'irs', 'is', 'last', 'leave', 'let', 'lift', 'loop', 'looser', 'macro',
-        'make', 'maybe', 'method', 'module', 'multi', 'my', 'next', 'of',
-        'ofs', 'only', 'oo', 'ors', 'our', 'package', 'parsed', 'prec',
-        'proto', 'readonly', 'redo', 'ref', 'regex', 'reparsed', 'repeat',
-        'require', 'required', 'return', 'returns', 'role', 'rule', 'rw',
-        'self', 'slang', 'state', 'sub', 'submethod', 'subset', 'supersede',
-        'take', 'temp', 'tighter', 'token', 'trusts', 'try', 'unary',
-        'unless', 'until', 'use', 'warn', 'when', 'where', 'while', 'will',
+        #Phasers
+        'BEGIN','CATCH','CHECK','CLOSE','CONTROL','DOC','END','ENTER','FIRST',
+        'INIT','KEEP','LAST','LEAVE','NEXT','POST','PRE','QUIT','UNDO',
+        #Keywords
+        'anon','augment','but','class','constant','default','does','else',
+        'elsif','enum','for','gather','given','grammar','has','if','import',
+        'is','let','loop','made','make','method','module','multi','my','need',
+        'orwith','our','proceed','proto','repeat','require','return',
+        'return-rw','returns','role','rule','state','sub','submethod','subset',
+        'succeed','supersede','token','try','unit','unless','until','use',
+        'when','while','with','without',
+        #Traits
+        'export','native','repr','required','rw','symbol',
     )
 
     PERL6_BUILTINS = (
-        'ACCEPTS', 'HOW', 'REJECTS', 'VAR', 'WHAT', 'WHENCE', 'WHERE', 'WHICH',
-        'WHO', 'abs', 'acos', 'acosec', 'acosech', 'acosh', 'acotan', 'acotanh',
-        'all', 'any', 'approx', 'arity', 'asec', 'asech', 'asin', 'asinh',
-        'assuming', 'atan', 'atan2', 'atanh', 'attr', 'bless', 'body', 'by',
-        'bytes', 'caller', 'callsame', 'callwith', 'can', 'capitalize', 'cat',
-        'ceiling', 'chars', 'chmod', 'chomp', 'chop', 'chr', 'chroot',
-        'circumfix', 'cis', 'classify', 'clone', 'close', 'cmp_ok', 'codes',
-        'comb', 'connect', 'contains', 'context', 'cos', 'cosec', 'cosech',
-        'cosh', 'cotan', 'cotanh', 'count', 'defined', 'delete', 'diag',
-        'dies_ok', 'does', 'e', 'each', 'eager', 'elems', 'end', 'eof', 'eval',
-        'eval_dies_ok', 'eval_elsewhere', 'eval_lives_ok', 'evalfile', 'exists',
-        'exp', 'first', 'flip', 'floor', 'flunk', 'flush', 'fmt', 'force_todo',
-        'fork', 'from', 'getc', 'gethost', 'getlogin', 'getpeername', 'getpw',
-        'gmtime', 'graphs', 'grep', 'hints', 'hyper', 'im', 'index', 'infix',
-        'invert', 'is_approx', 'is_deeply', 'isa', 'isa_ok', 'isnt', 'iterator',
-        'join', 'key', 'keys', 'kill', 'kv', 'lastcall', 'lazy', 'lc', 'lcfirst',
-        'like', 'lines', 'link', 'lives_ok', 'localtime', 'log', 'log10', 'map',
-        'max', 'min', 'minmax', 'name', 'new', 'nextsame', 'nextwith', 'nfc',
-        'nfd', 'nfkc', 'nfkd', 'nok_error', 'nonce', 'none', 'normalize', 'not',
-        'nothing', 'ok', 'once', 'one', 'open', 'opendir', 'operator', 'ord',
-        'p5chomp', 'p5chop', 'pack', 'pair', 'pairs', 'pass', 'perl', 'pi',
-        'pick', 'plan', 'plan_ok', 'polar', 'pop', 'pos', 'postcircumfix',
-        'postfix', 'pred', 'prefix', 'print', 'printf', 'push', 'quasi',
-        'quotemeta', 'rand', 're', 'read', 'readdir', 'readline', 'reduce',
-        'reverse', 'rewind', 'rewinddir', 'rindex', 'roots', 'round',
-        'roundrobin', 'run', 'runinstead', 'sameaccent', 'samecase', 'say',
-        'sec', 'sech', 'sech', 'seek', 'shape', 'shift', 'sign', 'signature',
-        'sin', 'sinh', 'skip', 'skip_rest', 'sleep', 'slurp', 'sort', 'splice',
-        'split', 'sprintf', 'sqrt', 'srand', 'strand', 'subst', 'substr', 'succ',
-        'sum', 'symlink', 'tan', 'tanh', 'throws_ok', 'time', 'times', 'to',
-        'todo', 'trim', 'trim_end', 'trim_start', 'true', 'truncate', 'uc',
-        'ucfirst', 'undef', 'undefine', 'uniq', 'unlike', 'unlink', 'unpack',
-        'unpolar', 'unshift', 'unwrap', 'use_ok', 'value', 'values', 'vec',
-        'version_lt', 'void', 'wait', 'want', 'wrap', 'write', 'zip',
+        'ACCEPTS','abs','abs2rel','absolute','accept','accessed','acos',
+        'acosec','acosech','acosh','acotan','acotanh','acquire','act','action',
+        'actions','add','add_attribute','add_enum_value','add_fallback',
+        'add_method','add_parent','add_private_method','add_role','add_trustee',
+        'adverb','after','all','allocate','allof','allowed','alternative-names',
+        'annotations','antipair','antipairs','any','anyof','app_lifetime',
+        'append','arch','archname','args','arity','Array','asec','asech','asin',
+        'asinh','ASSIGN-KEY','ASSIGN-POS','assuming','ast','at','atan','atan2',
+        'atanh','AT-KEY','atomic-assign','atomic-dec-fetch','atomic-fetch',
+        'atomic-fetch-add','atomic-fetch-dec','atomic-fetch-inc',
+        'atomic-fetch-sub','atomic-inc-fetch','AT-POS','attributes','auth',
+        'await','backtrace','Bag','BagHash','bail-out','base','basename',
+        'base-repeating','batch','BIND-KEY','BIND-POS','bind-stderr',
+        'bind-stdin','bind-stdout','bind-udp','bits','bless','block','Bool',
+        'bool-only','bounds','break','Bridge','broken','BUILD','build-date',
+        'bytes','cache','callframe','calling-package','CALL-ME','callsame',
+        'callwith','can','cancel','candidates','cando','can-ok','canonpath',
+        'caps','caption','Capture','cas','catdir','categorize','categorize-list',
+        'catfile','catpath','cause','ceiling','cglobal','changed','Channel',
+        'chars','chdir','child','child-name','child-typename','chmod','chomp',
+        'chop','chr','chrs','chunks','cis','classify','classify-list','cleanup',
+        'clone','close','closed','close-stdin','cmp-ok','code','codes','collate',
+        'column','comb','combinations','command','comment','compiler','Complex',
+        'compose','compose_type','composer','condition','config',
+        'configure_destroy','configure_type_checking','conj','connect',
+        'constraints','construct','contains','contents','copy','cos','cosec',
+        'cosech','cosh','cotan','cotanh','count','count-only','cpu-cores',
+        'cpu-usage','CREATE','create_type','cross','cue','curdir','curupdir','d',
+        'Date','DateTime','day','daycount','day-of-month','day-of-week',
+        'day-of-year','days-in-month','declaration','decode','decoder','deepmap',
+        'default','defined','DEFINITE','delayed','DELETE-KEY','DELETE-POS',
+        'denominator','desc','DESTROY','destroyers','devnull','diag',
+        'did-you-mean','die','dies-ok','dir','dirname','dir-sep','DISTROnames',
+        'do','does','does-ok','done','done-testing','duckmap','dynamic','e',
+        'eager','earlier','elems','emit','enclosing','encode','encoder',
+        'encoding','end','ends-with','enum_from_value','enum_value_list',
+        'enum_values','enums','eof','EVAL','eval-dies-ok','EVALFILE',
+        'eval-lives-ok','exception','excludes-max','excludes-min','EXISTS-KEY',
+        'EXISTS-POS','exit','exitcode','exp','expected','explicitly-manage',
+        'expmod','extension','f','fail','fails-like','fc','feature','file',
+        'filename','find_method','find_method_qualified','finish','first','flat',
+        'flatmap','flip','floor','flunk','flush','fmt','format','formatter',
+        'freeze','from','from-list','from-loop','from-posix','full',
+        'full-barrier','get','get_value','getc','gist','got','grab','grabpairs',
+        'grep','handle','handled','handles','hardware','has_accessor','Hash',
+        'head','headers','hh-mm-ss','hidden','hides','hour','how','hyper','id',
+        'illegal','im','in','indent','index','indices','indir','infinite',
+        'infix','infix:<+>','infix:<->','install_method_cache','Instant',
+        'instead','Int','int-bounds','interval','in-timezone','invalid-str',
+        'invert','invocant','IO','IO::Notification.watch-path','is_trusted',
+        'is_type','isa','is-absolute','isa-ok','is-approx','is-deeply',
+        'is-hidden','is-initial-thread','is-int','is-lazy','is-leap-year',
+        'isNaN','isnt','is-prime','is-relative','is-routine','is-setting',
+        'is-win','item','iterator','join','keep','kept','KERNELnames','key',
+        'keyof','keys','kill','kv','kxxv','l','lang','last','lastcall','later',
+        'lazy','lc','leading','level','like','line','lines','link','List',
+        'listen','live','lives-ok','local','lock','log','log10','lookup','lsb',
+        'made','MAIN','make','Map','match','max','maxpairs','merge','message',
+        'method','method_table','methods','migrate','min','minmax','minpairs',
+        'minute','misplaced','Mix','MixHash','mkdir','mode','modified','month',
+        'move','mro','msb','multi','multiness','my','name','named','named_names',
+        'narrow','nativecast','native-descriptor','nativesizeof','new','new_type',
+        'new-from-daycount','new-from-pairs','next','nextcallee','next-handle',
+        'nextsame','nextwith','NFC','NFD','NFKC','NFKD','nl-in','nl-out',
+        'nodemap','nok','none','norm','not','note','now','nude','Num',
+        'numerator','Numeric','of','offset','offset-in-hours','offset-in-minutes',
+        'ok','old','on-close','one','on-switch','open','opened','operation',
+        'optional','ord','ords','orig','os-error','osname','out-buffer','pack',
+        'package','package-kind','package-name','packages','pair','pairs',
+        'pairup','parameter','params','parent','parent-name','parents','parse',
+        'parse-base','parsefile','parse-names','parts','pass','path','path-sep',
+        'payload','peer-host','peer-port','periods','perl','permutations','phaser',
+        'pick','pickpairs','pid','placeholder','plan','plus','polar','poll',
+        'polymod','pop','pos','positional','posix','postfix','postmatch',
+        'precomp-ext','precomp-target','pred','prefix','prematch','prepend',
+        'print','printf','print-nl','print-to','private','private_method_table',
+        'proc','produce','Promise','prompt','protect','pull-one','push',
+        'push-all','push-at-least','push-exactly','push-until-lazy','put',
+        'qualifier-type','quit','r','race','radix','rand','range','Rat','raw',
+        're','read','readchars','readonly','ready','Real','reallocate','reals',
+        'reason','rebless','receive','recv','redispatcher','redo','reduce',
+        'rel2abs','relative','release','rename','repeated','replacement',
+        'report','reserved','resolve','restore','result','resume','rethrow',
+        'reverse','right','rindex','rmdir','role','roles_to_compose','rolish',
+        'roll','rootdir','roots','rotate','rotor','round','roundrobin',
+        'routine-type','run','rwx','s','samecase','samemark','samewith','say',
+        'schedule-on','scheduler','scope','sec','sech','second','seek','self',
+        'send','Set','set_hidden','set_name','set_package','set_rw','set_value',
+        'SetHash','set-instruments','setup_finalization','shape','share','shell',
+        'shift','sibling','sigil','sign','signal','signals','signature','sin',
+        'sinh','sink','sink-all','skip','skip-at-least','skip-at-least-pull-one',
+        'skip-one','skip-rest','sleep','sleep-timer','sleep-until','Slip','slurp',
+        'slurp-rest','slurpy','snap','snapper','so','socket-host','socket-port',
+        'sort','source','source-package','spawn','SPEC','splice','split',
+        'splitdir','splitpath','sprintf','spurt','sqrt','squish','srand','stable',
+        'start','started','starts-with','status','stderr','stdout','Str',
+        'sub_signature','subbuf','subbuf-rw','subname','subparse','subst',
+        'subst-mutate','substr','substr-eq','substr-rw','subtest','succ','sum',
+        'Supply','symlink','t','tail','take','take-rw','tan','tanh','tap',
+        'target','target-name','tc','tclc','tell','then','throttle','throw',
+        'throws-like','timezone','tmpdir','to','today','todo','toggle','to-posix',
+        'total','trailing','trans','tree','trim','trim-leading','trim-trailing',
+        'truncate','truncated-to','trusts','try_acquire','trying','twigil','type',
+        'type_captures','typename','uc','udp','uncaught_handler','unimatch',
+        'uniname','uninames','uniparse','uniprop','uniprops','unique','unival',
+        'univals','unlike','unlink','unlock','unpack','unpolar','unshift',
+        'unwrap','updir','USAGE','use-ok','utc','val','value','values','VAR',
+        'variable','verbose-config','version','VMnames','volume','vow','w','wait',
+        'warn','watch','watch-path','week','weekday-of-month','week-number',
+        'week-year','WHAT','when','WHERE','WHEREFORE','WHICH','WHO',
+        'whole-second','WHY','wordcase','words','workaround','wrap','write',
+        'write-to','x','yada','year','yield','yyyy-mm-dd','z','zip','zip-latest',
+
     )
 
     PERL6_BUILTIN_CLASSES = (
-        'Abstraction', 'Any', 'AnyChar', 'Array', 'Associative', 'Bag', 'Bit',
-        'Blob', 'Block', 'Bool', 'Buf', 'Byte', 'Callable', 'Capture', 'Char', 'Class',
-        'Code', 'Codepoint', 'Comparator', 'Complex', 'Decreasing', 'Exception',
-        'Failure', 'False', 'Grammar', 'Grapheme', 'Hash', 'IO', 'Increasing',
-        'Int', 'Junction', 'KeyBag', 'KeyExtractor', 'KeyHash', 'KeySet',
-        'KitchenSink', 'List', 'Macro', 'Mapping', 'Match', 'Matcher', 'Method',
-        'Module', 'Num', 'Object', 'Ordered', 'Ordering', 'OrderingPair',
-        'Package', 'Pair', 'Positional', 'Proxy', 'Range', 'Rat', 'Regex',
-        'Role', 'Routine', 'Scalar', 'Seq', 'Set', 'Signature', 'Str', 'StrLen',
-        'StrPos', 'Sub', 'Submethod', 'True', 'UInt', 'Undef', 'Version', 'Void',
-        'Whatever', 'bit', 'bool', 'buf', 'buf1', 'buf16', 'buf2', 'buf32',
-        'buf4', 'buf64', 'buf8', 'complex', 'int', 'int1', 'int16', 'int2',
-        'int32', 'int4', 'int64', 'int8', 'num', 'rat', 'rat1', 'rat16', 'rat2',
-        'rat32', 'rat4', 'rat64', 'rat8', 'uint', 'uint1', 'uint16', 'uint2',
-        'uint32', 'uint4', 'uint64', 'uint8', 'utf16', 'utf32', 'utf8',
+        #Booleans
+        'False','True',
+        #Classes
+        'Any','Array','Associative','AST','atomicint','Attribute','Backtrace',
+        'Backtrace::Frame','Bag','Baggy','BagHash','Blob','Block','Bool','Buf',
+        'Callable','CallFrame','Cancellation','Capture','CArray','Channel','Code',
+        'compiler','Complex','ComplexStr','Cool','CurrentThreadScheduler',
+        'Cursor','Date','Dateish','DateTime','Distro','Duration','Encoding',
+        'Exception','Failure','FatRat','Grammar','Hash','HyperWhatever','Instant',
+        'Int','int16','int32','int64','int8','IntStr','IO','IO::ArgFiles',
+        'IO::CatHandle','IO::Handle','IO::Notification','IO::Path',
+        'IO::Path::Cygwin','IO::Path::QNX','IO::Path::Unix','IO::Path::Win32',
+        'IO::Pipe','IO::Socket','IO::Socket::Async','IO::Socket::INET','IO::Spec',
+        'IO::Spec::Cygwin','IO::Spec::QNX','IO::Spec::Unix','IO::Spec::Win32',
+        'IO::Special','Iterable','Iterator','Junction','Kernel','Label','List',
+        'Lock','Lock::Async','long','longlong','Macro','Map','Match',
+        'Metamodel::AttributeContainer','Metamodel::C3MRO','Metamodel::ClassHOW',
+        'Metamodel::EnumHOW','Metamodel::Finalization','Metamodel::MethodContainer',
+        'Metamodel::MROBasedMethodDispatch','Metamodel::MultipleInheritance',
+        'Metamodel::Naming','Metamodel::Primitives','Metamodel::PrivateMethodContainer',
+        'Metamodel::RoleContainer','Metamodel::Trusting','Method','Mix','MixHash',
+        'Mixy','Mu','NFC','NFD','NFKC','NFKD','Nil','Num','num32','num64',
+        'Numeric','NumStr','ObjAt','Order','Pair','Parameter','Perl','Pod::Block',
+        'Pod::Block::Code','Pod::Block::Comment','Pod::Block::Declarator',
+        'Pod::Block::Named','Pod::Block::Para','Pod::Block::Table','Pod::Heading',
+        'Pod::Item','Pointer','Positional','PositionalBindFailover','Proc',
+        'Proc::Async','Promise','Proxy','PseudoStash','QuantHash','Range','Rat',
+        'Rational','RatStr','Real','Regex','Routine','Scalar','Scheduler',
+        'Semaphore','Seq','Set','SetHash','Setty','Signature','size_t','Slip',
+        'Stash','Str','StrDistance','Stringy','Sub','Submethod','Supplier',
+        'Supplier::Preserving','Supply','Systemic','Tap','Telemetry',
+        'Telemetry::Instrument::Thread','Telemetry::Instrument::Usage',
+        'Telemetry::Period','Telemetry::Sampler','Thread','ThreadPoolScheduler',
+        'UInt','uint16','uint32','uint64','uint8','Uni','utf8','Variable',
+        'Version','VM','Whatever','WhateverCode','WrapHandle'
     )
 
     PERL6_OPERATORS = (
@@ -305,76 +420,76 @@ class Perl6Lexer(ExtendedRegexLexer):
         '~', '&', '^', 'but', 'does', '<=>', '..', '..^', '^..', '^..^',
         '!=', '==', '<', '<=', '>', '>=', '~~', '===', '!eqv',
         '&&', '||', '^^', '//', 'min', 'max', '??', '!!', 'ff', 'fff', 'so',
-        'not', '<==', '==>', '<<==', '==>>',
+        'not', '<==', '==>', '<<==', '==>>','unicmp',
     )
 
     # Perl 6 has a *lot* of possible bracketing characters
     # this list was lifted from STD.pm6 (https://github.com/perl6/std)
     PERL6_BRACKETS = {
-        u'\u0028': u'\u0029', u'\u003c': u'\u003e', u'\u005b': u'\u005d',
-        u'\u007b': u'\u007d', u'\u00ab': u'\u00bb', u'\u0f3a': u'\u0f3b',
-        u'\u0f3c': u'\u0f3d', u'\u169b': u'\u169c', u'\u2018': u'\u2019',
-        u'\u201a': u'\u2019', u'\u201b': u'\u2019', u'\u201c': u'\u201d',
-        u'\u201e': u'\u201d', u'\u201f': u'\u201d', u'\u2039': u'\u203a',
-        u'\u2045': u'\u2046', u'\u207d': u'\u207e', u'\u208d': u'\u208e',
-        u'\u2208': u'\u220b', u'\u2209': u'\u220c', u'\u220a': u'\u220d',
-        u'\u2215': u'\u29f5', u'\u223c': u'\u223d', u'\u2243': u'\u22cd',
-        u'\u2252': u'\u2253', u'\u2254': u'\u2255', u'\u2264': u'\u2265',
-        u'\u2266': u'\u2267', u'\u2268': u'\u2269', u'\u226a': u'\u226b',
-        u'\u226e': u'\u226f', u'\u2270': u'\u2271', u'\u2272': u'\u2273',
-        u'\u2274': u'\u2275', u'\u2276': u'\u2277', u'\u2278': u'\u2279',
-        u'\u227a': u'\u227b', u'\u227c': u'\u227d', u'\u227e': u'\u227f',
-        u'\u2280': u'\u2281', u'\u2282': u'\u2283', u'\u2284': u'\u2285',
-        u'\u2286': u'\u2287', u'\u2288': u'\u2289', u'\u228a': u'\u228b',
-        u'\u228f': u'\u2290', u'\u2291': u'\u2292', u'\u2298': u'\u29b8',
-        u'\u22a2': u'\u22a3', u'\u22a6': u'\u2ade', u'\u22a8': u'\u2ae4',
-        u'\u22a9': u'\u2ae3', u'\u22ab': u'\u2ae5', u'\u22b0': u'\u22b1',
-        u'\u22b2': u'\u22b3', u'\u22b4': u'\u22b5', u'\u22b6': u'\u22b7',
-        u'\u22c9': u'\u22ca', u'\u22cb': u'\u22cc', u'\u22d0': u'\u22d1',
-        u'\u22d6': u'\u22d7', u'\u22d8': u'\u22d9', u'\u22da': u'\u22db',
-        u'\u22dc': u'\u22dd', u'\u22de': u'\u22df', u'\u22e0': u'\u22e1',
-        u'\u22e2': u'\u22e3', u'\u22e4': u'\u22e5', u'\u22e6': u'\u22e7',
-        u'\u22e8': u'\u22e9', u'\u22ea': u'\u22eb', u'\u22ec': u'\u22ed',
-        u'\u22f0': u'\u22f1', u'\u22f2': u'\u22fa', u'\u22f3': u'\u22fb',
-        u'\u22f4': u'\u22fc', u'\u22f6': u'\u22fd', u'\u22f7': u'\u22fe',
-        u'\u2308': u'\u2309', u'\u230a': u'\u230b', u'\u2329': u'\u232a',
-        u'\u23b4': u'\u23b5', u'\u2768': u'\u2769', u'\u276a': u'\u276b',
-        u'\u276c': u'\u276d', u'\u276e': u'\u276f', u'\u2770': u'\u2771',
-        u'\u2772': u'\u2773', u'\u2774': u'\u2775', u'\u27c3': u'\u27c4',
-        u'\u27c5': u'\u27c6', u'\u27d5': u'\u27d6', u'\u27dd': u'\u27de',
-        u'\u27e2': u'\u27e3', u'\u27e4': u'\u27e5', u'\u27e6': u'\u27e7',
-        u'\u27e8': u'\u27e9', u'\u27ea': u'\u27eb', u'\u2983': u'\u2984',
-        u'\u2985': u'\u2986', u'\u2987': u'\u2988', u'\u2989': u'\u298a',
-        u'\u298b': u'\u298c', u'\u298d': u'\u298e', u'\u298f': u'\u2990',
-        u'\u2991': u'\u2992', u'\u2993': u'\u2994', u'\u2995': u'\u2996',
-        u'\u2997': u'\u2998', u'\u29c0': u'\u29c1', u'\u29c4': u'\u29c5',
-        u'\u29cf': u'\u29d0', u'\u29d1': u'\u29d2', u'\u29d4': u'\u29d5',
-        u'\u29d8': u'\u29d9', u'\u29da': u'\u29db', u'\u29f8': u'\u29f9',
-        u'\u29fc': u'\u29fd', u'\u2a2b': u'\u2a2c', u'\u2a2d': u'\u2a2e',
-        u'\u2a34': u'\u2a35', u'\u2a3c': u'\u2a3d', u'\u2a64': u'\u2a65',
-        u'\u2a79': u'\u2a7a', u'\u2a7d': u'\u2a7e', u'\u2a7f': u'\u2a80',
-        u'\u2a81': u'\u2a82', u'\u2a83': u'\u2a84', u'\u2a8b': u'\u2a8c',
-        u'\u2a91': u'\u2a92', u'\u2a93': u'\u2a94', u'\u2a95': u'\u2a96',
-        u'\u2a97': u'\u2a98', u'\u2a99': u'\u2a9a', u'\u2a9b': u'\u2a9c',
-        u'\u2aa1': u'\u2aa2', u'\u2aa6': u'\u2aa7', u'\u2aa8': u'\u2aa9',
-        u'\u2aaa': u'\u2aab', u'\u2aac': u'\u2aad', u'\u2aaf': u'\u2ab0',
-        u'\u2ab3': u'\u2ab4', u'\u2abb': u'\u2abc', u'\u2abd': u'\u2abe',
-        u'\u2abf': u'\u2ac0', u'\u2ac1': u'\u2ac2', u'\u2ac3': u'\u2ac4',
-        u'\u2ac5': u'\u2ac6', u'\u2acd': u'\u2ace', u'\u2acf': u'\u2ad0',
-        u'\u2ad1': u'\u2ad2', u'\u2ad3': u'\u2ad4', u'\u2ad5': u'\u2ad6',
-        u'\u2aec': u'\u2aed', u'\u2af7': u'\u2af8', u'\u2af9': u'\u2afa',
-        u'\u2e02': u'\u2e03', u'\u2e04': u'\u2e05', u'\u2e09': u'\u2e0a',
-        u'\u2e0c': u'\u2e0d', u'\u2e1c': u'\u2e1d', u'\u2e20': u'\u2e21',
-        u'\u3008': u'\u3009', u'\u300a': u'\u300b', u'\u300c': u'\u300d',
-        u'\u300e': u'\u300f', u'\u3010': u'\u3011', u'\u3014': u'\u3015',
-        u'\u3016': u'\u3017', u'\u3018': u'\u3019', u'\u301a': u'\u301b',
-        u'\u301d': u'\u301e', u'\ufd3e': u'\ufd3f', u'\ufe17': u'\ufe18',
-        u'\ufe35': u'\ufe36', u'\ufe37': u'\ufe38', u'\ufe39': u'\ufe3a',
-        u'\ufe3b': u'\ufe3c', u'\ufe3d': u'\ufe3e', u'\ufe3f': u'\ufe40',
-        u'\ufe41': u'\ufe42', u'\ufe43': u'\ufe44', u'\ufe47': u'\ufe48',
-        u'\ufe59': u'\ufe5a', u'\ufe5b': u'\ufe5c', u'\ufe5d': u'\ufe5e',
-        u'\uff08': u'\uff09', u'\uff1c': u'\uff1e', u'\uff3b': u'\uff3d',
-        u'\uff5b': u'\uff5d', u'\uff5f': u'\uff60', u'\uff62': u'\uff63',
+        '\u0028': '\u0029', '\u003c': '\u003e', '\u005b': '\u005d',
+        '\u007b': '\u007d', '\u00ab': '\u00bb', '\u0f3a': '\u0f3b',
+        '\u0f3c': '\u0f3d', '\u169b': '\u169c', '\u2018': '\u2019',
+        '\u201a': '\u2019', '\u201b': '\u2019', '\u201c': '\u201d',
+        '\u201e': '\u201d', '\u201f': '\u201d', '\u2039': '\u203a',
+        '\u2045': '\u2046', '\u207d': '\u207e', '\u208d': '\u208e',
+        '\u2208': '\u220b', '\u2209': '\u220c', '\u220a': '\u220d',
+        '\u2215': '\u29f5', '\u223c': '\u223d', '\u2243': '\u22cd',
+        '\u2252': '\u2253', '\u2254': '\u2255', '\u2264': '\u2265',
+        '\u2266': '\u2267', '\u2268': '\u2269', '\u226a': '\u226b',
+        '\u226e': '\u226f', '\u2270': '\u2271', '\u2272': '\u2273',
+        '\u2274': '\u2275', '\u2276': '\u2277', '\u2278': '\u2279',
+        '\u227a': '\u227b', '\u227c': '\u227d', '\u227e': '\u227f',
+        '\u2280': '\u2281', '\u2282': '\u2283', '\u2284': '\u2285',
+        '\u2286': '\u2287', '\u2288': '\u2289', '\u228a': '\u228b',
+        '\u228f': '\u2290', '\u2291': '\u2292', '\u2298': '\u29b8',
+        '\u22a2': '\u22a3', '\u22a6': '\u2ade', '\u22a8': '\u2ae4',
+        '\u22a9': '\u2ae3', '\u22ab': '\u2ae5', '\u22b0': '\u22b1',
+        '\u22b2': '\u22b3', '\u22b4': '\u22b5', '\u22b6': '\u22b7',
+        '\u22c9': '\u22ca', '\u22cb': '\u22cc', '\u22d0': '\u22d1',
+        '\u22d6': '\u22d7', '\u22d8': '\u22d9', '\u22da': '\u22db',
+        '\u22dc': '\u22dd', '\u22de': '\u22df', '\u22e0': '\u22e1',
+        '\u22e2': '\u22e3', '\u22e4': '\u22e5', '\u22e6': '\u22e7',
+        '\u22e8': '\u22e9', '\u22ea': '\u22eb', '\u22ec': '\u22ed',
+        '\u22f0': '\u22f1', '\u22f2': '\u22fa', '\u22f3': '\u22fb',
+        '\u22f4': '\u22fc', '\u22f6': '\u22fd', '\u22f7': '\u22fe',
+        '\u2308': '\u2309', '\u230a': '\u230b', '\u2329': '\u232a',
+        '\u23b4': '\u23b5', '\u2768': '\u2769', '\u276a': '\u276b',
+        '\u276c': '\u276d', '\u276e': '\u276f', '\u2770': '\u2771',
+        '\u2772': '\u2773', '\u2774': '\u2775', '\u27c3': '\u27c4',
+        '\u27c5': '\u27c6', '\u27d5': '\u27d6', '\u27dd': '\u27de',
+        '\u27e2': '\u27e3', '\u27e4': '\u27e5', '\u27e6': '\u27e7',
+        '\u27e8': '\u27e9', '\u27ea': '\u27eb', '\u2983': '\u2984',
+        '\u2985': '\u2986', '\u2987': '\u2988', '\u2989': '\u298a',
+        '\u298b': '\u298c', '\u298d': '\u298e', '\u298f': '\u2990',
+        '\u2991': '\u2992', '\u2993': '\u2994', '\u2995': '\u2996',
+        '\u2997': '\u2998', '\u29c0': '\u29c1', '\u29c4': '\u29c5',
+        '\u29cf': '\u29d0', '\u29d1': '\u29d2', '\u29d4': '\u29d5',
+        '\u29d8': '\u29d9', '\u29da': '\u29db', '\u29f8': '\u29f9',
+        '\u29fc': '\u29fd', '\u2a2b': '\u2a2c', '\u2a2d': '\u2a2e',
+        '\u2a34': '\u2a35', '\u2a3c': '\u2a3d', '\u2a64': '\u2a65',
+        '\u2a79': '\u2a7a', '\u2a7d': '\u2a7e', '\u2a7f': '\u2a80',
+        '\u2a81': '\u2a82', '\u2a83': '\u2a84', '\u2a8b': '\u2a8c',
+        '\u2a91': '\u2a92', '\u2a93': '\u2a94', '\u2a95': '\u2a96',
+        '\u2a97': '\u2a98', '\u2a99': '\u2a9a', '\u2a9b': '\u2a9c',
+        '\u2aa1': '\u2aa2', '\u2aa6': '\u2aa7', '\u2aa8': '\u2aa9',
+        '\u2aaa': '\u2aab', '\u2aac': '\u2aad', '\u2aaf': '\u2ab0',
+        '\u2ab3': '\u2ab4', '\u2abb': '\u2abc', '\u2abd': '\u2abe',
+        '\u2abf': '\u2ac0', '\u2ac1': '\u2ac2', '\u2ac3': '\u2ac4',
+        '\u2ac5': '\u2ac6', '\u2acd': '\u2ace', '\u2acf': '\u2ad0',
+        '\u2ad1': '\u2ad2', '\u2ad3': '\u2ad4', '\u2ad5': '\u2ad6',
+        '\u2aec': '\u2aed', '\u2af7': '\u2af8', '\u2af9': '\u2afa',
+        '\u2e02': '\u2e03', '\u2e04': '\u2e05', '\u2e09': '\u2e0a',
+        '\u2e0c': '\u2e0d', '\u2e1c': '\u2e1d', '\u2e20': '\u2e21',
+        '\u3008': '\u3009', '\u300a': '\u300b', '\u300c': '\u300d',
+        '\u300e': '\u300f', '\u3010': '\u3011', '\u3014': '\u3015',
+        '\u3016': '\u3017', '\u3018': '\u3019', '\u301a': '\u301b',
+        '\u301d': '\u301e', '\ufd3e': '\ufd3f', '\ufe17': '\ufe18',
+        '\ufe35': '\ufe36', '\ufe37': '\ufe38', '\ufe39': '\ufe3a',
+        '\ufe3b': '\ufe3c', '\ufe3d': '\ufe3e', '\ufe3f': '\ufe40',
+        '\ufe41': '\ufe42', '\ufe43': '\ufe44', '\ufe47': '\ufe48',
+        '\ufe59': '\ufe5a', '\ufe5b': '\ufe5c', '\ufe5d': '\ufe5e',
+        '\uff08': '\uff09', '\uff1c': '\uff1e', '\uff3b': '\uff3d',
+        '\uff5b': '\uff5d', '\uff5f': '\uff60', '\uff62': '\uff63',
     }
 
     def _build_word_match(words, boundary_regex_fragment=None, prefix='', suffix=''):
@@ -483,13 +598,13 @@ class Perl6Lexer(ExtendedRegexLexer):
         'common': [
             (r'#[`|=](?P<delimiter>(?P<first_char>[' + ''.join(PERL6_BRACKETS) + r'])(?P=first_char)*)',
              brackets_callback(Comment.Multiline)),
-            (r'#[^\n]*$', Comment.Singleline),
+            (r'#[^\n]*$', Comment.Single),
             (r'^(\s*)=begin\s+(\w+)\b.*?^\1=end\s+\2', Comment.Multiline),
             (r'^(\s*)=for.*?\n\s*?\n', Comment.Multiline),
             (r'^=.*?\n\s*?\n', Comment.Multiline),
             (r'(regex|token|rule)(\s*' + PERL6_IDENTIFIER_RANGE + '+:sym)',
              bygroups(Keyword, Name), 'token-sym-brackets'),
-            (r'(regex|token|rule)(?!' + PERL6_IDENTIFIER_RANGE + ')(\s*' + PERL6_IDENTIFIER_RANGE + '+)?',
+            (r'(regex|token|rule)(?!' + PERL6_IDENTIFIER_RANGE + r')(\s*' + PERL6_IDENTIFIER_RANGE + '+)?',
              bygroups(Keyword, Name), 'pre-token'),
             # deal with a special case in the Perl 6 grammar (role q { ... })
             (r'(role)(\s+)(q)(\s*)', bygroups(Keyword, Text, Name, Text)),
@@ -498,11 +613,11 @@ class Perl6Lexer(ExtendedRegexLexer):
              Name.Builtin),
             (_build_word_match(PERL6_BUILTINS, PERL6_IDENTIFIER_RANGE), Name.Builtin),
             # copied from PerlLexer
-            (r'[$@%&][.^:?=!~]?' + PERL6_IDENTIFIER_RANGE + u'+(?:<<.*?>>|<.*?>|«.*?»)*',
+            (r'[$@%&][.^:?=!~]?' + PERL6_IDENTIFIER_RANGE + '+(?:<<.*?>>|<.*?>|«.*?»)*',
              Name.Variable),
             (r'\$[!/](?:<<.*?>>|<.*?>|«.*?»)*', Name.Variable.Global),
             (r'::\?\w+', Name.Variable.Global),
-            (r'[$@%&]\*' + PERL6_IDENTIFIER_RANGE + u'+(?:<<.*?>>|<.*?>|«.*?»)*',
+            (r'[$@%&]\*' + PERL6_IDENTIFIER_RANGE + '+(?:<<.*?>>|<.*?>|«.*?»)*',
              Name.Variable.Global),
             (r'\$(?:<.*?>)+', Name.Variable),
             (r'(?:q|qq|Q)[a-zA-Z]?\s*(?P<adverbs>:[\w\s:]+)?\s*(?P<delimiter>(?P<first_char>[^0-9a-zA-Z:\s])'
@@ -552,7 +667,7 @@ class Perl6Lexer(ExtendedRegexLexer):
             # make sure that '#' characters in quotes aren't treated as comments
             (r"(?<!\\)'(\\\\|\\[^\\]|[^'\\])*'", String.Regex),
             (r'(?<!\\)"(\\\\|\\[^\\]|[^"\\])*"', String.Regex),
-            (r'#.*?$', Comment.Singleline),
+            (r'#.*?$', Comment.Single),
             (r'\{', embedded_perl6_callback),
             ('.+?', String.Regex),
         ],
@@ -585,21 +700,21 @@ class Perl6Lexer(ExtendedRegexLexer):
         rating = False
 
         # check for my/our/has declarations
-        if re.search("(?:my|our|has)\s+(?:" + Perl6Lexer.PERL6_IDENTIFIER_RANGE +
-                     "+\s+)?[$@%&(]", text):
+        if re.search(r"(?:my|our|has)\s+(?:" + Perl6Lexer.PERL6_IDENTIFIER_RANGE +
+                     r"+\s+)?[$@%&(]", text):
             rating = 0.8
             saw_perl_decl = True
 
         for line in lines:
             line = re.sub('#.*', '', line)
-            if re.match('^\s*$', line):
+            if re.match(r'^\s*$', line):
                 continue
 
             # match v6; use v6; use v6.0; use v6.0.0;
-            if re.match('^\s*(?:use\s+)?v6(?:\.\d(?:\.\d)?)?;', line):
+            if re.match(r'^\s*(?:use\s+)?v6(?:\.\d(?:\.\d)?)?;', line):
                 return True
             # match class, module, role, enum, grammar declarations
-            class_decl = re.match('^\s*(?:(?P<scope>my|our)\s+)?(?:module|class|role|enum|grammar)', line)
+            class_decl = re.match(r'^\s*(?:(?P<scope>my|our)\s+)?(?:module|class|role|enum|grammar)', line)
             if class_decl:
                 if saw_perl_decl or class_decl.group('scope') is not None:
                     return True
@@ -607,8 +722,12 @@ class Perl6Lexer(ExtendedRegexLexer):
                 continue
             break
 
+        if ':=' in text:
+            # Same logic as above for PerlLexer
+            rating /= 2
+
         return rating
 
     def __init__(self, **options):
-        super(Perl6Lexer, self).__init__(**options)
+        super().__init__(**options)
         self.encoding = options.get('encoding', 'utf-8')

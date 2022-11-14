@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.prolog
     ~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Prolog and Prolog-like languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -27,11 +26,8 @@ class PrologLexer(RegexLexer):
     filenames = ['*.ecl', '*.prolog', '*.pro', '*.pl']
     mimetypes = ['text/x-prolog']
 
-    flags = re.UNICODE | re.MULTILINE
-
     tokens = {
         'root': [
-            (r'^#.*', Comment.Single),
             (r'/\*', Comment.Multiline, 'nested-comment'),
             (r'%.*', Comment.Single),
             # character literal
@@ -46,7 +42,7 @@ class PrologLexer(RegexLexer):
             (r'[\[\](){}|.,;!]', Punctuation),
             (r':-|-->', Punctuation),
             (r'"(?:\\x[0-9a-fA-F]+\\|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}|'
-             r'\\[0-7]+\\|\\["\nabcefnrstv]|[^\\"])*"', String.Double),
+             r'\\[0-7]+\\|\\["\\abcefnrstv]|[^\\"])*"', String.Double),
             (r"'(?:''|[^'])*'", String.Atom),  # quoted atom
             # Needs to not be followed by an atom.
             # (r'=(?=\s|[a-zA-Z\[])', Operator),
@@ -56,22 +52,22 @@ class PrologLexer(RegexLexer):
             (r'(mod|div|not)\b', Operator),
             (r'_', Keyword),  # The don't-care variable
             (r'([a-z]+)(:)', bygroups(Name.Namespace, Punctuation)),
-            (u'([a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
-             u'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*)'
-             u'(\\s*)(:-|-->)',
+            (r'([a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
+             r'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*)'
+             r'(\s*)(:-|-->)',
              bygroups(Name.Function, Text, Operator)),  # function defn
-            (u'([a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
-             u'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*)'
-             u'(\\s*)(\\()',
+            (r'([a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
+             r'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*)'
+             r'(\s*)(\()',
              bygroups(Name.Function, Text, Punctuation)),
-            (u'[a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
-             u'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*',
+            (r'[a-z\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]'
+             r'[\w$\u00c0-\u1fff\u3040-\ud7ff\ue000-\uffef]*',
              String.Atom),  # atom, characters
             # This one includes !
-            (u'[#&*+\\-./:<=>?@\\\\^~\u00a1-\u00bf\u2010-\u303f]+',
+            (r'[#&*+\-./:<=>?@\\^~\u00a1-\u00bf\u2010-\u303f]+',
              String.Atom),  # atom, graphics
             (r'[A-Z_]\w*', Name.Variable),
-            (u'\\s+|[\u2000-\u200f\ufff0-\ufffe\uffef]', Text),
+            (r'\s+|[\u2000-\u200f\ufff0-\ufffe\uffef]', Text),
         ],
         'nested-comment': [
             (r'\*/', Comment.Multiline, '#pop'),
@@ -87,12 +83,13 @@ class PrologLexer(RegexLexer):
 
 class LogtalkLexer(RegexLexer):
     """
-    For `Logtalk <http://logtalk.org/>`_ source code.
+    For Logtalk source code.
 
     .. versionadded:: 0.10
     """
 
     name = 'Logtalk'
+    url = 'http://logtalk.org/'
     aliases = ['logtalk']
     filenames = ['*.lgt', '*.logtalk']
     mimetypes = ['text/x-logtalk']
@@ -108,19 +105,19 @@ class LogtalkLexer(RegexLexer):
             (r'\n', Text),
             (r'\s+', Text),
             # Numbers
-            (r"0'.", Number),
+            (r"0'[\\]?.", Number),
             (r'0b[01]+', Number.Bin),
             (r'0o[0-7]+', Number.Oct),
             (r'0x[0-9a-fA-F]+', Number.Hex),
             (r'\d+\.?\d*((e|E)(\+|-)?\d+)?', Number),
             # Variables
-            (r'([A-Z_]\w*)', Name.Variable),
+            (r'([A-Z_][a-zA-Z0-9_]*)', Name.Variable),
             # Event handlers
             (r'(after|before)(?=[(])', Keyword),
             # Message forwarding handler
             (r'forward(?=[(])', Keyword),
             # Execution-context methods
-            (r'(parameter|this|se(lf|nder))(?=[(])', Keyword),
+            (r'(context|parameter|this|se(lf|nder))(?=[(])', Keyword),
             # Reflection
             (r'(current_predicate|predicate_property)(?=[(])', Keyword),
             # DCGs and term expansion
@@ -136,33 +133,35 @@ class LogtalkLexer(RegexLexer):
             # Events
             (r'(current_event|(abolish|define)_events)(?=[(])', Keyword),
             # Flags
-            (r'(current|set)_logtalk_flag(?=[(])', Keyword),
+            (r'(create|current|set)_logtalk_flag(?=[(])', Keyword),
             # Compiling, loading, and library paths
-            (r'logtalk_(compile|l(ibrary_path|oad|oad_context)|make)(?=[(])', Keyword),
+            (r'logtalk_(compile|l(ibrary_path|oad|oad_context)|make(_target_action)?)(?=[(])', Keyword),
             (r'\blogtalk_make\b', Keyword),
             # Database
             (r'(clause|retract(all)?)(?=[(])', Keyword),
             (r'a(bolish|ssert(a|z))(?=[(])', Keyword),
             # Control constructs
             (r'(ca(ll|tch)|throw)(?=[(])', Keyword),
-            (r'(fa(il|lse)|true)\b', Keyword),
+            (r'(fa(il|lse)|true|(instantiation|system)_error)\b', Keyword),
+            (r'(type|domain|existence|permission|representation|evaluation|resource|syntax)_error(?=[(])', Keyword),
             # All solutions
             (r'((bag|set)of|f(ind|or)all)(?=[(])', Keyword),
-            # Multi-threading meta-predicates
-            (r'threaded(_(call|once|ignore|exit|peek|wait|notify))?(?=[(])', Keyword),
+            # Multi-threading predicates
+            (r'threaded(_(ca(ll|ncel)|once|ignore|exit|peek|wait|notify))?(?=[(])', Keyword),
+            # Engine predicates
+            (r'threaded_engine(_(create|destroy|self|next|next_reified|yield|post|fetch))?(?=[(])', Keyword),
             # Term unification
             (r'(subsumes_term|unify_with_occurs_check)(?=[(])', Keyword),
             # Term creation and decomposition
             (r'(functor|arg|copy_term|numbervars|term_variables)(?=[(])', Keyword),
             # Evaluable functors
-            (r'(rem|m(ax|in|od)|abs|sign)(?=[(])', Keyword),
+            (r'(div|rem|m(ax|in|od)|abs|sign)(?=[(])', Keyword),
             (r'float(_(integer|fractional)_part)?(?=[(])', Keyword),
-            (r'(floor|truncate|round|ceiling)(?=[(])', Keyword),
+            (r'(floor|t(an|runcate)|round|ceiling)(?=[(])', Keyword),
             # Other arithmetic functors
-            (r'(cos|a(cos|sin|tan)|exp|log|s(in|qrt))(?=[(])', Keyword),
+            (r'(cos|a(cos|sin|tan|tan2)|exp|log|s(in|qrt)|xor)(?=[(])', Keyword),
             # Term testing
-            (r'(var|atom(ic)?|integer|float|c(allable|ompound)|n(onvar|umber)|'
-             r'ground|acyclic_term)(?=[(])', Keyword),
+            (r'(var|atom(ic)?|integer|float|c(allable|ompound)|n(onvar|umber)|ground|acyclic_term)(?=[(])', Keyword),
             # Term comparison
             (r'compare(?=[(])', Keyword),
             # Stream selection and control
@@ -200,9 +199,9 @@ class LogtalkLexer(RegexLexer):
             (r'(>>|<<|/\\|\\\\|\\)', Operator),
             # Predicate aliases
             (r'\bas\b', Operator),
-            # Arithemtic evaluation
+            # Arithmetic evaluation
             (r'\bis\b', Keyword),
-            # Arithemtic comparison
+            # Arithmetic comparison
             (r'(=:=|=\\=|<|=<|>=|>)', Operator),
             # Term creation and decomposition
             (r'=\.\.', Operator),
@@ -212,8 +211,8 @@ class LogtalkLexer(RegexLexer):
             (r'(==|\\==|@=<|@<|@>=|@>)', Operator),
             # Evaluable functors
             (r'(//|[-+*/])', Operator),
-            (r'\b(e|pi|mod|rem)\b', Operator),
-            # Other arithemtic functors
+            (r'\b(e|pi|div|mod|rem)\b', Operator),
+            # Other arithmetic functors
             (r'\b\*\*\b', Operator),
             # DCG rules
             (r'-->', Operator),
@@ -226,11 +225,11 @@ class LogtalkLexer(RegexLexer):
             # Existential quantifier
             (r'\^', Operator),
             # Strings
-            (r'"(\\\\|\\"|[^"])*"', String),
-            # Ponctuation
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
+            # Punctuation
             (r'[()\[\],.|]', Text),
             # Atoms
-            (r"[a-z]\w*", Text),
+            (r"[a-z][a-zA-Z0-9_]*", Text),
             (r"'", String, 'quoted_atom'),
         ],
 
@@ -245,44 +244,43 @@ class LogtalkLexer(RegexLexer):
         'directive': [
             # Conditional compilation directives
             (r'(el)?if(?=[(])', Keyword, 'root'),
-            (r'(e(lse|ndif))[.]', Keyword, 'root'),
+            (r'(e(lse|ndif))(?=[.])', Keyword, 'root'),
             # Entity directives
             (r'(category|object|protocol)(?=[(])', Keyword, 'entityrelations'),
-            (r'(end_(category|object|protocol))[.]', Keyword, 'root'),
+            (r'(end_(category|object|protocol))(?=[.])', Keyword, 'root'),
             # Predicate scope directives
             (r'(public|protected|private)(?=[(])', Keyword, 'root'),
             # Other directives
             (r'e(n(coding|sure_loaded)|xport)(?=[(])', Keyword, 'root'),
             (r'in(clude|itialization|fo)(?=[(])', Keyword, 'root'),
-            (r'(built_in|dynamic|synchronized|threaded)[.]', Keyword, 'root'),
-            (r'(alias|d(ynamic|iscontiguous)|m(eta_(non_terminal|predicate)|ode|ultifile)|'
-             r's(et_(logtalk|prolog)_flag|ynchronized))(?=[(])', Keyword, 'root'),
+            (r'(built_in|dynamic|synchronized|threaded)(?=[.])', Keyword, 'root'),
+            (r'(alias|d(ynamic|iscontiguous)|m(eta_(non_terminal|predicate)|ode|ultifile)|s(et_(logtalk|prolog)_flag|ynchronized))(?=[(])', Keyword, 'root'),
             (r'op(?=[(])', Keyword, 'root'),
             (r'(c(alls|oinductive)|module|reexport|use(s|_module))(?=[(])', Keyword, 'root'),
-            (r'[a-z]\w*(?=[(])', Text, 'root'),
-            (r'[a-z]\w*[.]', Text, 'root'),
+            (r'[a-z][a-zA-Z0-9_]*(?=[(])', Text, 'root'),
+            (r'[a-z][a-zA-Z0-9_]*(?=[.])', Text, 'root'),
         ],
 
         'entityrelations': [
             (r'(complements|extends|i(nstantiates|mp(lements|orts))|specializes)(?=[(])', Keyword),
             # Numbers
-            (r"0'.", Number),
+            (r"0'[\\]?.", Number),
             (r'0b[01]+', Number.Bin),
             (r'0o[0-7]+', Number.Oct),
             (r'0x[0-9a-fA-F]+', Number.Hex),
             (r'\d+\.?\d*((e|E)(\+|-)?\d+)?', Number),
             # Variables
-            (r'([A-Z_]\w*)', Name.Variable),
+            (r'([A-Z_][a-zA-Z0-9_]*)', Name.Variable),
             # Atoms
-            (r"[a-z]\w*", Text),
+            (r"[a-z][a-zA-Z0-9_]*", Text),
             (r"'", String, 'quoted_atom'),
             # Strings
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
             # End of entity-opening directive
             (r'([)]\.)', Text, 'root'),
             # Scope operator
             (r'(::)', Operator),
-            # Ponctuation
+            # Punctuation
             (r'[()\[\],.|]', Text),
             # Comments
             (r'%.*?\n', Comment),
@@ -300,7 +298,7 @@ class LogtalkLexer(RegexLexer):
             return 1.0
         elif ':- category(' in text:
             return 1.0
-        elif re.search('^:-\s[a-z]', text, re.M):
+        elif re.search(r'^:-\s[a-z]', text, re.M):
             return 0.9
         else:
             return 0.0

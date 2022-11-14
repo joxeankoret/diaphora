@@ -1,23 +1,22 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.haskell
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Haskell and related languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 
 from pygments.lexer import Lexer, RegexLexer, bygroups, do_insertions, \
-    default, include
+    default, include, inherit
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation, Generic
+    Number, Punctuation, Generic, Whitespace
 from pygments import unistring as uni
 
-__all__ = ['HaskellLexer', 'IdrisLexer', 'AgdaLexer', 'CryptolLexer',
+__all__ = ['HaskellLexer', 'HspecLexer', 'IdrisLexer', 'AgdaLexer', 'CryptolLexer',
            'LiterateHaskellLexer', 'LiterateIdrisLexer', 'LiterateAgdaLexer',
            'LiterateCryptolLexer', 'KokaLexer']
 
@@ -32,14 +31,13 @@ class HaskellLexer(RegexLexer):
     .. versionadded:: 0.8
     """
     name = 'Haskell'
+    url = 'https://www.haskell.org/'
     aliases = ['haskell', 'hs']
     filenames = ['*.hs']
     mimetypes = ['text/x-haskell']
 
-    flags = re.MULTILINE | re.UNICODE
-
     reserved = ('case', 'class', 'data', 'default', 'deriving', 'do', 'else',
-                'if', 'in', 'infix[lr]?', 'instance',
+                'family', 'if', 'in', 'infix[lr]?', 'instance',
                 'let', 'newtype', 'of', 'then', 'type', 'where', '_')
     ascii = ('NUL', 'SOH', '[SE]TX', 'EOT', 'ENQ', 'ACK',
              'BEL', 'BS', 'HT', 'LF', 'VT', 'FF', 'CR', 'S[OI]', 'DLE',
@@ -49,7 +47,7 @@ class HaskellLexer(RegexLexer):
     tokens = {
         'root': [
             # Whitespace:
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             # (r'--\s*|.*$', Comment.Doc),
             (r'--(?![!#$%&*+./<=>?@^|_~:\\]).*?$', Comment.Single),
             (r'\{-', Comment.Multiline, 'comment'),
@@ -63,17 +61,25 @@ class HaskellLexer(RegexLexer):
             (r'^[_' + uni.Ll + r'][\w\']*', Name.Function),
             (r"'?[_" + uni.Ll + r"][\w']*", Name),
             (r"('')?[" + uni.Lu + r"][\w\']*", Keyword.Type),
+            (r"(')[" + uni.Lu + r"][\w\']*", Keyword.Type),
+            (r"(')\[[^\]]*\]", Keyword.Type),  # tuples and lists get special treatment in GHC
+            (r"(')\([^)]*\)", Keyword.Type),  # ..
+            (r"(')[:!#$%&*+.\\/<=>?@^|~-]+", Keyword.Type),  # promoted type operators
             #  Operators
             (r'\\(?![:!#$%&*+.\\/<=>?@^|~-]+)', Name.Function),  # lambda operator
             (r'(<-|::|->|=>|=)(?![:!#$%&*+.\\/<=>?@^|~-]+)', Operator.Word),  # specials
             (r':[:!#$%&*+.\\/<=>?@^|~-]*', Keyword.Type),  # Constructor operators
             (r'[:!#$%&*+.\\/<=>?@^|~-]+', Operator),  # Other operators
             #  Numbers
-            (r'\d+[eE][+-]?\d+', Number.Float),
-            (r'\d+\.\d+([eE][+-]?\d+)?', Number.Float),
-            (r'0[oO][0-7]+', Number.Oct),
-            (r'0[xX][\da-fA-F]+', Number.Hex),
-            (r'\d+', Number.Integer),
+            (r'0[xX]_*[\da-fA-F](_*[\da-fA-F])*_*[pP][+-]?\d(_*\d)*', Number.Float),
+            (r'0[xX]_*[\da-fA-F](_*[\da-fA-F])*\.[\da-fA-F](_*[\da-fA-F])*'
+             r'(_*[pP][+-]?\d(_*\d)*)?', Number.Float),
+            (r'\d(_*\d)*_*[eE][+-]?\d(_*\d)*', Number.Float),
+            (r'\d(_*\d)*\.\d(_*\d)*(_*[eE][+-]?\d(_*\d)*)?', Number.Float),
+            (r'0[bB]_*[01](_*[01])*', Number.Bin),
+            (r'0[oO]_*[0-7](_*[0-7])*', Number.Oct),
+            (r'0[xX]_*[\da-fA-F](_*[\da-fA-F])*', Number.Hex),
+            (r'\d(_*\d)*', Number.Integer),
             #  Character/String Literals
             (r"'", String.Char, 'character'),
             (r'"', String, 'string'),
@@ -84,31 +90,31 @@ class HaskellLexer(RegexLexer):
         ],
         'import': [
             # Import statements
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'"', String, 'string'),
             # after "funclist" state
             (r'\)', Punctuation, '#pop'),
             (r'qualified\b', Keyword),
             # import X as Y
             (r'([' + uni.Lu + r'][\w.]*)(\s+)(as)(\s+)([' + uni.Lu + r'][\w.]*)',
-             bygroups(Name.Namespace, Text, Keyword, Text, Name), '#pop'),
+             bygroups(Name.Namespace, Whitespace, Keyword, Whitespace, Name), '#pop'),
             # import X hiding (functions)
             (r'([' + uni.Lu + r'][\w.]*)(\s+)(hiding)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Keyword, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Keyword, Whitespace, Punctuation), 'funclist'),
             # import X (functions)
             (r'([' + uni.Lu + r'][\w.]*)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Punctuation), 'funclist'),
             # import X
             (r'[\w.]+', Name.Namespace, '#pop'),
         ],
         'module': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'([' + uni.Lu + r'][\w.]*)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Punctuation), 'funclist'),
             (r'[' + uni.Lu + r'][\w.]*', Name.Namespace, '#pop'),
         ],
         'funclist': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'[' + uni.Lu + r']\w*', Keyword.Type),
             (r'(_[\w\']+|[' + uni.Ll + r'][\w\']*)', Name.Function),
             (r'--(?![!#$%&*+./<=>?@^|_~:\\]).*?$', Comment.Single),
@@ -146,7 +152,29 @@ class HaskellLexer(RegexLexer):
             (r'o[0-7]+', String.Escape, '#pop'),
             (r'x[\da-fA-F]+', String.Escape, '#pop'),
             (r'\d+', String.Escape, '#pop'),
-            (r'\s+\\', String.Escape, '#pop'),
+            (r'(\s+)(\\)', bygroups(Whitespace, String.Escape), '#pop'),
+        ],
+    }
+
+
+class HspecLexer(HaskellLexer):
+    """
+    A Haskell lexer with support for Hspec constructs.
+
+    .. versionadded:: 2.4.0
+    """
+
+    name = 'Hspec'
+    aliases = ['hspec']
+    filenames = []
+    mimetypes = []
+
+    tokens = {
+        'root': [
+            (r'(it)(\s*)("[^"]*")', bygroups(Text, Whitespace, String.Doc)),
+            (r'(describe)(\s*)("[^"]*")', bygroups(Text, Whitespace, String.Doc)),
+            (r'(context)(\s*)("[^"]*")', bygroups(Text, Whitespace, String.Doc)),
+            inherit,
         ],
     }
 
@@ -160,6 +188,7 @@ class IdrisLexer(RegexLexer):
     .. versionadded:: 2.0
     """
     name = 'Idris'
+    url = 'https://www.idris-lang.org/'
     aliases = ['idris', 'idr']
     filenames = ['*.idr']
     mimetypes = ['text/x-idris']
@@ -168,6 +197,7 @@ class IdrisLexer(RegexLexer):
                 'if', 'in', 'infix[lr]?', 'instance', 'rewrite', 'auto',
                 'namespace', 'codata', 'mutual', 'private', 'public', 'abstract',
                 'total', 'partial',
+                'interface', 'implementation', 'export', 'covering', 'constructor',
                 'let', 'proof', 'of', 'then', 'static', 'where', '_', 'with',
                 'pattern',  'term',  'syntax', 'prefix',
                 'postulate', 'parameters', 'record', 'dsl', 'impossible', 'implicit',
@@ -184,17 +214,17 @@ class IdrisLexer(RegexLexer):
     tokens = {
         'root': [
             # Comments
-            (r'^(\s*)(%%%s)' % '|'.join(directives),
-             bygroups(Text, Keyword.Reserved)),
-            (r'(\s*)(--(?![!#$%&*+./<=>?@^|_~:\\]).*?)$', bygroups(Text, Comment.Single)),
-            (r'(\s*)(\|{3}.*?)$', bygroups(Text, Comment.Single)),
-            (r'(\s*)(\{-)', bygroups(Text, Comment.Multiline), 'comment'),
+            (r'^(\s*)(%%(%s))' % '|'.join(directives),
+             bygroups(Whitespace, Keyword.Reserved)),
+            (r'(\s*)(--(?![!#$%&*+./<=>?@^|_~:\\]).*?)$', bygroups(Whitespace, Comment.Single)),
+            (r'(\s*)(\|{3}.*?)$', bygroups(Whitespace, Comment.Single)),
+            (r'(\s*)(\{-)', bygroups(Whitespace, Comment.Multiline), 'comment'),
             # Declaration
             (r'^(\s*)([^\s(){}]+)(\s*)(:)(\s*)',
-             bygroups(Text, Name.Function, Text, Operator.Word, Text)),
+             bygroups(Whitespace, Name.Function, Whitespace, Operator.Word, Whitespace)),
             #  Identifiers
             (r'\b(%s)(?!\')\b' % '|'.join(reserved), Keyword.Reserved),
-            (r'(import|module)(\s+)', bygroups(Keyword.Reserved, Text), 'module'),
+            (r'(import|module)(\s+)', bygroups(Keyword.Reserved, Whitespace), 'module'),
             (r"('')?[A-Z][\w\']*", Keyword.Type),
             (r'[a-z][\w\']*', Text),
             #  Special Symbols
@@ -209,16 +239,16 @@ class IdrisLexer(RegexLexer):
             (r"'", String.Char, 'character'),
             (r'"', String, 'string'),
             (r'[^\s(){}]+', Text),
-            (r'\s+?', Text),  # Whitespace
+            (r'\s+?', Whitespace),  # Whitespace
         ],
         'module': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'([A-Z][\w.]*)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Punctuation), 'funclist'),
             (r'[A-Z][\w.]*', Name.Namespace, '#pop'),
         ],
         'funclist': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'[A-Z]\w*', Keyword.Type),
             (r'(_[\w\']+|[a-z][\w\']*)', Name.Function),
             (r'--.*$', Comment.Single),
@@ -256,37 +286,41 @@ class IdrisLexer(RegexLexer):
             (r'o[0-7]+', String.Escape, '#pop'),
             (r'x[\da-fA-F]+', String.Escape, '#pop'),
             (r'\d+', String.Escape, '#pop'),
-            (r'\s+\\', String.Escape, '#pop')
+            (r'(\s+)(\\)', bygroups(Whitespace, String.Escape), '#pop')
         ],
     }
 
 
 class AgdaLexer(RegexLexer):
     """
-    For the `Agda <http://wiki.portal.chalmers.se/agda/pmwiki.php>`_
-    dependently typed functional programming language and proof assistant.
+    For the Agda dependently typed functional programming language and
+    proof assistant.
 
     .. versionadded:: 2.0
     """
 
     name = 'Agda'
+    url = 'http://wiki.portal.chalmers.se/agda/pmwiki.php'
     aliases = ['agda']
     filenames = ['*.agda']
     mimetypes = ['text/x-agda']
 
-    reserved = ['abstract', 'codata', 'coinductive', 'constructor', 'data',
-                'field', 'forall', 'hiding', 'in', 'inductive', 'infix',
-                'infixl', 'infixr', 'instance', 'let', 'mutual', 'open',
-                'pattern', 'postulate', 'primitive', 'private',
-                'quote', 'quoteGoal', 'quoteTerm',
-                'record', 'renaming', 'rewrite', 'syntax', 'tactic',
-                'unquote', 'unquoteDecl', 'using', 'where', 'with']
+    reserved = (
+        'abstract', 'codata', 'coinductive', 'constructor', 'data', 'do',
+        'eta-equality', 'field', 'forall', 'hiding', 'in', 'inductive', 'infix',
+        'infixl', 'infixr', 'instance', 'interleaved', 'let', 'macro', 'mutual',
+        'no-eta-equality', 'open', 'overlap', 'pattern', 'postulate', 'primitive',
+        'private', 'quote', 'quoteTerm', 'record', 'renaming', 'rewrite',
+        'syntax', 'tactic', 'unquote', 'unquoteDecl', 'unquoteDef', 'using',
+        'variable', 'where', 'with',
+    )
 
     tokens = {
         'root': [
             # Declaration
             (r'^(\s*)([^\s(){}]+)(\s*)(:)(\s*)',
-             bygroups(Text, Name.Function, Text, Operator.Word, Text)),
+             bygroups(Whitespace, Name.Function, Whitespace,
+                      Operator.Word, Whitespace)),
             # Comments
             (r'--(?![!#$%&*+./<=>?@^|_~:\\]).*?$', Comment.Single),
             (r'\{-', Comment.Multiline, 'comment'),
@@ -295,11 +329,12 @@ class AgdaLexer(RegexLexer):
             # Lexemes:
             #  Identifiers
             (r'\b(%s)(?!\')\b' % '|'.join(reserved), Keyword.Reserved),
-            (r'(import|module)(\s+)', bygroups(Keyword.Reserved, Text), 'module'),
-            (r'\b(Set|Prop)\b', Keyword.Type),
+            (r'(import|module)(\s+)', bygroups(Keyword.Reserved, Whitespace),
+             'module'),
+            (r'\b(Set|Prop)[\u2080-\u2089]*\b', Keyword.Type),
             #  Special Symbols
             (r'(\(|\)|\{|\})', Operator),
-            (u'(\\.{1,3}|\\||\u039B|\u2200|\u2192|:|=|->)', Operator.Word),
+            (r'(\.{1,3}|\||\u03BB|\u2200|\u2192|:|=|->)', Operator.Word),
             #  Numbers
             (r'\d+[eE][+-]?\d+', Number.Float),
             (r'\d+\.\d+([eE][+-]?\d+)?', Number.Float),
@@ -309,7 +344,7 @@ class AgdaLexer(RegexLexer):
             (r"'", String.Char, 'character'),
             (r'"', String, 'string'),
             (r'[^\s(){}]+', Text),
-            (r'\s+?', Text),  # Whitespace
+            (r'\s+?', Whitespace),  # Whitespace
         ],
         'hole': [
             # Holes
@@ -320,8 +355,8 @@ class AgdaLexer(RegexLexer):
         ],
         'module': [
             (r'\{-', Comment.Multiline, 'comment'),
-            (r'[a-zA-Z][\w.]*', Name, '#pop'),
-            (r'[^a-zA-Z]+', Text)
+            (r'[a-zA-Z][\w.\']*', Name, '#pop'),
+            (r'[\W0-9_]+', Text)
         ],
         'comment': HaskellLexer.tokens['comment'],
         'character': HaskellLexer.tokens['character'],
@@ -353,7 +388,7 @@ class CryptolLexer(RegexLexer):
     tokens = {
         'root': [
             # Whitespace:
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             # (r'--\s*|.*$', Comment.Doc),
             (r'//.*$', Comment.Single),
             (r'/\*', Comment.Multiline, 'comment'),
@@ -387,36 +422,36 @@ class CryptolLexer(RegexLexer):
         ],
         'import': [
             # Import statements
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'"', String, 'string'),
             # after "funclist" state
             (r'\)', Punctuation, '#pop'),
             (r'qualified\b', Keyword),
             # import X as Y
             (r'([A-Z][\w.]*)(\s+)(as)(\s+)([A-Z][\w.]*)',
-             bygroups(Name.Namespace, Text, Keyword, Text, Name), '#pop'),
+             bygroups(Name.Namespace, Whitespace, Keyword, Whitespace, Name), '#pop'),
             # import X hiding (functions)
             (r'([A-Z][\w.]*)(\s+)(hiding)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Keyword, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Keyword, Whitespace, Punctuation), 'funclist'),
             # import X (functions)
             (r'([A-Z][\w.]*)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Punctuation), 'funclist'),
             # import X
             (r'[\w.]+', Name.Namespace, '#pop'),
         ],
         'module': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'([A-Z][\w.]*)(\s+)(\()',
-             bygroups(Name.Namespace, Text, Punctuation), 'funclist'),
+             bygroups(Name.Namespace, Whitespace, Punctuation), 'funclist'),
             (r'[A-Z][\w.]*', Name.Namespace, '#pop'),
         ],
         'funclist': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'[A-Z]\w*', Keyword.Type),
             (r'(_[\w\']+|[a-z][\w\']*)', Name.Function),
             # TODO: these don't match the comments in docs, remove.
-            #(r'--(?![!#$%&*+./<=>?@^|_~:\\]).*?$', Comment.Single),
-            #(r'{-', Comment.Multiline, 'comment'),
+            # (r'--(?![!#$%&*+./<=>?@^|_~:\\]).*?$', Comment.Single),
+            # (r'{-', Comment.Multiline, 'comment'),
             (r',', Punctuation),
             (r'[:!#$%&*+.\\/<=>?@^|~-]+', Operator),
             # (HACK, but it makes sense to push two instances, believe me)
@@ -448,14 +483,14 @@ class CryptolLexer(RegexLexer):
             (r'o[0-7]+', String.Escape, '#pop'),
             (r'x[\da-fA-F]+', String.Escape, '#pop'),
             (r'\d+', String.Escape, '#pop'),
-            (r'\s+\\', String.Escape, '#pop'),
+            (r'(\s+)(\\)', bygroups(Whitespace, String.Escape), '#pop'),
         ],
     }
 
-    EXTRA_KEYWORDS = set(('join', 'split', 'reverse', 'transpose', 'width',
-                          'length', 'tail', '<<', '>>', '<<<', '>>>', 'const',
-                          'reg', 'par', 'seq', 'ASSERT', 'undefined', 'error',
-                          'trace'))
+    EXTRA_KEYWORDS = {'join', 'split', 'reverse', 'transpose', 'width',
+                      'length', 'tail', '<<', '>>', '<<<', '>>>', 'const',
+                      'reg', 'par', 'seq', 'ASSERT', 'undefined', 'error',
+                      'trace'}
 
     def get_tokens_unprocessed(self, text):
         stack = ['root']
@@ -528,8 +563,7 @@ class LiterateLexer(Lexer):
                     latex += line
             insertions.append((len(code),
                                list(lxlexer.get_tokens_unprocessed(latex))))
-        for item in do_insertions(insertions, self.baselexer.get_tokens_unprocessed(code)):
-            yield item
+        yield from do_insertions(insertions, self.baselexer.get_tokens_unprocessed(code))
 
 
 class LiterateHaskellLexer(LiterateLexer):
@@ -546,7 +580,7 @@ class LiterateHaskellLexer(LiterateLexer):
     .. versionadded:: 0.9
     """
     name = 'Literate Haskell'
-    aliases = ['lhs', 'literate-haskell', 'lhaskell']
+    aliases = ['literate-haskell', 'lhaskell', 'lhs']
     filenames = ['*.lhs']
     mimetypes = ['text/x-literate-haskell']
 
@@ -569,7 +603,7 @@ class LiterateIdrisLexer(LiterateLexer):
     .. versionadded:: 2.0
     """
     name = 'Literate Idris'
-    aliases = ['lidr', 'literate-idris', 'lidris']
+    aliases = ['literate-idris', 'lidris', 'lidr']
     filenames = ['*.lidr']
     mimetypes = ['text/x-literate-idris']
 
@@ -592,7 +626,7 @@ class LiterateAgdaLexer(LiterateLexer):
     .. versionadded:: 2.0
     """
     name = 'Literate Agda'
-    aliases = ['lagda', 'literate-agda']
+    aliases = ['literate-agda', 'lagda']
     filenames = ['*.lagda']
     mimetypes = ['text/x-literate-agda']
 
@@ -615,7 +649,7 @@ class LiterateCryptolLexer(LiterateLexer):
     .. versionadded:: 2.0
     """
     name = 'Literate Cryptol'
-    aliases = ['lcry', 'literate-cryptol', 'lcryptol']
+    aliases = ['literate-cryptol', 'lcryptol', 'lcry']
     filenames = ['*.lcry']
     mimetypes = ['text/x-literate-cryptol']
 
@@ -626,13 +660,13 @@ class LiterateCryptolLexer(LiterateLexer):
 
 class KokaLexer(RegexLexer):
     """
-    Lexer for the `Koka <http://koka.codeplex.com>`_
-    language.
+    Lexer for the Koka language.
 
     .. versionadded:: 1.6
     """
 
     name = 'Koka'
+    url = 'https://koka-lang.github.io/koka/doc/index.html'
     aliases = ['koka']
     filenames = ['*.kk', '*.kki']
     mimetypes = ['text/x-koka']
@@ -674,10 +708,10 @@ class KokaLexer(RegexLexer):
     symbols = r'[$%&*+@!/\\^~=.:\-?|<>]+'
 
     # symbol boundary: an operator keyword should not be followed by any of these
-    sboundary = '(?!'+symbols+')'
+    sboundary = '(?!' + symbols + ')'
 
     # name boundary: a keyword should not be followed by any of these
-    boundary = '(?![\w/])'
+    boundary = r'(?![\w/])'
 
     # koka token abstractions
     tokenType = Name.Attribute
@@ -691,30 +725,30 @@ class KokaLexer(RegexLexer):
 
             # go into type mode
             (r'::?' + sboundary, tokenType, 'type'),
-            (r'(alias)(\s+)([a-z]\w*)?', bygroups(Keyword, Text, tokenTypeDef),
+            (r'(alias)(\s+)([a-z]\w*)?', bygroups(Keyword, Whitespace, tokenTypeDef),
              'alias-type'),
-            (r'(struct)(\s+)([a-z]\w*)?', bygroups(Keyword, Text, tokenTypeDef),
+            (r'(struct)(\s+)([a-z]\w*)?', bygroups(Keyword, Whitespace, tokenTypeDef),
              'struct-type'),
             ((r'(%s)' % '|'.join(typeStartKeywords)) +
-             r'(\s+)([a-z]\w*)?', bygroups(Keyword, Text, tokenTypeDef),
+             r'(\s+)([a-z]\w*)?', bygroups(Keyword, Whitespace, tokenTypeDef),
              'type'),
 
             # special sequences of tokens (we use ?: for non-capturing group as
             # required by 'bygroups')
-            (r'(module)(\s+)(interface\s+)?((?:[a-z]\w*/)*[a-z]\w*)',
-             bygroups(Keyword, Text, Keyword, Name.Namespace)),
+            (r'(module)(\s+)(interface(?=\s))?(\s+)?((?:[a-z]\w*/)*[a-z]\w*)',
+             bygroups(Keyword, Whitespace, Keyword, Whitespace, Name.Namespace)),
             (r'(import)(\s+)((?:[a-z]\w*/)*[a-z]\w*)'
-             r'(?:(\s*)(=)(\s*)((?:qualified\s*)?)'
+             r'(?:(\s*)(=)(\s*)(qualified)?(\s*)'
              r'((?:[a-z]\w*/)*[a-z]\w*))?',
-             bygroups(Keyword, Text, Name.Namespace, Text, Keyword, Text,
-                      Keyword, Name.Namespace)),
+             bygroups(Keyword, Whitespace, Name.Namespace, Whitespace, Keyword, Whitespace,
+                      Keyword, Whitespace, Name.Namespace)),
 
-            (r'(^(?:(?:public|private)\s*)?(?:function|fun|val))'
+            (r'^(public|private)?(\s+)?(function|fun|val)'
              r'(\s+)([a-z]\w*|\((?:' + symbols + r'|/)\))',
-             bygroups(Keyword, Text, Name.Function)),
-            (r'(^(?:(?:public|private)\s*)?external)(\s+)(inline\s+)?'
+             bygroups(Keyword, Whitespace, Keyword, Whitespace, Name.Function)),
+            (r'^(?:(public|private)(?=\s+external))?((?<!^)\s+)?(external)(\s+)(inline(?=\s))?(\s+)?'
              r'([a-z]\w*|\((?:' + symbols + r'|/)\))',
-             bygroups(Keyword, Text, Keyword, Name.Function)),
+             bygroups(Keyword, Whitespace, Keyword, Whitespace, Keyword, Whitespace, Name.Function)),
 
             # keywords
             (r'(%s)' % '|'.join(typekeywords) + boundary, Keyword.Type),
@@ -771,7 +805,7 @@ class KokaLexer(RegexLexer):
             (r'[(\[<]', tokenType, 'type-nested'),
             (r',', tokenType),
             (r'([a-z]\w*)(\s*)(:)(?!:)',
-             bygroups(Name, Text, tokenType)),  # parameter name
+             bygroups(Name, Whitespace, tokenType)),  # parameter name
             include('type-content')
         ],
 
@@ -804,8 +838,8 @@ class KokaLexer(RegexLexer):
 
         # comments and literals
         'whitespace': [
-            (r'\n\s*#.*$', Comment.Preproc),
-            (r'\s+', Text),
+            (r'(\n\s*)(#.*)$', bygroups(Whitespace, Comment.Preproc)),
+            (r'\s+', Whitespace),
             (r'/\*', Comment.Multiline, 'comment'),
             (r'//.*$', Comment.Single)
         ],
