@@ -28,7 +28,13 @@ import traceback
 import threading
 from hashlib import md5
 
-import diaphora
+from idc import *
+from idaapi import *
+from idautils import *
+
+import idaapi
+
+idaapi.require("diaphora")
 
 from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
@@ -38,12 +44,6 @@ from others.tarjan_sort import strongly_connected_components, robust_topological
 
 from jkutils.factor import primesbelow as primes
 from jkutils.graph_hashes import CKoretKaramitasHash
-
-from idc import *
-from idaapi import *
-from idautils import *
-
-import idaapi
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -263,8 +263,14 @@ class CIDAChooser(CDiaphoraChooser):
   def OnDeleteLine(self, items):
     for n in sorted(items, reverse=True):
       if n >= 0:
-        name1 = self.items[n][2]
-        name2 = self.items[n][4]
+        def getItem(index):
+          try:
+            return self.items[n][index]
+          except IndexError:
+            return None
+        
+        name1 = getItem(2)
+        name2 = getItem(4)
 
         del self.items[n]
         
@@ -939,6 +945,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     self.__init__(main_db)
     self.attach_database(diff_db)
+    self.last_diff_db = diff_db
 
     if create_choosers:
       self.create_choosers()
@@ -2342,13 +2349,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       main_db = row["main_db"]
       diff_db = row["diff_db"]
-      if not os.path.exists(main_db):
+      if main_db is None or not os.path.exists(main_db):
         log("Primary database %s not found." % main_db)
         main_db = ask_file(0, main_db, "Select the primary database path")
         if main_db is None:
           return False
 
-      if not os.path.exists(diff_db):
+      if diff_db is None or not os.path.exists(diff_db):
         diff_db = ask_file(0, main_db, "Select the secondary database path")
         if diff_db is None:
           return False
