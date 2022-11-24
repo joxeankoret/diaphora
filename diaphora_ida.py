@@ -2591,10 +2591,6 @@ class CHtmlDiff:
     table-layout: fixed;
     width: 100%;
   }
-  table td {
-    white-space: nowrap;
-    overflow: hidden;
-  }
 
   .diff_add {
     background-color: #aaffaa;

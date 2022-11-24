@@ -302,6 +302,31 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
+  "name":"Same KOKA hash and MD-Index",
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":"""
+     select f.address ea, f.name name1, df.address ea2, df.name name2,
+            'Same KOKA hash and MD-Index' description,
+             f.pseudocode pseudo1, df.pseudocode pseudo2,
+             f.assembly asm1, df.assembly asm2,
+             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+             f.nodes bb1, df.nodes bb2,
+             cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from functions f,
+            diff.functions df
+      where f.kgh_hash = df.kgh_hash
+        and f.md_index = df.md_index
+        and f.nodes = df.nodes
+        and f.nodes >= 4
+        and f.outdegree = df.outdegree
+        and f.indegree  = df.indegree
+        %POSTFIX%
+        """,
+  "flags":0
+})
+
+HEURISTICS.append({
   "name":"Same constants",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
@@ -1279,7 +1304,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 26, 2: 18, 0: 7}))
+  assert(ratios == Counter({1: 27, 2: 18, 0: 7}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():

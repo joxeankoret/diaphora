@@ -44,6 +44,9 @@ try:
 except ImportError:
   is_ida = False
 
+if hasattr(sys, "set_int_max_str_digits"):
+  sys.set_int_max_str_digits(0)
+
 #-------------------------------------------------------------------------------
 VERSION_VALUE = "2.0.8"
 COPYRIGHT_VALUE="Copyright(c) 2015-2021 Joxean Koret"
