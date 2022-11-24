@@ -865,7 +865,14 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     try:
       show_wait_box("Exporting database")
-      self.do_export(crashed_before)
+      try:
+        self.do_export(crashed_before)
+      except:
+        if self.hooks is not None:
+          if 'on_export_crash' in dir(self.hooks):
+            ret = self.hooks.on_export_crash()
+            if not ret:
+              raise
     finally:
       hide_wait_box()
 
