@@ -403,6 +403,7 @@ class CBinDiff:
                 mnemonic text,
                 comment1 text,
                 comment2 text,
+                operand_names text,
                 name text,
                 type text,
                 pseudocomment text,
@@ -699,15 +700,26 @@ class CBinDiff:
       bb_data, bb_relations = props[len(props)-2:]
       instructions_ids = {}
       sql = """insert into main.instructions (address, mnemonic, disasm,
-                                              comment1, comment2, name,
-                                              type, pseudocomment,
-                                              pseudoitp)
-                                values (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                              comment1, comment2, operand_names, name,
+                                              type, pseudocomment, pseudoitp)
+                                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
       self_get_instruction_id = self.get_instruction_id
       cur_execute = cur.execute
       for key in bb_data:
-        for insn in bb_data[key]:
-          addr, mnem, disasm, cmt1, cmt2, name, mtype = insn
+        for instruction in bb_data[key]:
+          instruction_properties = []
+          for instruction_property in instruction:
+            # XXX: Fixme! This is a hack for 64 bit architectures kernels
+            if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+              prop = str(prop)
+            elif type(prop) is bytes:
+              prop = prop.encode("utf-8")
+            if type(instruction_property) is list or type(instruction_property) is set:
+              instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
+            else:
+              instruction_properties.append(instruction_property)
+
+          addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
           db_id = self_get_instruction_id(str(addr))
           if db_id is None:
             pseudocomment = None
@@ -715,7 +727,9 @@ class CBinDiff:
             if addr in self.pseudo_comments:
               pseudocomment, pseudoitp = self.pseudo_comments[addr]
 
-            cur_execute(sql, (str(addr), mnem, disasm, cmt1, cmt2, name, mtype, pseudocomment, pseudoitp))
+            instruction_properties.append(pseudocomment)
+            instruction_properties.append(pseudoitp)
+            cur.execute(sql, instruction_properties)
             db_id = cur.lastrowid
           instructions_ids[addr] = db_id
 
@@ -736,8 +750,8 @@ class CBinDiff:
         bb_ids[ins_ea] = last_bb_id
 
         # Insert relations between basic blocks and instructions
-        for insn in bb_data[key]:
-          ins_id = instructions_ids[insn[0]]
+        for instruction in bb_data[key]:
+          ins_id = instructions_ids[instruction[0]]
           cur_execute(sql2, (last_bb_id, ins_id))
 
       # Insert relations between basic blocks
@@ -1342,7 +1356,7 @@ class CBinDiff:
     """
     if self.all_functions_matched():
       return
-
+    
     cur = self.db_cursor()
     try:
       cur.execute(sql)
@@ -1359,7 +1373,7 @@ class CBinDiff:
     """
     if self.all_functions_matched():
       return
-    
+
     cur = self.db_cursor()
     try:
       cur.execute(sql)

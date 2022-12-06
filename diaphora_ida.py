@@ -1266,13 +1266,18 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, name, mtype, mdis, mcmt, mitp = ins_data2
+    ea2, cmt1, cmt2, operand_names, name, mtype, mdis, mcmt, mitp = ins_data2
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
 
     if cmt2 is not None and get_cmt(ea1, 1) is None:
       set_cmt(ea1, cmt2, 1)
+
+    for operand_name in operand_names:
+      index, name = operand_name
+      if name:
+        ida_bytes.set_forced_operand(ea1, index, name)
 
     if mcmt is not None:
       cfunc = decompile(ea1)
@@ -1327,6 +1332,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     if not ea in import_syms:
       return False
 
+    operand_names = import_syms[ea][3]
+
     # Has cmt1
     if import_syms[ea][1] is not None:
       return True
@@ -1334,6 +1341,12 @@ class CIDABinDiff(diaphora.CBinDiff):
     # Has cmt2
     if import_syms[ea][2] is not None:
       return True
+
+    # Has operand Name
+    operand_names = import_syms[ea][3]
+    for operand_name in operand_names:
+      if operand_name[1] != "":
+        return True
 
     # Has a name
     if import_syms[ea][3] is not None:
@@ -1360,6 +1373,7 @@ class CIDABinDiff(diaphora.CBinDiff):
                    and f.address = ?
                    and (ins.comment1 is not null
                      or ins.comment2 is not null
+                     or ins.operand_names is not null
                      or ins.name is not null
                      or pseudocomment is not null) """
       cur.execute(sql, (str(ea2),))
@@ -1370,7 +1384,7 @@ class CIDABinDiff(diaphora.CBinDiff):
           import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
-        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
+        sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                     from function_bblocks bb,
                          functions f,
                          bb_instructions bbi,
@@ -1384,7 +1398,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operand_names"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
@@ -1805,10 +1819,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         if decoded_size <= 0:
           decoded_size = 1
 
-        for oper in ins.ops:
-          if oper.type == o_imm:
-            if self.is_constant(oper, x) and self.constant_filter(oper.value):
-              constants.append(oper.value)
+
+        for operand in ins.ops:
+          if operand.type == o_imm:
+            if self.is_constant(operand, x) and self.constant_filter(operand.value):
+              constants.append(operand.value)
 
           drefs = list(DataRefsFrom(x))
           if len(drefs) > 0:
@@ -1867,7 +1882,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         ins_cmt1 = GetCommentEx(x, 0)
         ins_cmt2 = GetCommentEx(x, 1)
-        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, tmp_name, tmp_type])
+
+        operands_names = []
+        # save operands_names
+        for index, operand in enumerate(ins.ops):
+          if ida_bytes.is_forced_operand(ins.ip, index):
+            operand_name = ida_bytes.get_forced_operand(ins.ip, index) if ida_bytes.is_forced_operand(ins.ip, index) else ""
+            operands_names.append([index, operand_name])
+
+        instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, operands_names, tmp_name, tmp_type])
 
         switch = get_switch_info(x)
         if switch:
@@ -2356,13 +2379,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       main_db = row["main_db"]
       diff_db = row["diff_db"]
-      if main_db is None or not os.path.exists(main_db):
+      if not os.path.exists(main_db):
         log("Primary database %s not found." % main_db)
         main_db = ask_file(0, main_db, "Select the primary database path")
         if main_db is None:
           return False
 
-      if diff_db is None or not os.path.exists(diff_db):
+      if not os.path.exists(diff_db):
         diff_db = ask_file(0, main_db, "Select the secondary database path")
         if diff_db is None:
           return False
