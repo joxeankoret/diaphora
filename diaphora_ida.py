@@ -45,7 +45,7 @@ from others.tarjan_sort import strongly_connected_components, robust_topological
 from jkutils.factor import primesbelow as primes
 from jkutils.graph_hashes import CKoretKaramitasHash
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 
 #-------------------------------------------------------------------------------
 # Constants unexported in IDA Python
@@ -129,9 +129,11 @@ def load_results():
 #-------------------------------------------------------------------------------
 def import_definitions():
   tmp_diff = diaphora.CIDABinDiff(":memory:")
-  filename = ask_file(0, "*.sqlite", "Select the file to import structures, unions and enumerations from")
+  msg = "Select the file to import structures, unions and enumerations from"
+  filename = ask_file(0, "*.sqlite", msg)
   if filename is not None:
-    if ask_yn(1, "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?") == 1:
+    msg = "HIDECANCEL\nDo you really want to import all structures, unions and enumerations?"
+    if ask_yn(1, msg) == 1:
       tmp_diff.import_definitions_only(filename)
 
 #-------------------------------------------------------------------------------
@@ -157,7 +159,6 @@ class CHtmlViewer(PluginForm):
     self.browser.setLineWrapColumnOrWidth(150)
     self.browser.setHtml(self.text)
     self.browser.setReadOnly(True)
-    self.browser.setFontWeight(12)
     self.layout.addWidget(self.browser)
     self.parent.setLayout(self.layout)
 
@@ -168,18 +169,18 @@ class CHtmlViewer(PluginForm):
 #-------------------------------------------------------------------------------
 class CBasicChooser(Choose):
   def __init__(self, title):
-      Choose.__init__(
-          self,
-          title,
-          [ ["Id",   10 | Choose.CHCOL_PLAIN] ,
-            ["Name", 30 | Choose.CHCOL_PLAIN] ])
-      self.items = []
+    Choose.__init__(
+        self,
+        title,
+        [["Id",   10 | Choose.CHCOL_PLAIN],
+         ["Name", 30 | Choose.CHCOL_PLAIN]])
+    self.items = []
 
   def OnGetSize(self):
-      return len(self.items)
+    return len(self.items)
 
   def OnGetLine(self, n):
-      return self.items[n]
+    return self.items[n]
 
 #-------------------------------------------------------------------------------
 # Hex-Rays finally removed AddCommand(). Now, instead of a 1 line call, we need
@@ -235,8 +236,11 @@ class CIDAChooser(CDiaphoraChooser):
     if title.startswith("Unmatched in"):
       Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose.CH_MULTI)
     else:
-      Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8], ["Name 2", 20],
-                                      ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5], ["Description", 30] ], Choose.CH_MULTI)
+      columns = [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8],
+                  ["Name 2", 20], ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5],
+                  ["Description", 30]
+                ]
+      Choose.__init__(self, title, columns, Choose.CH_MULTI)
 
   def OnSelectLine(self, n):
     item = self.items[n[0]]
@@ -510,7 +514,7 @@ class CBinDiffExporterSetup(Form):
     self.rExperimental.checked = opts.experimental
     self.iMinEA.value = opts.min_ea
     self.iMaxEA.value = opts.max_ea
-    self.rNonIdaSubs.checked = opts.ida_subs == False
+    self.rNonIdaSubs.checked = not opts.ida_subs
     self.rIgnoreSubNames.checked = opts.ignore_sub_names
     self.rIgnoreAllNames.checked = opts.ignore_all_names
     self.rIgnoreSmallFunctions.checked = opts.ignore_small_functions
@@ -590,11 +594,11 @@ class CDiffGraphViewer(GraphViewer):
         self.nodes[key] = self.AddNode([key, self.graph[key]])
 
       for key in self.relations:
-        if not key in self.nodes:
+        if key not in self.nodes:
           self.nodes[key] = self.AddNode([key, [[0, 0, ""]]])
         parent_node = self.nodes[key]
         for child in self.relations[key]:
-          if not child in self.nodes:
+          if child not in self.nodes:
             self.nodes[child] = self.AddNode([child, [[0, 0, ""]]])
           child_node = self.nodes[child]
           self.AddEdge(parent_node, child_node)
@@ -663,7 +667,7 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 class CExternalDiffingDialog(Form):
   """Simple Form to test multilinetext and combo box controls"""
   def __init__(self):
-      Form.__init__(self, r"""STARTITEM 0
+    Form.__init__(self, r"""STARTITEM 0
 BUTTON YES* Diff Pseudo-code
 BUTTON NO Diff Assembler
 External Diffing Tool
@@ -1329,7 +1333,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def row_is_importable(self, ea2, import_syms):
     ea = str(ea2)
-    if not ea in import_syms:
+    if ea not in import_syms:
       return False
 
     operand_names = import_syms[ea][3]
@@ -1699,7 +1703,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       line += ", %s" % op2
     return line
 
-  def read_function(self, f, discard=False):
+  def get_function_names(self, f):
     name = get_func_name(int(f))
     true_name = name
     demangle_named_name = demangle_name(name, INF_SHORT_DN)
@@ -1709,6 +1713,187 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if demangle_named_name is not None:
       name = demangle_named_name
 
+    return name, true_name, demangle_named_name
+
+  def extract_function_callers(self, CodeRefsTo, f, get_func):
+    # Calculate the callers
+    callers = list()
+    for caller in list(CodeRefsTo(f, 0)):
+      caller_func = get_func(caller)
+      if caller_func and caller_func.start_ea not in callers:
+        callers.append(caller_func.start_ea)
+    
+    return callers
+
+  def extract_function_constants(self, ins, x, constants):
+    for operand in ins.ops:
+      if operand.type == o_imm:
+        if self.is_constant(operand, x) and self.constant_filter(operand.value):
+          constants.append(operand.value)
+    
+      drefs = list(DataRefsFrom(x))
+      if len(drefs) > 0:
+        for dref in drefs:
+          if get_func(dref) is None:
+            str_constant = get_strlit_contents(dref, -1, -1)
+            if str_constant is not None:
+              str_constant = str_constant.decode("utf-8", "backslashreplace")
+              if str_constant not in constants:
+                constants.append(str_constant)
+    return constants
+
+  def extract_function_switches(self, x, switches):
+    switch = get_switch_info(x)
+    if switch:
+      switch_cases = switch.get_jtable_size()
+      results = calc_switch_cases(x, switch)
+    
+      if results is not None:
+        # It seems that IDAPython for idaq64 has some bug when reading
+        # switch's cases. Do not attempt to read them if the 'cur_case'
+        # returned object is not iterable.
+        can_iter = False
+        switch_cases_values = set()
+        for idx in range(len(results.cases)):
+          cur_case = results.cases[idx]
+          if not '__iter__' in dir(cur_case):
+            break
+    
+          can_iter |= True
+          for cidx in range(len(cur_case)):
+            case_id = cur_case[cidx]
+            switch_cases_values.add(case_id)
+    
+        if can_iter:
+          switches.append([switch_cases, list(switch_cases_values)])
+
+    return switches
+
+  def extract_function_mdindex(self, bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree):
+    md_index = 0
+    if bb_topological:
+      bb_topo_order = {}
+      for i, scc in enumerate(bb_topological_sorted):
+        for bb in scc:
+          bb_topo_order[bb] = i
+      tuples = []
+      for src, dst in bb_edges:
+        tuples.append((
+            bb_topo_order[bb_topo_num[src]],
+            bb_degree[src][0],
+            bb_degree[src][1],
+            bb_degree[dst][0],
+            bb_degree[dst][1],))
+      rt2, rt3, rt5, rt7 = (decimal.Decimal(p).sqrt() for p in (2, 3, 5, 7))
+      emb_tuples = (sum((z0, z1 * rt2, z2 * rt3, z3 * rt5, z4 * rt7))
+              for z0, z1, z2, z3, z4 in tuples)
+      md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
+      md_index = str(md_index)
+    return md_index
+
+  def extract_function_pseudocode_features(self, f):
+    pseudo = None
+    pseudo_hash1 = None
+    pseudo_hash2 = None
+    pseudo_hash3 = None
+    pseudo_lines = 0
+    pseudocode_primes = None
+    if f in self.pseudo:
+      pseudo = "\n".join(self.pseudo[f])
+      pseudo_lines = len(self.pseudo[f])
+      pseudo_hash1, pseudo_hash2, pseudo_hash3 = self.kfh.hash_bytes(pseudo).split(";")
+      if pseudo_hash1 == "":
+        pseudo_hash1 = None
+      if pseudo_hash2 == "":
+        pseudo_hash2 = None
+      if pseudo_hash3 == "":
+        pseudo_hash3 = None
+      pseudocode_primes = str(self.pseudo_hash[f])
+    return pseudo, pseudo_lines, pseudo_hash1, pseudocode_primes, pseudo_hash2, pseudo_hash3
+
+  def extract_function_assembly_features(self, assembly, f, image_base):
+    asm = []
+    keys = list(assembly.keys())
+    keys.sort()
+    
+    # Collect the ordered list of addresses, as shown in the assembly
+    # viewer (when diffing). It will be extremely useful for importing
+    # stuff later on.
+    assembly_addrs = []
+    
+    # After sorting our the addresses of basic blocks, be sure that the
+    # very first address is always the entry point, no matter at what
+    # address it is.
+    keys.remove(f - image_base)
+    keys.insert(0, f - image_base)
+    for key in keys:
+      for line in assembly[key]:
+        assembly_addrs.append(line[0])
+        asm.append(line[1])
+    asm = "\n".join(asm)
+    return asm, assembly_addrs
+
+  def get_decoded_instruction(self, x):
+    decoded_size, ins = diaphora_decode(x)
+    if ins.ops[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+      decoded_size -= ins.ops[0].offb
+    if ins.ops[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
+      decoded_size -= ins.ops[1].offb
+    if decoded_size <= 0:
+      decoded_size = 1
+    
+    return ins, decoded_size
+
+  def extract_function_topological_information(self, bb_relations, bb_topological):
+    strongly_connected_spp = 0
+    
+    try:
+      strongly_connected = strongly_connected_components(bb_relations)
+      bb_topological_sorted = robust_topological_sort(bb_topological)
+      bb_topological = json.dumps(bb_topological_sorted)
+      strongly_connected_spp = 1
+      for item in strongly_connected:
+        val = len(item)
+        if val > 1:
+          strongly_connected_spp *= self.primes[val]
+    except:
+      # XXX: FIXME: The original implementation that we're using is
+      # recursive and can fail. We really need to create our own non
+      # recursive version.
+      strongly_connected = []
+      bb_topological = None
+    
+    loops = 0
+    for sc in strongly_connected:
+      if len(sc) > 1:
+        loops += 1
+      else:
+        if sc[0] in bb_relations and sc[0] in bb_relations[sc[0]]:
+          loops += 1
+    
+    return bb_topological, bb_topological_sorted, strongly_connected, loops, strongly_connected_spp
+
+  def extract_line_mnem_disasm(self, print_insn_mnem, x, GetDisasm):
+    mnem = print_insn_mnem(x)
+    try:
+      disasm = GetDisasm(x)
+    except UnicodeDecodeError:
+      # This is a workaround for a rare error getting the disassembly for a
+      # line with some UTF-8 characters that Python fails to handle properly
+      disasm = self.get_disasm(x)
+    
+    return mnem, disasm
+
+  def read_function(self, f):
+    """
+    Extract anything and everything we (might) need from a function.
+
+    This is a horribly big (read: huge) function that, from time to time, I try
+    to make a bit smaller. Feel free to do the same...
+    """
+    name, true_name, demangle_named_name = self.get_function_names(f)
+
+    # Call hooks immediately after we have a proper function name
     if self.hooks is not None:
       if 'before_export_function' in dir(self.hooks):
         ret = self.hooks.before_export_function(f, name)
@@ -1764,12 +1949,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     # The callees will be calculated later
     callees = list()
-    # Calculate the callers
-    callers = list()
-    for caller in list(CodeRefsTo(f, 0)):
-      caller_func = get_func(caller)
-      if caller_func and caller_func.start_ea not in callers:
-        callers.append(caller_func.start_ea)
+    callers = self.extract_function_callers(CodeRefsTo, f, get_func)
 
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
@@ -1789,14 +1969,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       bb_topo_num[block_ea] = idx
 
       for x in list(Heads(block.start_ea, block.end_ea)):
-        mnem = print_insn_mnem(x)
-        try:
-          disasm = GetDisasm(x)
-        except UnicodeDecodeError:
-          # This is a workaround for a rare error getting the disassembly for a
-          # line with some UTF-8 characters that Python fails to handle properly
-          disasm = self.get_disasm(x)
-
+        mnem, disasm = self.extract_line_mnem_disasm(print_insn_mnem, x, GetDisasm)
         size += get_item_size(x)
         instructions += 1
 
@@ -1811,29 +1984,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           else:
             assembly[block_ea] = [[x - image_base, "loc_%x:" % x], [x - image_base, disasm]]
 
-        decoded_size, ins = diaphora_decode(x)
-        if ins.ops[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.ops[0].offb
-        if ins.ops[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.ops[1].offb
-        if decoded_size <= 0:
-          decoded_size = 1
-
-
-        for operand in ins.ops:
-          if operand.type == o_imm:
-            if self.is_constant(operand, x) and self.constant_filter(operand.value):
-              constants.append(operand.value)
-
-          drefs = list(DataRefsFrom(x))
-          if len(drefs) > 0:
-            for dref in drefs:
-              if get_func(dref) is None:
-                str_constant = get_strlit_contents(dref, -1, -1)
-                if str_constant is not None:
-                  str_constant = str_constant.decode("utf-8", "backslashreplace")
-                  if str_constant not in constants:
-                    constants.append(str_constant)
+        ins, decoded_size = self.get_decoded_instruction(x)
+        constants = self.extract_function_constants(ins, x, constants)
 
         curr_bytes = get_bytes(x, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
@@ -1892,29 +2044,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
         instructions_data.append([x - image_base, mnem, disasm, ins_cmt1, ins_cmt2, operands_names, tmp_name, tmp_type])
 
-        switch = get_switch_info(x)
-        if switch:
-          switch_cases = switch.get_jtable_size()
-          results = calc_switch_cases(x, switch)
-
-          if results is not None:
-            # It seems that IDAPython for idaq64 has some bug when reading
-            # switch's cases. Do not attempt to read them if the 'cur_case'
-            # returned object is not iterable.
-            can_iter = False
-            switch_cases_values = set()
-            for idx in range(len(results.cases)):
-              cur_case = results.cases[idx]
-              if not '__iter__' in dir(cur_case):
-                break
-
-              can_iter |= True
-              for cidx in range(len(cur_case)):
-                case_id = cur_case[cidx]
-                switch_cases_values.add(case_id)
-
-            if can_iter:
-              switches.append([switch_cases, list(switch_cases_values)])
+        switches = self.extract_function_switches(x, switches)
 
       basic_blocks_data[block_ea] = instructions_data
       bb_relations[block_ea] = []
@@ -1965,51 +2095,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         succ_base = succ_block.start_ea - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
-    strongly_connected_spp = 0
+    topological_data = self.extract_function_topological_information(bb_relations, bb_topological)
+    bb_topological, bb_topological_sorted, strongly_connected, loops, strongly_connected_spp = topological_data
 
+    asm, assembly_addrs = self.extract_function_assembly_features(assembly, f, image_base)
     try:
-      strongly_connected = strongly_connected_components(bb_relations)
-      bb_topological_sorted = robust_topological_sort(bb_topological)
-      bb_topological = json.dumps(bb_topological_sorted)
-      strongly_connected_spp = 1
-      for item in strongly_connected:
-        val = len(item)
-        if val > 1:
-          strongly_connected_spp *= self.primes[val]
+      clean_assembly = self.get_cmp_asm_lines(asm)
     except:
-      # XXX: FIXME: The original implementation that we're using is
-      # recursive and can fail. We really need to create our own non
-      # recursive version.
-      strongly_connected = []
-      bb_topological = None
-
-    loops = 0
-    for sc in strongly_connected:
-      if len(sc) > 1:
-        loops += 1
-      else:
-        if sc[0] in bb_relations and sc[0] in bb_relations[sc[0]]:
-          loops += 1
-
-    asm = []
-    keys = list(assembly.keys())
-    keys.sort()
-
-    # Collect the ordered list of addresses, as shown in the assembly
-    # viewer (when diffing). It will be extremely useful for importing
-    # stuff later on.
-    assembly_addrs = []
-
-    # After sorting our the addresses of basic blocks, be sure that the
-    # very first address is always the entry point, no matter at what
-    # address it is.
-    keys.remove(f - image_base)
-    keys.insert(0, f - image_base)
-    for key in keys:
-      for line in assembly[key]:
-        assembly_addrs.append(line[0])
-        asm.append(line[1])
-    asm = "\n".join(asm)
+      clean_assembly = ""
+      print("Error getting assembly for 0x%x" % f)
 
     cc = edges - nodes + 2
     proto = self.guess_type(f)
@@ -2025,51 +2119,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     function_hash = md5(b"".join(function_hash)).hexdigest()
 
     function_flags = get_func_attr(f, FUNCATTR_FLAGS)
-    pseudo = None
-    pseudo_hash1 = None
-    pseudo_hash2 = None
-    pseudo_hash3 = None
-    pseudo_lines = 0
-    pseudocode_primes = None
-    if f in self.pseudo:
-      pseudo = "\n".join(self.pseudo[f])
-      pseudo_lines = len(self.pseudo[f])
-      pseudo_hash1, pseudo_hash2, pseudo_hash3 = self.kfh.hash_bytes(pseudo).split(";")
-      if pseudo_hash1 == "":
-        pseudo_hash1 = None
-      if pseudo_hash2 == "":
-        pseudo_hash2 = None
-      if pseudo_hash3 == "":
-        pseudo_hash3 = None
-      pseudocode_primes = str(self.pseudo_hash[f])
-
-    try:
-      clean_assembly = self.get_cmp_asm_lines(asm)
-    except:
-      clean_assembly = ""
-      print("Error getting assembly for 0x%x" % f)
-
+    pseudo, pseudo_lines, pseudo_hash1, pseudocode_primes, pseudo_hash2, pseudo_hash3 = self.extract_function_pseudocode_features(f)
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
-    md_index = 0
-    if bb_topological:
-      bb_topo_order = {}
-      for i, scc in enumerate(bb_topological_sorted):
-        for bb in scc:
-          bb_topo_order[bb] = i
-      tuples = []
-      for src, dst in bb_edges:
-        tuples.append((
-            bb_topo_order[bb_topo_num[src]],
-            bb_degree[src][0],
-            bb_degree[src][1],
-            bb_degree[dst][0],
-            bb_degree[dst][1],))
-      rt2, rt3, rt5, rt7 = (decimal.Decimal(p).sqrt() for p in (2, 3, 5, 7))
-      emb_tuples = (sum((z0, z1 * rt2, z2 * rt3, z3 * rt5, z4 * rt7))
-              for z0, z1, z2, z3, z4 in tuples)
-      md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
-      md_index = str(md_index)
+    md_index = self.extract_function_mdindex(bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree)
 
     seg_rva = x - get_segm_start(x)
 
@@ -2458,7 +2511,7 @@ def _diff_or_export(use_ui, **options):
   total_functions = len(list(Functions()))
   if get_idb_path() == "" or total_functions == 0:
     warning("No IDA database opened or no function in the database.\nPlease open an IDA database and create some functions before running this script.")
-    return
+    return None
 
   opts = BinDiffOptions(**options)
 
@@ -2468,19 +2521,19 @@ def _diff_or_export(use_ui, **options):
     x.set_options(opts)
 
     if not x.Execute():
-      return
+      return None
 
     opts = x.get_options()
 
   if opts.file_out == opts.file_in:
     warning("Both databases are the same file!")
-    return
+    return None
   elif opts.file_out == "" or len(opts.file_out) < 5:
     warning("No output database selected or invalid filename. Please select a database file.")
-    return
+    return None
   elif is_ida_file(opts.file_in) or is_ida_file(opts.file_out):
     warning("One of the selected databases is an IDA file. Please select only database files")
-    return
+    return None
 
   export = True
   if os.path.exists(opts.file_out):
@@ -2492,7 +2545,7 @@ def _diff_or_export(use_ui, **options):
       ret = ask_yn(1, "The previous export session crashed. Do you want to resume the previous crashed session?")
       if ret == -1:
         log("Cancelled")
-        return
+        return None
       elif ret == 1:
         resume_crashed = True
 
@@ -2500,7 +2553,7 @@ def _diff_or_export(use_ui, **options):
       ret = ask_yn(0, "Export database already exists. Do you want to overwrite it?")
       if ret == -1:
         log("Cancelled")
-        return
+        return None
 
       if ret == 0:
         export = False

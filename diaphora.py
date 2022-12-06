@@ -303,7 +303,7 @@ class CBinDiff:
       try:
         db.execute("analyze")
       except:
-        pass
+        log("Error analyzing database: %s" % sys.exc_info()[1])
 
   def get_db(self):
     tid = threading.current_thread().ident
@@ -627,7 +627,7 @@ class CBinDiff:
     return rowid
 
   def save_function(self, props):
-    if props == False:
+    if not props:
       log("WARNING: Trying to save a non resolved function?")
       return
 
@@ -839,7 +839,7 @@ class CBinDiff:
     reps = ["\+[a-f0-9A-F]+h\+"]
     for rep in reps:
       tmp = self.re_sub(rep, "+XXXX+", tmp)
-    tmp = self.re_sub("\.\.[a-f0-9A-F]{8}", "XXX", tmp)
+    tmp = self.re_sub(r"\.\.[a-f0-9A-F]{8}", "XXX", tmp)
     
     # Strip any possible remaining white-space character at the end of
     # the cleaned-up instruction

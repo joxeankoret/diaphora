@@ -1251,7 +1251,7 @@ def check_dupes():
     if "name" not in heur:
       print("No 'name' field in heuristic!")
       print(heur)
-      assert(name in heur)
+      assert("name" in dir(heur))
 
     name = heur["name"]
     heurs[name] += 1
@@ -1331,7 +1331,7 @@ def check_field_names():
         if "min" not in heur:
           print("Heuristic of type HEUR_TYPE_RATIO_MAX without a minimum value set!")
           print(heur)
-          assert("min" in heur)
+          assert("min" in dir(heur))
 
       fields.add(field)
 
