@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.apl
     ~~~~~~~~~~~~~~~~~~~
 
     Lexers for APL.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 from pygments.lexer import RegexLexer
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Whitespace
 
 __all__ = ['APLLexer']
 
@@ -23,19 +22,23 @@ class APLLexer(RegexLexer):
     .. versionadded:: 2.0
     """
     name = 'APL'
+    url = 'https://en.m.wikipedia.org/wiki/APL_(programming_language)'
     aliases = ['apl']
-    filenames = ['*.apl']
+    filenames = [
+        '*.apl', '*.aplf', '*.aplo', '*.apln',  
+        '*.aplc', '*.apli', '*.dyalog',
+    ]
 
     tokens = {
         'root': [
             # Whitespace
             # ==========
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             #
             # Comment
             # =======
             # '⍝' is traditional; '#' is supported by GNU APL and NGN (but not Dyalog)
-            (u'[⍝#].*$', Comment.Single),
+            (r'[⍝#].*$', Comment.Single),
             #
             # Strings
             # =======
@@ -46,7 +49,7 @@ class APLLexer(RegexLexer):
             # ===========
             # This token type is used for diamond and parenthesis
             # but not for bracket and ; (see below)
-            (u'[⋄◇()]', Punctuation),
+            (r'[⋄◇()]', Punctuation),
             #
             # Array indexing
             # ==============
@@ -57,45 +60,45 @@ class APLLexer(RegexLexer):
             # Distinguished names
             # ===================
             # following IBM APL2 standard
-            (u'⎕[A-Za-zΔ∆⍙][A-Za-zΔ∆⍙_¯0-9]*', Name.Function),
+            (r'⎕[A-Za-zΔ∆⍙][A-Za-zΔ∆⍙_¯0-9]*', Name.Function),
             #
             # Labels
             # ======
             # following IBM APL2 standard
-            # (u'[A-Za-zΔ∆⍙][A-Za-zΔ∆⍙_¯0-9]*:', Name.Label),
+            # (r'[A-Za-zΔ∆⍙][A-Za-zΔ∆⍙_¯0-9]*:', Name.Label),
             #
             # Variables
             # =========
-            # following IBM APL2 standard
-            (u'[A-Za-zΔ∆⍙][A-Za-zΔ∆⍙_¯0-9]*', Name.Variable),
+            # following IBM APL2 standard (with a leading _ ok for GNU APL and Dyalog)
+            (r'[A-Za-zΔ∆⍙_][A-Za-zΔ∆⍙_¯0-9]*', Name.Variable),     
             #
             # Numbers
             # =======
-            (u'¯?(0[Xx][0-9A-Fa-f]+|[0-9]*\.?[0-9]+([Ee][+¯]?[0-9]+)?|¯|∞)'
-             u'([Jj]¯?(0[Xx][0-9A-Fa-f]+|[0-9]*\.?[0-9]+([Ee][+¯]?[0-9]+)?|¯|∞))?',
+            (r'¯?(0[Xx][0-9A-Fa-f]+|[0-9]*\.?[0-9]+([Ee][+¯]?[0-9]+)?|¯|∞)'
+             r'([Jj]¯?(0[Xx][0-9A-Fa-f]+|[0-9]*\.?[0-9]+([Ee][+¯]?[0-9]+)?|¯|∞))?',
              Number),
             #
             # Operators
             # ==========
-            (u'[\.\\\/⌿⍀¨⍣⍨⍠⍤∘]', Name.Attribute),  # closest token type
-            (u'[+\-×÷⌈⌊∣|⍳?*⍟○!⌹<≤=>≥≠≡≢∊⍷∪∩~∨∧⍱⍲⍴,⍪⌽⊖⍉↑↓⊂⊃⌷⍋⍒⊤⊥⍕⍎⊣⊢⍁⍂≈⌸⍯↗]',
+            (r'[\.\\\/⌿⍀¨⍣⍨⍠⍤∘⌸&⌶@⌺⍥⍛⍢]', Name.Attribute),  # closest token type
+            (r'[+\-×÷⌈⌊∣|⍳?*⍟○!⌹<≤=>≥≠≡≢∊⍷∪∩~∨∧⍱⍲⍴,⍪⌽⊖⍉↑↓⊂⊃⌷⍋⍒⊤⊥⍕⍎⊣⊢⍁⍂≈⌸⍯↗⊆⊇⍸√⌾…⍮]',
              Operator),
             #
             # Constant
             # ========
-            (u'⍬', Name.Constant),
+            (r'⍬', Name.Constant),
             #
             # Quad symbol
             # ===========
-            (u'[⎕⍞]', Name.Variable.Global),
+            (r'[⎕⍞]', Name.Variable.Global),
             #
             # Arrows left/right
             # =================
-            (u'[←→]', Keyword.Declaration),
+            (r'[←→]', Keyword.Declaration),
             #
             # D-Fn
             # ====
-            (u'[⍺⍵⍶⍹∇:]', Name.Builtin.Pseudo),
+            (r'[⍺⍵⍶⍹∇:]', Name.Builtin.Pseudo),
             (r'[{}]', Keyword.Type),
         ],
     }

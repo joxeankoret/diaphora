@@ -1,15 +1,12 @@
-# -*- coding: utf-8 -*-
 """
     pygments.formatters.terminal
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     Formatter for terminal output with ANSI sequences.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
-
-import sys
 
 from pygments.formatter import Formatter
 from pygments.token import Keyword, Name, Comment, String, Error, \
@@ -26,32 +23,33 @@ __all__ = ['TerminalFormatter']
 TERMINAL_COLORS = {
     Token:              ('',            ''),
 
-    Whitespace:         ('lightgray',   'darkgray'),
-    Comment:            ('lightgray',   'darkgray'),
-    Comment.Preproc:    ('teal',        'turquoise'),
-    Keyword:            ('darkblue',    'blue'),
-    Keyword.Type:       ('teal',        'turquoise'),
-    Operator.Word:      ('purple',      'fuchsia'),
-    Name.Builtin:       ('teal',        'turquoise'),
-    Name.Function:      ('darkgreen',   'green'),
-    Name.Namespace:     ('_teal_',      '_turquoise_'),
-    Name.Class:         ('_darkgreen_', '_green_'),
-    Name.Exception:     ('teal',        'turquoise'),
-    Name.Decorator:     ('darkgray',    'lightgray'),
-    Name.Variable:      ('darkred',     'red'),
-    Name.Constant:      ('darkred',     'red'),
-    Name.Attribute:     ('teal',        'turquoise'),
-    Name.Tag:           ('blue',        'blue'),
-    String:             ('brown',       'brown'),
-    Number:             ('darkblue',    'blue'),
+    Whitespace:         ('gray',   'brightblack'),
+    Comment:            ('gray',   'brightblack'),
+    Comment.Preproc:    ('cyan',        'brightcyan'),
+    Keyword:            ('blue',    'brightblue'),
+    Keyword.Type:       ('cyan',        'brightcyan'),
+    Operator.Word:      ('magenta',      'brightmagenta'),
+    Name.Builtin:       ('cyan',        'brightcyan'),
+    Name.Function:      ('green',   'brightgreen'),
+    Name.Namespace:     ('_cyan_',      '_brightcyan_'),
+    Name.Class:         ('_green_', '_brightgreen_'),
+    Name.Exception:     ('cyan',        'brightcyan'),
+    Name.Decorator:     ('brightblack',    'gray'),
+    Name.Variable:      ('red',     'brightred'),
+    Name.Constant:      ('red',     'brightred'),
+    Name.Attribute:     ('cyan',        'brightcyan'),
+    Name.Tag:           ('brightblue',        'brightblue'),
+    String:             ('yellow',       'yellow'),
+    Number:             ('blue',    'brightblue'),
 
-    Generic.Deleted:    ('red',        'red'),
-    Generic.Inserted:   ('darkgreen',  'green'),
+    Generic.Deleted:    ('brightred',        'brightred'),
+    Generic.Inserted:   ('green',  'brightgreen'),
     Generic.Heading:    ('**',         '**'),
-    Generic.Subheading: ('*purple*',   '*fuchsia*'),
-    Generic.Error:      ('red',        'red'),
+    Generic.Subheading: ('*magenta*',   '*brightmagenta*'),
+    Generic.Prompt:     ('**',         '**'),
+    Generic.Error:      ('brightred',        'brightred'),
 
-    Error:              ('_red_',      '_red_'),
+    Error:              ('_brightred_',      '_brightred_'),
 }
 
 
@@ -91,61 +89,39 @@ class TerminalFormatter(Formatter):
         self._lineno = 0
 
     def format(self, tokensource, outfile):
-        # hack: if the output is a terminal and has an encoding set,
-        # use that to avoid unicode encode problems
-        if not self.encoding and hasattr(outfile, "encoding") and \
-           hasattr(outfile, "isatty") and outfile.isatty() and \
-           sys.version_info < (3,):
-            self.encoding = outfile.encoding
         return Formatter.format(self, tokensource, outfile)
 
     def _write_lineno(self, outfile):
         self._lineno += 1
-        outfile.write("\n%04d: " % self._lineno)
+        outfile.write("%s%04d: " % (self._lineno != 1 and '\n' or '', self._lineno))
 
-    def _format_unencoded_with_lineno(self, tokensource, outfile):
-        self._write_lineno(outfile)
-
-        for ttype, value in tokensource:
-            if value.endswith("\n"):
-                self._write_lineno(outfile)
-                value = value[:-1]
-            color = self.colorscheme.get(ttype)
-            while color is None:
-                ttype = ttype[:-1]
-                color = self.colorscheme.get(ttype)
-            if color:
-                color = color[self.darkbg]
-                spl = value.split('\n')
-                for line in spl[:-1]:
-                    self._write_lineno(outfile)
-                    if line:
-                        outfile.write(ansiformat(color, line[:-1]))
-                if spl[-1]:
-                    outfile.write(ansiformat(color, spl[-1]))
-            else:
-                outfile.write(value)
-
-        outfile.write("\n")
+    def _get_color(self, ttype):
+        # self.colorscheme is a dict containing usually generic types, so we
+        # have to walk the tree of dots.  The base Token type must be a key,
+        # even if it's empty string, as in the default above.
+        colors = self.colorscheme.get(ttype)
+        while colors is None:
+            ttype = ttype.parent
+            colors = self.colorscheme.get(ttype)
+        return colors[self.darkbg]
 
     def format_unencoded(self, tokensource, outfile):
         if self.linenos:
-            self._format_unencoded_with_lineno(tokensource, outfile)
-            return
+            self._write_lineno(outfile)
 
         for ttype, value in tokensource:
-            color = self.colorscheme.get(ttype)
-            while color is None:
-                ttype = ttype[:-1]
-                color = self.colorscheme.get(ttype)
-            if color:
-                color = color[self.darkbg]
-                spl = value.split('\n')
-                for line in spl[:-1]:
-                    if line:
-                        outfile.write(ansiformat(color, line))
-                    outfile.write('\n')
-                if spl[-1]:
-                    outfile.write(ansiformat(color, spl[-1]))
-            else:
-                outfile.write(value)
+            color = self._get_color(ttype)
+
+            for line in value.splitlines(True):
+                if color:
+                    outfile.write(ansiformat(color, line.rstrip('\n')))
+                else:
+                    outfile.write(line.rstrip('\n'))
+                if line.endswith('\n'):
+                    if self.linenos:
+                        self._write_lineno(outfile)
+                    else:
+                        outfile.write('\n')
+
+        if self.linenos:
+            outfile.write("\n")

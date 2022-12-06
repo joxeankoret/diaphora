@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     pygments.sphinxext
     ~~~~~~~~~~~~~~~~~~
@@ -6,17 +5,15 @@
     Sphinx extension to generate automatic documentation of lexers,
     formatters and filters.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
-
-from __future__ import print_function
 
 import sys
 
 from docutils import nodes
 from docutils.statemachine import ViewList
-from sphinx.util.compat import Directive
+from docutils.parsers.rst import Directive
 from sphinx.util.nodes import nested_parse_with_titles
 
 
@@ -56,6 +53,7 @@ FILTERDOC = '''
     %s
 
 '''
+
 
 class PygmentsDoc(Directive):
     """
@@ -113,6 +111,8 @@ class PygmentsDoc(Directive):
                 moduledocstrings[module] = moddoc
 
         for module, lexers in sorted(modules.items(), key=lambda x: x[0]):
+            if moduledocstrings[module] is None:
+                raise Exception("Missing docstring for %s" % (module,))
             heading = moduledocstrings[module].splitlines()[4].strip().rstrip('.')
             out.append(MODULEDOC % (module, heading, '-'*len(heading)))
             for data in lexers:

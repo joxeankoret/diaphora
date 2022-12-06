@@ -1,32 +1,32 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.ambient
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for AmbientTalk language.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 
-from pygments.lexer import RegexLexer, include, words
+from pygments.lexer import RegexLexer, include, words, bygroups
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Whitespace
 
 __all__ = ['AmbientTalkLexer']
 
 
 class AmbientTalkLexer(RegexLexer):
     """
-    Lexer for `AmbientTalk <https://code.google.com/p/ambienttalk>`_ source code.
+    Lexer for AmbientTalk source code.
 
     .. versionadded:: 2.0
     """
     name = 'AmbientTalk'
+    url = 'https://code.google.com/p/ambienttalk'
     filenames = ['*.at']
-    aliases = ['at', 'ambienttalk', 'ambienttalk/2']
+    aliases = ['ambienttalk', 'ambienttalk/2', 'at']
     mimetypes = ['text/x-ambienttalk']
 
     flags = re.MULTILINE | re.DOTALL
@@ -37,14 +37,14 @@ class AmbientTalkLexer(RegexLexer):
                      'mirroredBy:', 'is:'))
     tokens = {
         'root': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'//.*?\n', Comment.Single),
             (r'/\*.*?\*/', Comment.Multiline),
             (r'(def|deftype|import|alias|exclude)\b', Keyword),
             (builtin, Name.Builtin),
             (r'(true|false|nil)\b', Keyword.Constant),
             (r'(~|lobby|jlobby|/)\.', Keyword.Constant, 'namespace'),
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
             (r'\|', Punctuation, 'arglist'),
             (r'<:|[*^!%&<>+=,./?-]|:=', Operator),
             (r"`[a-zA-Z_]\w*", String.Symbol),
@@ -70,7 +70,7 @@ class AmbientTalkLexer(RegexLexer):
         ],
         'arglist': [
             (r'\|', Punctuation, '#pop'),
-            (r'\s*(,)\s*', Punctuation),
+            (r'(\s*)(,)(\s*)', bygroups(Whitespace, Punctuation, Whitespace)),
             (r'[a-zA-Z_]\w*', Name.Variable),
         ],
     }

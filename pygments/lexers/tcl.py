@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.tcl
     ~~~~~~~~~~~~~~~~~~~
 
     Lexers for Tcl and related languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 from pygments.lexer import RegexLexer, include, words
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number
+    Number, Whitespace
 from pygments.util import shebang_matches
 
 __all__ = ['TclLexer']
@@ -42,6 +41,7 @@ class TclLexer(RegexLexer):
         'subst', 'tell', 'time', 'tm', 'unknown', 'unload'), prefix=r'\b', suffix=r'\b')
 
     name = 'Tcl'
+    url = 'https://www.tcl.tk/about/language.html'
     aliases = ['tcl']
     filenames = ['*.tcl', '*.rvt']
     mimetypes = ['text/x-tcl', 'text/x-script.tcl', 'application/x-tcl']
@@ -80,13 +80,14 @@ class TclLexer(RegexLexer):
             (r'!=|==|<<|>>|<=|>=|&&|\|\||\*\*|[-+~!*/%<>&^|?:]', Operator),
         ],
         'data': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'0x[a-fA-F0-9]+', Number.Hex),
             (r'0[0-7]+', Number.Oct),
             (r'\d+\.\d+', Number.Float),
             (r'\d+', Number.Integer),
-            (r'\$([\w.:-]+)', Name.Variable),
-            (r'([\w.:-]+)', Text),
+            (r'\$[\w.:-]+', Name.Variable),
+            (r'\$\{[\w.:-]+\}', Name.Variable),
+            (r'[\w.,@:-]+', Text),
         ],
         'params': [
             (r';', Keyword, '#pop'),

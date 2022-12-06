@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.algebra
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for computer algebra systems.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -13,18 +12,19 @@ import re
 
 from pygments.lexer import RegexLexer, bygroups, words
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Whitespace
 
-__all__ = ['GAPLexer', 'MathematicaLexer', 'MuPADLexer']
+__all__ = ['GAPLexer', 'MathematicaLexer', 'MuPADLexer', 'BCLexer']
 
 
 class GAPLexer(RegexLexer):
     """
-    For `GAP <http://www.gap-system.org>`_ source code.
+    For GAP source code.
 
     .. versionadded:: 2.0
     """
     name = 'GAP'
+    url = 'http://www.gap-system.org'
     aliases = ['gap']
     filenames = ['*.g', '*.gd', '*.gi', '*.gap']
 
@@ -65,17 +65,37 @@ class GAPLexer(RegexLexer):
             (r'[0-9]+(?:\.[0-9]*)?(?:e[0-9]+)?', Number),
             (r'\.[0-9]+(?:e[0-9]+)?', Number),
             (r'.', Text)
-        ]
+        ],
     }
+
+    def analyse_text(text):
+        score = 0.0
+
+        # Declaration part
+        if re.search(
+            r"(InstallTrueMethod|Declare(Attribute|Category|Filter|Operation" +
+            r"|GlobalFunction|Synonym|SynonymAttr|Property))", text
+        ):
+            score += 0.7
+
+        # Implementation part
+        if re.search(
+            r"(DeclareRepresentation|Install(GlobalFunction|Method|" +
+            r"ImmediateMethod|OtherMethod)|New(Family|Type)|Objectify)", text
+        ):
+            score += 0.7
+
+        return min(score, 1.0)
 
 
 class MathematicaLexer(RegexLexer):
     """
-    Lexer for `Mathematica <http://www.wolfram.com/mathematica/>`_ source code.
+    Lexer for Mathematica source code.
 
     .. versionadded:: 2.0
     """
     name = 'Mathematica'
+    url = 'http://www.wolfram.com/mathematica/'
     aliases = ['mathematica', 'mma', 'nb']
     filenames = ['*.nb', '*.cdf', '*.nbp', '*.ma']
     mimetypes = ['application/mathematica',
@@ -104,9 +124,9 @@ class MathematicaLexer(RegexLexer):
             (r'#\d*', Name.Variable),
             (r'([a-zA-Z]+[a-zA-Z0-9]*)', Name),
 
-            (r'-?[0-9]+\.[0-9]*', Number.Float),
-            (r'-?[0-9]*\.[0-9]+', Number.Float),
-            (r'-?[0-9]+', Number.Integer),
+            (r'-?\d+\.\d*', Number.Float),
+            (r'-?\d*\.\d+', Number.Float),
+            (r'-?\d+', Number.Integer),
 
             (words(operators), Operator),
             (words(punctuation), Punctuation),
@@ -118,12 +138,13 @@ class MathematicaLexer(RegexLexer):
 
 class MuPADLexer(RegexLexer):
     """
-    A `MuPAD <http://www.mupad.com>`_ lexer.
+    A MuPAD lexer.
     Contributed by Christopher Creutzig <christopher@creutzig.de>.
 
     .. versionadded:: 0.8
     """
     name = 'MuPAD'
+    url = 'http://www.mupad.com'
     aliases = ['mupad']
     filenames = ['*.mu']
 
@@ -176,12 +197,48 @@ class MuPADLexer(RegexLexer):
               (?:::[a-zA-Z_#][\w#]*|`[^`]*`)*''', Name.Variable),
             (r'[0-9]+(?:\.[0-9]*)?(?:e[0-9]+)?', Number),
             (r'\.[0-9]+(?:e[0-9]+)?', Number),
+            (r'\s+', Whitespace),
             (r'.', Text)
         ],
         'comment': [
-            (r'[^*/]', Comment.Multiline),
+            (r'[^/*]+', Comment.Multiline),
             (r'/\*', Comment.Multiline, '#push'),
             (r'\*/', Comment.Multiline, '#pop'),
             (r'[*/]', Comment.Multiline)
-        ]
+        ],
+    }
+
+
+class BCLexer(RegexLexer):
+    """
+    A BC lexer.
+
+    .. versionadded:: 2.1
+    """
+    name = 'BC'
+    url = 'https://www.gnu.org/software/bc/'
+    aliases = ['bc']
+    filenames = ['*.bc']
+
+    tokens = {
+        'root': [
+            (r'/\*', Comment.Multiline, 'comment'),
+            (r'"(?:[^"\\]|\\.)*"', String),
+            (r'[{}();,]', Punctuation),
+            (words(('if', 'else', 'while', 'for', 'break', 'continue',
+                    'halt', 'return', 'define', 'auto', 'print', 'read',
+                    'length', 'scale', 'sqrt', 'limits', 'quit',
+                    'warranty'), suffix=r'\b'), Keyword),
+            (r'\+\+|--|\|\||&&|'
+             r'([-<>+*%\^/!=])=?', Operator),
+            # bc doesn't support exponential
+            (r'[0-9]+(\.[0-9]*)?', Number),
+            (r'\.[0-9]+', Number),
+            (r'.', Text)
+        ],
+        'comment': [
+            (r'[^*/]+', Comment.Multiline),
+            (r'\*/', Comment.Multiline, '#pop'),
+            (r'[*/]', Comment.Multiline)
+        ],
     }

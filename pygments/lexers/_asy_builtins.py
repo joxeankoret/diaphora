@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers._asy_builtins
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -10,11 +9,11 @@
     TODO: perl/python script in Asymptote SVN similar to asy-list.pl but only
     for function and variable names.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
-ASYFUNCNAME = set((
+ASYFUNCNAME = {
     'AND',
     'Arc',
     'ArcArrow',
@@ -1038,9 +1037,9 @@ ASYFUNCNAME = set((
     'ztick',
     'ztick3',
     'ztrans'
-))
+}
 
-ASYVARNAME = set((
+ASYVARNAME = {
     'AliceBlue',
     'Align',
     'Allow',
@@ -1642,4 +1641,4 @@ ASYVARNAME = set((
     'ylabelwidth',
     'zerotickfuzz',
     'zerowinding'
-))
+}

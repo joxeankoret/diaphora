@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     pygments.regexopt
     ~~~~~~~~~~~~~~~~~
@@ -6,7 +5,7 @@
     An algorithm that generates optimized regexes for matching long lists of
     literal strings.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -16,7 +15,7 @@ from os.path import commonprefix
 from itertools import groupby
 from operator import itemgetter
 
-CS_ESCAPE = re.compile(r'[\^\\\-\]]')
+CS_ESCAPE = re.compile(r'[\[\^\\\-\]]')
 FIRST_ELEMENT = itemgetter(0)
 
 
@@ -54,7 +53,7 @@ def regex_opt_inner(strings, open_paren):
                 return open_paren + regex_opt_inner(rest, '') + '|' \
                     + make_charset(oneletter) + close_paren
             # print '-> only 1-character'
-            return make_charset(oneletter)
+            return open_paren + make_charset(oneletter) + close_paren
     prefix = commonprefix(strings)
     if prefix:
         plen = len(prefix)

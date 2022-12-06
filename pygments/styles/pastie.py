@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.pastie
     ~~~~~~~~~~~~~~~~~~~~~~
@@ -7,7 +6,7 @@
 
     .. _pastie: http://pastie.caboo.se/
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -20,8 +19,6 @@ class PastieStyle(Style):
     """
     Style similar to the pastie default style.
     """
-
-    default_style = ''
 
     styles = {
         Whitespace:             '#bbbbbb',

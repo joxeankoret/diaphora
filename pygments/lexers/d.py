@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.d
     ~~~~~~~~~~~~~~~~~
 
     Lexers for D languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
-from pygments.lexer import RegexLexer, include, words
+from pygments.lexer import RegexLexer, include, words, bygroups
 from pygments.token import Text, Comment, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Whitespace
 
 __all__ = ['DLexer', 'CrocLexer', 'MiniDLexer']
 
@@ -23,17 +22,18 @@ class DLexer(RegexLexer):
     .. versionadded:: 1.2
     """
     name = 'D'
+    url = 'https://dlang.org/'
     filenames = ['*.d', '*.di']
     aliases = ['d']
     mimetypes = ['text/x-dsrc']
 
     tokens = {
         'root': [
-            (r'\n', Text),
-            (r'\s+', Text),
+            (r'\n', Whitespace),
+            (r'\s+', Whitespace),
             # (r'\\\n', Text), # line continuations
             # Comments
-            (r'//(.*?)\n', Comment.Single),
+            (r'(//.*?)(\n)', bygroups(Comment.Single, Whitespace)),
             (r'/(\\\n)?[*](.|\n)*?[*](\\\n)?/', Comment.Multiline),
             (r'/\+', Comment.Multiline, 'nested_comment'),
             # Keywords
@@ -47,11 +47,16 @@ class DLexer(RegexLexer):
                 'module', 'new', 'nothrow', 'out', 'override', 'package', 'pragma',
                 'private', 'protected', 'public', 'pure', 'ref', 'return', 'scope',
                 'shared', 'static', 'struct', 'super', 'switch', 'synchronized',
-                'template', 'this', 'throw', 'try', 'typedef', 'typeid', 'typeof',
+                'template', 'this', 'throw', 'try', 'typeid', 'typeof',
                 'union', 'unittest', 'version', 'volatile', 'while', 'with',
                 '__gshared', '__traits', '__vector', '__parameters'),
                 suffix=r'\b'),
              Keyword),
+            (words((
+                # Removed in 2.072
+                'typedef', ),
+                suffix=r'\b'),
+             Keyword.Removed),
             (words((
                 'bool', 'byte', 'cdouble', 'cent', 'cfloat', 'char', 'creal',
                 'dchar', 'double', 'float', 'idouble', 'ifloat', 'int', 'ireal',
@@ -60,9 +65,9 @@ class DLexer(RegexLexer):
              Keyword.Type),
             (r'(false|true|null)\b', Keyword.Constant),
             (words((
-                '__FILE__', '__MODULE__', '__LINE__', '__FUNCTION__', '__PRETTY_FUNCTION__'
-                '', '__DATE__', '__EOF__', '__TIME__', '__TIMESTAMP__', '__VENDOR__',
-                '__VERSION__'), suffix=r'\b'),
+                '__FILE__', '__FILE_FULL_PATH__', '__MODULE__', '__LINE__', '__FUNCTION__',
+                '__PRETTY_FUNCTION__', '__DATE__', '__EOF__', '__TIME__', '__TIMESTAMP__',
+                '__VENDOR__', '__VERSION__'), suffix=r'\b'),
              Keyword.Pseudo),
             (r'macro\b', Keyword.Reserved),
             (r'(string|wstring|dstring|size_t|ptrdiff_t)\b', Name.Builtin),
@@ -93,7 +98,7 @@ class DLexer(RegexLexer):
             # -- AlternateWysiwygString
             (r'`[^`]*`[cwd]?', String),
             # -- DoubleQuotedString
-            (r'"(\\\\|\\"|[^"])*"[cwd]?', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"[cwd]?', String),
             # -- EscapeSequence
             (r"\\(['\"?\\abfnrtv]|x[0-9a-fA-F]{2}|[0-7]{1,3}"
              r"|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|&\w+;)",
@@ -118,7 +123,8 @@ class DLexer(RegexLexer):
             # Identifier
             (r'[a-zA-Z_]\w*', Name),
             # Line
-            (r'#line\s.*\n', Comment.Special),
+            (r'(#line)(\s)(.*)(\n)', bygroups(Comment.Special, Whitespace,
+                Comment.Special, Whitespace)),
         ],
         'nested_comment': [
             (r'[^+/]+', Comment.Multiline),
@@ -181,19 +187,20 @@ class DLexer(RegexLexer):
 
 class CrocLexer(RegexLexer):
     """
-    For `Croc <http://jfbillingsley.com/croc>`_ source.
+    For Croc source.
     """
     name = 'Croc'
+    url = 'http://jfbillingsley.com/croc'
     filenames = ['*.croc']
     aliases = ['croc']
     mimetypes = ['text/x-crocsrc']
 
     tokens = {
         'root': [
-            (r'\n', Text),
-            (r'\s+', Text),
+            (r'\n', Whitespace),
+            (r'\s+', Whitespace),
             # Comments
-            (r'//(.*?)\n', Comment.Single),
+            (r'(//.*?)(\n)', bygroups(Comment.Single, Whitespace)),
             (r'/\*', Comment.Multiline, 'nestedcomment'),
             # Keywords
             (words((
@@ -224,7 +231,7 @@ class CrocLexer(RegexLexer):
             (r'@`(``|[^`])*`', String),
             (r"@'(''|[^'])*'", String),
             # -- DoubleQuotedString
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
             # Tokens
             (r'(~=|\^=|%=|\*=|==|!=|>>>=|>>>|>>=|>>|>=|<=>|\?=|-\>'
              r'|<<=|<<|<=|\+\+|\+=|--|-=|\|\||\|=|&&|&=|\.\.|/=)'

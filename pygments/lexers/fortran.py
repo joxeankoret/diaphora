@@ -1,21 +1,20 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.fortran
     ~~~~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Fortran languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 
-from pygments.lexer import RegexLexer, include, words
+from pygments.lexer import RegexLexer, bygroups, include, words, using, default
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation
+    Number, Punctuation, Generic
 
-__all__ = ['FortranLexer']
+__all__ = ['FortranLexer', 'FortranFixedLexer']
 
 
 class FortranLexer(RegexLexer):
@@ -25,8 +24,9 @@ class FortranLexer(RegexLexer):
     .. versionadded:: 0.10
     """
     name = 'Fortran'
-    aliases = ['fortran']
-    filenames = ['*.f', '*.f90', '*.F', '*.F90']
+    url = 'https://fortran-lang.org/'
+    aliases = ['fortran', 'f90']
+    filenames = ['*.f03', '*.f90', '*.F03', '*.F90']
     mimetypes = ['text/x-fortran']
     flags = re.IGNORECASE | re.MULTILINE
 
@@ -45,25 +45,32 @@ class FortranLexer(RegexLexer):
             include('core'),
             (r'[a-z][\w$]*', Name),
             include('nums'),
-            (r'[\s]+', Text),
+            (r'[\s]+', Text.Whitespace),
         ],
         'core': [
             # Statements
+
+            (r'\b(DO)(\s+)(CONCURRENT)\b', bygroups(Keyword, Text.Whitespace, Keyword)),
+            (r'\b(GO)(\s*)(TO)\b', bygroups(Keyword, Text.Whitespace, Keyword)),
+
             (words((
                 'ABSTRACT', 'ACCEPT', 'ALL', 'ALLSTOP', 'ALLOCATABLE', 'ALLOCATE',
                 'ARRAY', 'ASSIGN', 'ASSOCIATE', 'ASYNCHRONOUS', 'BACKSPACE', 'BIND',
                 'BLOCK', 'BLOCKDATA', 'BYTE', 'CALL', 'CASE', 'CLASS', 'CLOSE',
-                'CODIMENSION', 'COMMON', 'CONCURRRENT', 'CONTIGUOUS', 'CONTAINS',
+                'CODIMENSION', 'COMMON', 'CONTIGUOUS', 'CONTAINS',
                 'CONTINUE', 'CRITICAL', 'CYCLE', 'DATA', 'DEALLOCATE', 'DECODE',
                 'DEFERRED', 'DIMENSION', 'DO', 'ELEMENTAL', 'ELSE', 'ENCODE', 'END',
-                'ENTRY', 'ENUM', 'ENUMERATOR', 'EQUIVALENCE', 'EXIT', 'EXTENDS',
-                'EXTERNAL', 'EXTRINSIC', 'FILE', 'FINAL', 'FORALL', 'FORMAT',
-                'FUNCTION', 'GENERIC', 'GOTO', 'IF', 'IMAGES', 'IMPLICIT',
+                'ENDASSOCIATE', 'ENDBLOCK', 'ENDDO', 'ENDENUM', 'ENDFORALL',
+                'ENDFUNCTION',  'ENDIF', 'ENDINTERFACE', 'ENDMODULE', 'ENDPROGRAM',
+                'ENDSELECT', 'ENDSUBMODULE', 'ENDSUBROUTINE', 'ENDTYPE', 'ENDWHERE',
+                'ENTRY', 'ENUM', 'ENUMERATOR', 'EQUIVALENCE', 'ERROR STOP', 'EXIT',
+                'EXTENDS', 'EXTERNAL', 'EXTRINSIC', 'FILE', 'FINAL', 'FORALL', 'FORMAT',
+                'FUNCTION', 'GENERIC', 'IF', 'IMAGES', 'IMPLICIT',
                 'IMPORT', 'IMPURE', 'INCLUDE', 'INQUIRE', 'INTENT', 'INTERFACE',
                 'INTRINSIC', 'IS', 'LOCK', 'MEMORY', 'MODULE', 'NAMELIST', 'NULLIFY',
-                'NONE', 'NON_INTRINSIC', 'NON_OVERRIDABLE', 'NOPASS', 'OPEN', 'OPTIONAL',
-                'OPTIONS', 'PARAMETER', 'PASS', 'PAUSE', 'POINTER', 'PRINT', 'PRIVATE',
-                'PROGRAM', 'PROCEDURE', 'PROTECTED', 'PUBLIC', 'PURE', 'READ',
+                'NONE', 'NON_INTRINSIC', 'NON_OVERRIDABLE', 'NOPASS', 'ONLY', 'OPEN', 
+                'OPTIONAL', 'OPTIONS', 'PARAMETER', 'PASS', 'PAUSE', 'POINTER', 'PRINT', 
+                'PRIVATE', 'PROGRAM', 'PROCEDURE', 'PROTECTED', 'PUBLIC', 'PURE', 'READ',
                 'RECURSIVE', 'RESULT', 'RETURN', 'REWIND', 'SAVE', 'SELECT', 'SEQUENCE',
                 'STOP', 'SUBMODULE', 'SUBROUTINE', 'SYNC', 'SYNCALL', 'SYNCIMAGES',
                 'SYNCMEMORY', 'TARGET', 'THEN', 'TYPE', 'UNLOCK', 'USE', 'VALUE',
@@ -73,13 +80,14 @@ class FortranLexer(RegexLexer):
             # Data Types
             (words((
                 'CHARACTER', 'COMPLEX', 'DOUBLE PRECISION', 'DOUBLE COMPLEX', 'INTEGER',
-                'LOGICAL', 'REAL', 'C_INT', 'C_SHORT', 'C_LONG', 'C_LONG_LONG', 'C_SIGNED_CHAR',
-                'C_SIZE_T', 'C_INT8_T', 'C_INT16_T', 'C_INT32_T', 'C_INT64_T', 'C_INT_LEAST8_T',
-                'C_INT_LEAST16_T', 'C_INT_LEAST32_T', 'C_INT_LEAST64_T', 'C_INT_FAST8_T',
-                'C_INT_FAST16_T', 'C_INT_FAST32_T', 'C_INT_FAST64_T', 'C_INTMAX_T',
-                'C_INTPTR_T', 'C_FLOAT', 'C_DOUBLE', 'C_LONG_DOUBLE', 'C_FLOAT_COMPLEX',
-                'C_DOUBLE_COMPLEX', 'C_LONG_DOUBLE_COMPLEX', 'C_BOOL', 'C_CHAR', 'C_PTR',
-                'C_FUNPTR'), prefix=r'\b', suffix=r'\s*\b'),
+                'LOGICAL', 'REAL', 'C_INT', 'C_SHORT', 'C_LONG', 'C_LONG_LONG',
+                'C_SIGNED_CHAR', 'C_SIZE_T', 'C_INT8_T', 'C_INT16_T', 'C_INT32_T',
+                'C_INT64_T', 'C_INT_LEAST8_T', 'C_INT_LEAST16_T', 'C_INT_LEAST32_T',
+                'C_INT_LEAST64_T', 'C_INT_FAST8_T', 'C_INT_FAST16_T', 'C_INT_FAST32_T',
+                'C_INT_FAST64_T', 'C_INTMAX_T', 'C_INTPTR_T', 'C_FLOAT', 'C_DOUBLE',
+                'C_LONG_DOUBLE', 'C_FLOAT_COMPLEX', 'C_DOUBLE_COMPLEX',
+                'C_LONG_DOUBLE_COMPLEX', 'C_BOOL', 'C_CHAR', 'C_PTR', 'C_FUNPTR'),
+                   prefix=r'\b', suffix=r'\s*\b'),
              Keyword.Type),
 
             # Operators
@@ -149,13 +157,57 @@ class FortranLexer(RegexLexer):
         ],
 
         'strings': [
-            (r'(?s)"(\\\\|\\[0-7]+|\\.|[^"\\])*"', String.Double),
-            (r"(?s)'(\\\\|\\[0-7]+|\\.|[^'\\])*'", String.Single),
+            (r'"(\\[0-7]+|\\[^0-7]|[^"\\])*"', String.Double),
+            (r"'(\\[0-7]+|\\[^0-7]|[^'\\])*'", String.Single),
         ],
 
         'nums': [
-            (r'\d+(?![.e])(_[a-z]\w+)?', Number.Integer),
-            (r'[+-]?\d*\.\d+(e[-+]?\d+)?(_[a-z]\w+)?', Number.Float),
-            (r'[+-]?\d+\.\d*(e[-+]?\d+)?(_[a-z]\w+)?', Number.Float),
+            (r'\d+(?![.e])(_([1-9]|[a-z]\w*))?', Number.Integer),
+            (r'[+-]?\d*\.\d+([ed][-+]?\d+)?(_([1-9]|[a-z]\w*))?', Number.Float),
+            (r'[+-]?\d+\.\d*([ed][-+]?\d+)?(_([1-9]|[a-z]\w*))?', Number.Float),
+            (r'[+-]?\d+(\.\d*)?[ed][-+]?\d+(_([1-9]|[a-z]\w*))?', Number.Float),
         ],
+    }
+
+
+class FortranFixedLexer(RegexLexer):
+    """
+    Lexer for fixed format Fortran.
+
+    .. versionadded:: 2.1
+    """
+    name = 'FortranFixed'
+    aliases = ['fortranfixed']
+    filenames = ['*.f', '*.F']
+
+    flags = re.IGNORECASE
+
+    def _lex_fortran(self, match, ctx=None):
+        """Lex a line just as free form fortran without line break."""
+        lexer = FortranLexer()
+        text = match.group(0) + "\n"
+        for index, token, value in lexer.get_tokens_unprocessed(text):
+            value = value.replace('\n', '')
+            if value != '':
+                yield index, token, value
+
+    tokens = {
+        'root': [
+            (r'[C*].*\n', Comment),
+            (r'#.*\n', Comment.Preproc),
+            (r' {0,4}!.*\n', Comment),
+            (r'(.{5})', Name.Label, 'cont-char'),
+            (r'.*\n', using(FortranLexer)),
+        ],
+        'cont-char': [
+            (' ', Text, 'code'),
+            ('0', Comment, 'code'),
+            ('.', Generic.Strong, 'code'),
+        ],
+        'code': [
+            (r'(.{66})(.*)(\n)',
+             bygroups(_lex_fortran, Comment, Text.Whitespace), 'root'),
+            (r'(.*)(\n)', bygroups(_lex_fortran, Text.Whitespace), 'root'),
+            default('root'),
+        ]
     }

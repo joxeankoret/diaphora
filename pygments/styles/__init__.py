@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles
     ~~~~~~~~~~~~~~~
 
     Contains built-in styles.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -18,10 +17,12 @@ STYLE_MAP = {
     'default':  'default::DefaultStyle',
     'emacs':    'emacs::EmacsStyle',
     'friendly': 'friendly::FriendlyStyle',
+    'friendly_grayscale': 'friendly_grayscale::FriendlyGrayscaleStyle',
     'colorful': 'colorful::ColorfulStyle',
     'autumn':   'autumn::AutumnStyle',
     'murphy':   'murphy::MurphyStyle',
     'manni':    'manni::ManniStyle',
+    'material': 'material::MaterialStyle',
     'monokai':  'monokai::MonokaiStyle',
     'perldoc':  'perldoc::PerldocStyle',
     'pastie':   'pastie::PastieStyle',
@@ -38,6 +39,29 @@ STYLE_MAP = {
     'igor':     'igor::IgorStyle',
     'paraiso-light': 'paraiso_light::ParaisoLightStyle',
     'paraiso-dark': 'paraiso_dark::ParaisoDarkStyle',
+    'lovelace': 'lovelace::LovelaceStyle',
+    'algol':    'algol::AlgolStyle',
+    'algol_nu': 'algol_nu::Algol_NuStyle',
+    'arduino':  'arduino::ArduinoStyle',
+    'rainbow_dash': 'rainbow_dash::RainbowDashStyle',
+    'abap':     'abap::AbapStyle',
+    'solarized-dark': 'solarized::SolarizedDarkStyle',
+    'solarized-light': 'solarized::SolarizedLightStyle',
+    'sas':         'sas::SasStyle',
+    'staroffice' : 'staroffice::StarofficeStyle',
+    'stata':       'stata_light::StataLightStyle',
+    'stata-light': 'stata_light::StataLightStyle',
+    'stata-dark':  'stata_dark::StataDarkStyle',
+    'inkpot':      'inkpot::InkPotStyle',
+    'zenburn': 'zenburn::ZenburnStyle',
+    'gruvbox-dark': 'gruvbox::GruvboxDarkStyle',
+    'gruvbox-light': 'gruvbox::GruvboxLightStyle',
+    'dracula': 'dracula::DraculaStyle',
+    'one-dark': 'onedark::OneDarkStyle',
+    'lilypond' : 'lilypond::LilyPondStyle',
+    'nord': 'nord::NordStyle',
+    'nord-darker': 'nord::NordDarkerStyle',
+    'github-dark': 'gh_dark::GhDarkStyle'
 }
 
 
@@ -66,9 +90,8 @@ def get_style_by_name(name):
 
 
 def get_all_styles():
-    """Return an generator for all styles by name,
+    """Return a generator for all styles by name,
     both builtin and plugin."""
-    for name in STYLE_MAP:
-        yield name
+    yield from STYLE_MAP
     for name, _ in find_plugin_styles():
         yield name

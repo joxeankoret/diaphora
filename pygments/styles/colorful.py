@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.colorful
     ~~~~~~~~~~~~~~~~~~~~~~~~
 
     A colorful style, inspired by CodeRay.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -18,8 +17,6 @@ class ColorfulStyle(Style):
     """
     A colorful style, inspired by CodeRay.
     """
-
-    default_style = ""
 
     styles = {
         Whitespace:                "#bbbbbb",

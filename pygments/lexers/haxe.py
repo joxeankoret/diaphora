@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.haxe
     ~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Haxe and related stuff.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -21,13 +20,14 @@ __all__ = ['HaxeLexer', 'HxmlLexer']
 
 class HaxeLexer(ExtendedRegexLexer):
     """
-    For Haxe source code (http://haxe.org/).
+    For Haxe source code.
 
     .. versionadded:: 1.3
     """
 
     name = 'Haxe'
-    aliases = ['hx', 'haxe', 'hxsl']
+    url = 'http://haxe.org/'
+    aliases = ['haxe', 'hxsl', 'hx']
     filenames = ['*.hx', '*.hxsl']
     mimetypes = ['text/haxe', 'text/x-haxe', 'text/x-hx']
 
@@ -43,7 +43,7 @@ class HaxeLexer(ExtendedRegexLexer):
     typeid = r'_*[A-Z]\w*'
 
     # combined ident and dollar and idtype
-    ident = r'(?:_*[a-z]\w*|_+[0-9]\w*|' + typeid + '|_+|\$\w+)'
+    ident = r'(?:_*[a-z]\w*|_+[0-9]\w*|' + typeid + r'|_+|\$\w+)'
 
     binop = (r'(?:%=|&=|\|=|\^=|\+=|\-=|\*=|/=|<<=|>\s*>\s*=|>\s*>\s*>\s*=|==|'
              r'!=|<=|>\s*=|&&|\|\||<<|>>>|>\s*>|\.\.\.|<|>|%|&|\||\^|\+|\*|'
@@ -104,7 +104,7 @@ class HaxeLexer(ExtendedRegexLexer):
 
         # space/tab/comment/preproc
         'spaces': [
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
             (r'//[^\n\r]*', Comment.Single),
             (r'/\*.*?\*/', Comment.Multiline),
             (r'(#)(if|elseif|else|end|error)\b', preproc_callback),
@@ -164,14 +164,14 @@ class HaxeLexer(ExtendedRegexLexer):
         ],
 
         'preproc-error': [
-            (r'\s+', Comment.Preproc),
+            (r'\s+', Whitespace),
             (r"'", String.Single, ('#pop', 'string-single')),
             (r'"', String.Double, ('#pop', 'string-double')),
             default('#pop'),
         ],
 
         'preproc-expr': [
-            (r'\s+', Comment.Preproc),
+            (r'\s+', Whitespace),
             (r'\!', Comment.Preproc),
             (r'\(', Comment.Preproc, ('#pop', 'preproc-parenthesis')),
 
@@ -182,7 +182,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'[0-9]+[eE][+\-]?[0-9]+', Number.Float),
             (r'[0-9]+\.[0-9]*[eE][+\-]?[0-9]+', Number.Float),
             (r'[0-9]+\.[0-9]+', Number.Float),
-            (r'[0-9]+\.(?!' + ident + '|\.\.)', Number.Float),
+            (r'[0-9]+\.(?!' + ident + r'|\.\.)', Number.Float),
 
             # Int
             (r'0x[0-9a-fA-F]+', Number.Hex),
@@ -194,20 +194,20 @@ class HaxeLexer(ExtendedRegexLexer):
         ],
 
         'preproc-parenthesis': [
-            (r'\s+', Comment.Preproc),
+            (r'\s+', Whitespace),
             (r'\)', Comment.Preproc, '#pop'),
             default('preproc-expr-in-parenthesis'),
         ],
 
         'preproc-expr-chain': [
-            (r'\s+', Comment.Preproc),
+            (r'\s+', Whitespace),
             (binop, Comment.Preproc, ('#pop', 'preproc-expr-in-parenthesis')),
             default('#pop'),
         ],
 
         # same as 'preproc-expr' but able to chain 'preproc-expr-chain'
         'preproc-expr-in-parenthesis': [
-            (r'\s+', Comment.Preproc),
+            (r'\s+', Whitespace),
             (r'\!', Comment.Preproc),
             (r'\(', Comment.Preproc,
              ('#pop', 'preproc-expr-chain', 'preproc-parenthesis')),
@@ -219,7 +219,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'[0-9]+[eE][+\-]?[0-9]+', Number.Float, ('#pop', 'preproc-expr-chain')),
             (r'[0-9]+\.[0-9]*[eE][+\-]?[0-9]+', Number.Float, ('#pop', 'preproc-expr-chain')),
             (r'[0-9]+\.[0-9]+', Number.Float, ('#pop', 'preproc-expr-chain')),
-            (r'[0-9]+\.(?!' + ident + '|\.\.)', Number.Float, ('#pop', 'preproc-expr-chain')),
+            (r'[0-9]+\.(?!' + ident + r'|\.\.)', Number.Float, ('#pop', 'preproc-expr-chain')),
 
             # Int
             (r'0x[0-9a-fA-F]+', Number.Hex, ('#pop', 'preproc-expr-chain')),
@@ -456,7 +456,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'[0-9]+[eE][+\-]?[0-9]+', Number.Float, ('#pop', 'expr-chain')),
             (r'[0-9]+\.[0-9]*[eE][+\-]?[0-9]+', Number.Float, ('#pop', 'expr-chain')),
             (r'[0-9]+\.[0-9]+', Number.Float, ('#pop', 'expr-chain')),
-            (r'[0-9]+\.(?!' + ident + '|\.\.)', Number.Float, ('#pop', 'expr-chain')),
+            (r'[0-9]+\.(?!' + ident + r'|\.\.)', Number.Float, ('#pop', 'expr-chain')),
 
             # Int
             (r'0x[0-9a-fA-F]+', Number.Hex, ('#pop', 'expr-chain')),
@@ -467,7 +467,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'"', String.Double, ('#pop', 'expr-chain', 'string-double')),
 
             # EReg
-            (r'~/(\\\\|\\/|[^/\n])*/[gimsu]*', String.Regex, ('#pop', 'expr-chain')),
+            (r'~/(\\\\|\\[^\\]|[^/\\\n])*/[gimsu]*', String.Regex, ('#pop', 'expr-chain')),
 
             # Array
             (r'\[', Punctuation, ('#pop', 'expr-chain', 'array-decl')),
@@ -711,7 +711,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'[0-9]+[eE][+\-]?[0-9]+', Number.Float, '#pop'),
             (r'[0-9]+\.[0-9]*[eE][+\-]?[0-9]+', Number.Float, '#pop'),
             (r'[0-9]+\.[0-9]+', Number.Float, '#pop'),
-            (r'[0-9]+\.(?!' + ident + '|\.\.)', Number.Float, '#pop'),
+            (r'[0-9]+\.(?!' + ident + r'|\.\.)', Number.Float, '#pop'),
 
             # Int
             (r'0x[0-9a-fA-F]+', Number.Hex, '#pop'),
@@ -722,7 +722,7 @@ class HaxeLexer(ExtendedRegexLexer):
             (r'"', String.Double, ('#pop', 'string-double')),
 
             # EReg
-            (r'~/(\\\\|\\/|[^/\n])*/[gim]*', String.Regex, '#pop'),
+            (r'~/(\\\\|\\[^\\]|[^/\\\n])*/[gim]*', String.Regex, '#pop'),
 
             # Array
             (r'\[', Operator, ('#pop', 'array-decl')),
@@ -897,17 +897,18 @@ class HaxeLexer(ExtendedRegexLexer):
 
 class HxmlLexer(RegexLexer):
     """
-    Lexer for `haXe build <http://haxe.org/doc/compiler>`_ files.
+    Lexer for haXe build files.
 
     .. versionadded:: 1.6
     """
     name = 'Hxml'
+    url = 'https://haxe.org/manual/compiler-usage-hxml.html'
     aliases = ['haxeml', 'hxml']
     filenames = ['*.hxml']
 
     tokens = {
         'root': [
-            # Seperator
+            # Separator
             (r'(--)(next)', bygroups(Punctuation, Generic.Heading)),
             # Compiler switches with one dash
             (r'(-)(prompt|debug|v)', bygroups(Punctuation, Keyword.Keyword)),
@@ -920,7 +921,7 @@ class HxmlLexer(RegexLexer):
              bygroups(Punctuation, Keyword, Whitespace, String)),
             # Options that take only numerical arguments
             (r'(-)(swf-version)( +)(\d+)',
-             bygroups(Punctuation, Keyword, Number.Integer)),
+             bygroups(Punctuation, Keyword, Whitespace, Number.Integer)),
             # An Option that defines the size, the fps and the background
             # color of an flash movie
             (r'(-)(swf-header)( +)(\d+)(:)(\d+)(:)(\d+)(:)([A-Fa-f0-9]{6})',

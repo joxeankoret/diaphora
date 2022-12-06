@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.lisp
     ~~~~~~~~~~~~~~~~~~~~
 
     Lexers for Lispy languages.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -13,20 +12,19 @@ import re
 
 from pygments.lexer import RegexLexer, include, bygroups, words, default
 from pygments.token import Text, Comment, Operator, Keyword, Name, String, \
-    Number, Punctuation, Literal, Error
+    Number, Punctuation, Literal, Error, Whitespace
 
 from pygments.lexers.python import PythonLexer
 
-__all__ = ['SchemeLexer', 'CommonLispLexer',
-           'HyLexer', 'RacketLexer',
-           'NewLispLexer', 'EmacsLispLexer', ]
+from pygments.lexers._scheme_builtins import scheme_keywords, scheme_builtins
+
+__all__ = ['SchemeLexer', 'CommonLispLexer', 'HyLexer', 'RacketLexer',
+           'NewLispLexer', 'EmacsLispLexer', 'ShenLexer', 'CPSALexer',
+           'XtlangLexer', 'FennelLexer']
 
 class SchemeLexer(RegexLexer):
     """
-    A Scheme lexer, parsing a stream and outputting the tokens
-    needed to highlight scheme code.
-    This lexer could be most probably easily subclassed to parse
-    other LISP-Dialects like Common Lisp, Emacs Lisp or AutoLisp.
+    A Scheme lexer.
 
     This parser is checked with pastes from the LISP pastebin
     at http://paste.lisp.org/ to cover as much syntax as possible.
@@ -36,119 +34,229 @@ class SchemeLexer(RegexLexer):
     .. versionadded:: 0.6
     """
     name = 'Scheme'
+    url = 'http://www.scheme-reports.org/'
     aliases = ['scheme', 'scm']
     filenames = ['*.scm', '*.ss']
     mimetypes = ['text/x-scheme', 'application/x-scheme']
 
-    # list of known keywords and builtins taken form vim 6.4 scheme.vim
-    # syntax file.
-    keywords = (
-        'lambda', 'define', 'if', 'else', 'cond', 'and', 'or', 'case', 'let',
-        'let*', 'letrec', 'begin', 'do', 'delay', 'set!', '=>', 'quote',
-        'quasiquote', 'unquote', 'unquote-splicing', 'define-syntax',
-        'let-syntax', 'letrec-syntax', 'syntax-rules'
-    )
-    builtins = (
-        '*', '+', '-', '/', '<', '<=', '=', '>', '>=', 'abs', 'acos', 'angle',
-        'append', 'apply', 'asin', 'assoc', 'assq', 'assv', 'atan',
-        'boolean?', 'caaaar', 'caaadr', 'caaar', 'caadar', 'caaddr', 'caadr',
-        'caar', 'cadaar', 'cadadr', 'cadar', 'caddar', 'cadddr', 'caddr',
-        'cadr', 'call-with-current-continuation', 'call-with-input-file',
-        'call-with-output-file', 'call-with-values', 'call/cc', 'car',
-        'cdaaar', 'cdaadr', 'cdaar', 'cdadar', 'cdaddr', 'cdadr', 'cdar',
-        'cddaar', 'cddadr', 'cddar', 'cdddar', 'cddddr', 'cdddr', 'cddr',
-        'cdr', 'ceiling', 'char->integer', 'char-alphabetic?', 'char-ci<=?',
-        'char-ci<?', 'char-ci=?', 'char-ci>=?', 'char-ci>?', 'char-downcase',
-        'char-lower-case?', 'char-numeric?', 'char-ready?', 'char-upcase',
-        'char-upper-case?', 'char-whitespace?', 'char<=?', 'char<?', 'char=?',
-        'char>=?', 'char>?', 'char?', 'close-input-port', 'close-output-port',
-        'complex?', 'cons', 'cos', 'current-input-port', 'current-output-port',
-        'denominator', 'display', 'dynamic-wind', 'eof-object?', 'eq?',
-        'equal?', 'eqv?', 'eval', 'even?', 'exact->inexact', 'exact?', 'exp',
-        'expt', 'floor', 'for-each', 'force', 'gcd', 'imag-part',
-        'inexact->exact', 'inexact?', 'input-port?', 'integer->char',
-        'integer?', 'interaction-environment', 'lcm', 'length', 'list',
-        'list->string', 'list->vector', 'list-ref', 'list-tail', 'list?',
-        'load', 'log', 'magnitude', 'make-polar', 'make-rectangular',
-        'make-string', 'make-vector', 'map', 'max', 'member', 'memq', 'memv',
-        'min', 'modulo', 'negative?', 'newline', 'not', 'null-environment',
-        'null?', 'number->string', 'number?', 'numerator', 'odd?',
-        'open-input-file', 'open-output-file', 'output-port?', 'pair?',
-        'peek-char', 'port?', 'positive?', 'procedure?', 'quotient',
-        'rational?', 'rationalize', 'read', 'read-char', 'real-part', 'real?',
-        'remainder', 'reverse', 'round', 'scheme-report-environment',
-        'set-car!', 'set-cdr!', 'sin', 'sqrt', 'string', 'string->list',
-        'string->number', 'string->symbol', 'string-append', 'string-ci<=?',
-        'string-ci<?', 'string-ci=?', 'string-ci>=?', 'string-ci>?',
-        'string-copy', 'string-fill!', 'string-length', 'string-ref',
-        'string-set!', 'string<=?', 'string<?', 'string=?', 'string>=?',
-        'string>?', 'string?', 'substring', 'symbol->string', 'symbol?',
-        'tan', 'transcript-off', 'transcript-on', 'truncate', 'values',
-        'vector', 'vector->list', 'vector-fill!', 'vector-length',
-        'vector-ref', 'vector-set!', 'vector?', 'with-input-from-file',
-        'with-output-to-file', 'write', 'write-char', 'zero?'
-    )
+    flags = re.DOTALL | re.MULTILINE
 
     # valid names for identifiers
     # well, names can only not consist fully of numbers
     # but this should be good enough for now
     valid_name = r'[\w!$%&*+,/:<=>?@^~|-]+'
 
+    # Use within verbose regexes
+    token_end = r'''
+      (?=
+        \s         # whitespace
+        | ;        # comment
+        | \#[;|!] # fancy comments
+        | [)\]]    # end delimiters
+        | $        # end of file
+      )
+    '''
+
+    # Recognizing builtins.
+    def get_tokens_unprocessed(self, text):
+        for index, token, value in super().get_tokens_unprocessed(text):
+            if token is Name.Function or token is Name.Variable:
+                if value in scheme_keywords:
+                    yield index, Keyword, value
+                elif value in scheme_builtins:
+                    yield index, Name.Builtin, value
+                else:
+                    yield index, token, value
+            else:
+                yield index, token, value
+
+    # Scheme has funky syntactic rules for numbers. These are all
+    # valid number literals: 5.0e55|14, 14/13, -1+5j, +1@5, #b110,
+    # #o#Iinf.0-nan.0i.  This is adapted from the formal grammar given
+    # in http://www.r6rs.org/final/r6rs.pdf, section 4.2.1.  Take a
+    # deep breath ...
+
+    # It would be simpler if we could just not bother about invalid
+    # numbers like #b35. But we cannot parse 'abcdef' without #x as a
+    # number.
+
+    number_rules = {}
+    for base in (2, 8, 10, 16):
+        if base == 2:
+            digit = r'[01]'
+            radix = r'( \#[bB] )'
+        elif base == 8:
+            digit = r'[0-7]'
+            radix = r'( \#[oO] )'
+        elif base == 10:
+            digit = r'[0-9]'
+            radix = r'( (\#[dD])? )'
+        elif base == 16:
+            digit = r'[0-9a-fA-F]'
+            radix = r'( \#[xX] )'
+
+        # Radix, optional exactness indicator.
+        prefix = rf'''
+          (
+            {radix} (\#[iIeE])?
+            | \#[iIeE] {radix}
+          )
+        '''
+
+        # Simple unsigned number or fraction.
+        ureal = rf'''
+          (
+            {digit}+
+            ( / {digit}+ )?
+          )
+        '''
+
+        # Add decimal numbers.
+        if base == 10:
+            decimal = r'''
+              (
+                # Decimal part
+                (
+                  [0-9]+ ([.][0-9]*)?
+                  | [.][0-9]+
+                )
+
+                # Optional exponent
+                (
+                  [eEsSfFdDlL] [+-]? [0-9]+
+                )?
+
+                # Optional mantissa width
+                (
+                  \|[0-9]+
+                )?
+              )
+            '''
+            ureal = rf'''
+              (
+                {decimal} (?!/)
+                | {ureal}
+              )
+            '''
+
+        naninf = r'(nan.0|inf.0)'
+
+        real = rf'''
+          (
+            [+-] {naninf}  # Sign mandatory
+            | [+-]? {ureal}    # Sign optional
+          )
+        '''
+
+        complex_ = rf'''
+          (
+            {real}?  [+-]  ({naninf}|{ureal})?  i
+            | {real} (@ {real})?
+
+          )
+        '''
+
+        num = rf'''(?x)
+          (
+            {prefix}
+            {complex_}
+          )
+          # Need to ensure we have a full token. 1+ is not a
+          # number followed by something else, but a function
+          # name.
+          {token_end}
+        '''
+
+        number_rules[base] = num
+
+    # If you have a headache now, say thanks to RnRS editors.
+
+    # Doing it this way is simpler than splitting the number(10)
+    # regex in a floating-point and a no-floating-point version.
+    def decimal_cb(self, match):
+        if '.' in match.group():
+            token_type = Number.Float # includes [+-](inf|nan).0
+        else:
+            token_type = Number.Integer
+        yield match.start(), token_type, match.group()
+
+    # --
+
+    # The 'scheme-root' state parses as many expressions as needed, always
+    # delegating to the 'scheme-value' state. The latter parses one complete
+    # expression and immediately pops back. This is needed for the LilyPondLexer.
+    # When LilyPond encounters a #, it starts parsing embedded Scheme code, and
+    # returns to normal syntax after one expression. We implement this
+    # by letting the LilyPondLexer subclass the SchemeLexer. When it finds
+    # the #, the LilyPondLexer goes to the 'value' state, which then pops back
+    # to LilyPondLexer. The 'root' state of the SchemeLexer merely delegates the
+    # work to 'scheme-root'; this is so that LilyPondLexer can inherit
+    # 'scheme-root' and redefine 'root'.
+
     tokens = {
         'root': [
+            default('scheme-root'),
+        ],
+        'scheme-root': [
+            default('value'),
+        ],
+        'value': [
             # the comments
             # and going to the end of the line
-            (r';.*$', Comment.Single),
+            (r';.*?$', Comment.Single),
             # multi-line comment
             (r'#\|', Comment.Multiline, 'multiline-comment'),
-            # commented form (entire sexpr folliwng)
-            (r'#;\s*\(', Comment, 'commented-form'),
+            # commented form (entire sexpr following)
+            (r'#;[([]', Comment, 'commented-form'),
+            # commented datum
+            (r'#;', Comment, 'commented-datum'),
             # signifies that the program text that follows is written with the
             # lexical and datum syntax described in r6rs
             (r'#!r6rs', Comment),
 
             # whitespaces - usually not relevant
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
 
             # numbers
-            (r'-?\d+\.\d+', Number.Float),
-            (r'-?\d+', Number.Integer),
-            # support for uncommon kinds of numbers -
-            # have to figure out what the characters mean
-            # (r'(#e|#i|#b|#o|#d|#x)[\d.]+', Number),
+            (number_rules[2], Number.Bin, '#pop'),
+            (number_rules[8], Number.Oct, '#pop'),
+            (number_rules[10], decimal_cb, '#pop'),
+            (number_rules[16], Number.Hex, '#pop'),
 
-            # strings, symbols and characters
-            (r'"(\\\\|\\"|[^"])*"', String),
-            (r"'" + valid_name, String.Symbol),
-            (r"#\\([()/'\"._!§$%& ?=+-]|[a-zA-Z0-9]+)", String.Char),
+            # strings, symbols, keywords and characters
+            (r'"', String, 'string'),
+            (r"'" + valid_name, String.Symbol, "#pop"),
+            (r'#:' + valid_name, Keyword.Declaration, '#pop'),
+            (r"#\\([()/'\"._!§$%& ?=+-]|[a-zA-Z0-9]+)", String.Char, "#pop"),
 
             # constants
-            (r'(#t|#f)', Name.Constant),
+            (r'(#t|#f)', Name.Constant, '#pop'),
 
             # special operators
             (r"('|#|`|,@|,|\.)", Operator),
 
-            # highlight the keywords
-            ('(%s)' % '|'.join(re.escape(entry) + ' ' for entry in keywords),
-             Keyword),
-
             # first variable in a quoted string like
             # '(this is syntactic sugar)
-            (r"(?<='\()" + valid_name, Name.Variable),
-            (r"(?<=#\()" + valid_name, Name.Variable),
+            (r"(?<='\()" + valid_name, Name.Variable, '#pop'),
+            (r"(?<=#\()" + valid_name, Name.Variable, '#pop'),
 
-            # highlight the builtins
-            ("(?<=\()(%s)" % '|'.join(re.escape(entry) + ' ' for entry in builtins),
-             Name.Builtin),
+            # Functions -- note that this also catches variables
+            # defined in let/let*, but there is little that can
+            # be done about it.
+            (r'(?<=\()' + valid_name, Name.Function, '#pop'),
 
-            # the remaining functions
-            (r'(?<=\()' + valid_name, Name.Function),
             # find the remaining variables
-            (valid_name, Name.Variable),
+            (valid_name, Name.Variable, '#pop'),
 
             # the famous parentheses!
-            (r'(\(|\))', Punctuation),
-            (r'(\[|\])', Punctuation),
+
+            # Push scheme-root to enter a state that will parse as many things
+            # as needed in the parentheses.
+            (r'[([]', Punctuation, 'scheme-root'),
+            # Pop one 'value', one 'scheme-root', and yet another 'value', so
+            # we get back to a state parsing expressions as needed in the
+            # enclosing context.
+            (r'[)\]]', Punctuation, '#pop:3'),
         ],
         'multiline-comment': [
             (r'#\|', Comment.Multiline, '#push'),
@@ -157,10 +265,30 @@ class SchemeLexer(RegexLexer):
             (r'[|#]', Comment.Multiline),
         ],
         'commented-form': [
-            (r'\(', Comment, '#push'),
-            (r'\)', Comment, '#pop'),
-            (r'[^()]+', Comment),
+            (r'[([]', Comment, '#push'),
+            (r'[)\]]', Comment, '#pop'),
+            (r'[^()[\]]+', Comment),
         ],
+        'commented-datum': [
+            (rf'(?x).*?{token_end}', Comment, '#pop'),
+        ],
+        'string': [
+            # Pops back from 'string', and pops 'value' as well.
+            ('"', String, '#pop:2'),
+            # Hex escape sequences, R6RS-style.
+            (r'\\x[0-9a-fA-F]+;', String.Escape),
+            # We try R6RS style first, but fall back to Guile-style.
+            (r'\\x[0-9a-fA-F]{2}', String.Escape),
+            # Other special escape sequences implemented by Guile.
+            (r'\\u[0-9a-fA-F]{4}', String.Escape),
+            (r'\\U[0-9a-fA-F]{6}', String.Escape),
+            # Escape sequences are not overly standardized. Recognizing
+            # a single character after the backslash should be good enough.
+            # NB: we have DOTALL.
+            (r'\\.', String.Escape),
+            # The rest
+            (r'[^\\"]+', String),
+        ]
     }
 
 
@@ -171,6 +299,7 @@ class CommonLispLexer(RegexLexer):
     .. versionadded:: 0.9
     """
     name = 'Common Lisp'
+    url = 'https://lisp-lang.org/'
     aliases = ['common-lisp', 'cl', 'lisp']
     filenames = ['*.cl', '*.lisp']
     mimetypes = ['text/x-common-lisp']
@@ -245,7 +374,7 @@ class CommonLispLexer(RegexLexer):
         ],
         'body': [
             # whitespace
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
 
             # single-line comment
             (r';.*$', Comment.Single),
@@ -269,8 +398,8 @@ class CommonLispLexer(RegexLexer):
             # decimal numbers
             (r'[-+]?\d+\.?' + terminated, Number.Integer),
             (r'[-+]?\d+/\d+' + terminated, Number),
-            (r'[-+]?(\d*\.\d+([defls][-+]?\d+)?|\d+(\.\d*)?[defls][-+]?\d+)'
-                + terminated, Number.Float),
+            (r'[-+]?(\d*\.\d+([defls][-+]?\d+)?|\d+(\.\d*)?[defls][-+]?\d+)' +
+             terminated, Number.Float),
 
             # sharpsign strings and characters
             (r"#\\." + terminated, String.Char),
@@ -320,7 +449,7 @@ class CommonLispLexer(RegexLexer):
             (r'#\d+#', Operator),
 
             # read-time comment
-            (r'#+nil' + terminated + '\s*\(', Comment.Preproc, 'commented-form'),
+            (r'#+nil' + terminated + r'\s*\(', Comment.Preproc, 'commented-form'),
 
             # read-time conditional
             (r'#[+-]', Operator),
@@ -332,7 +461,7 @@ class CommonLispLexer(RegexLexer):
             (r'(t|nil)' + terminated, Name.Constant),
 
             # functions and variables
-            (r'\*' + symbol + '\*', Name.Variable.Global),
+            (r'\*' + symbol + r'\*', Name.Variable.Global),
             (symbol, Name.Variable),
 
             # parentheses
@@ -344,11 +473,12 @@ class CommonLispLexer(RegexLexer):
 
 class HyLexer(RegexLexer):
     """
-    Lexer for `Hy <http://hylang.org/>`_ source code.
+    Lexer for Hy source code.
 
     .. versionadded:: 2.0
     """
     name = 'Hy'
+    url = 'http://hylang.org/'
     aliases = ['hylang']
     filenames = ['*.hy']
     mimetypes = ['text/x-hy', 'application/x-hy']
@@ -381,7 +511,7 @@ class HyLexer(RegexLexer):
     # valid names for identifiers
     # well, names can only not consist fully of numbers
     # but this should be good enough for now
-    valid_name = r'(?!#)[\w!$%*+<=>?/.#-]+'
+    valid_name = r'(?!#)[\w!$%*+<=>?/.#:-]+'
 
     def _multi_escape(entries):
         return words(entries, suffix=' ')
@@ -393,7 +523,8 @@ class HyLexer(RegexLexer):
             (r';.*$', Comment.Single),
 
             # whitespaces - usually not relevant
-            (r'[,\s]+', Text),
+            (r',+', Text),
+            (r'\s+', Whitespace),
 
             # numbers
             (r'-?\d+\.\d+', Number.Float),
@@ -402,7 +533,7 @@ class HyLexer(RegexLexer):
             (r'0[xX][a-fA-F0-9]+', Number.Hex),
 
             # strings, symbols and characters
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
             (r"'" + valid_name, String.Symbol),
             (r"\\(.|[a-z]+)", String.Char),
             (r'^(\s*)([rRuU]{,2}"""(?:.|\n)*?""")', bygroups(Text, String.Doc)),
@@ -457,13 +588,14 @@ class HyLexer(RegexLexer):
 
 class RacketLexer(RegexLexer):
     """
-    Lexer for `Racket <http://racket-lang.org/>`_ source code (formerly
+    Lexer for Racket source code (formerly
     known as PLT Scheme).
 
     .. versionadded:: 1.6
     """
 
     name = 'Racket'
+    url = 'http://racket-lang.org/'
     aliases = ['racket', 'rkt']
     filenames = ['*.rkt', '*.rktd', '*.rktl']
     mimetypes = ['text/x-racket', 'application/x-racket']
@@ -482,65 +614,68 @@ class RacketLexer(RegexLexer):
         'case-lambda', 'class', 'class*', 'class-field-accessor',
         'class-field-mutator', 'class/c', 'class/derived', 'combine-in',
         'combine-out', 'command-line', 'compound-unit', 'compound-unit/infer',
-        'cond', 'contract', 'contract-out', 'contract-struct', 'contracted',
-        'define', 'define-compound-unit', 'define-compound-unit/infer',
-        'define-contract-struct', 'define-custom-hash-types',
-        'define-custom-set-types', 'define-for-syntax',
-        'define-local-member-name', 'define-logger', 'define-match-expander',
-        'define-member-name', 'define-module-boundary-contract',
-        'define-namespace-anchor', 'define-opt/c', 'define-sequence-syntax',
-        'define-serializable-class', 'define-serializable-class*',
-        'define-signature', 'define-signature-form', 'define-struct',
-        'define-struct/contract', 'define-struct/derived', 'define-syntax',
-        'define-syntax-rule', 'define-syntaxes', 'define-unit',
-        'define-unit-binding', 'define-unit-from-context',
-        'define-unit/contract', 'define-unit/new-import-export',
-        'define-unit/s', 'define-values', 'define-values-for-export',
-        'define-values-for-syntax', 'define-values/invoke-unit',
-        'define-values/invoke-unit/infer', 'define/augment',
-        'define/augment-final', 'define/augride', 'define/contract',
-        'define/final-prop', 'define/match', 'define/overment',
-        'define/override', 'define/override-final', 'define/private',
-        'define/public', 'define/public-final', 'define/pubment',
-        'define/subexpression-pos-prop', 'delay', 'delay/idle', 'delay/name',
-        'delay/strict', 'delay/sync', 'delay/thread', 'do', 'else', 'except',
-        'except-in', 'except-out', 'export', 'extends', 'failure-cont',
-        'false', 'false/c', 'field', 'field-bound?', 'file',
+        'cond', 'cons/dc', 'contract', 'contract-out', 'contract-struct',
+        'contracted', 'define', 'define-compound-unit',
+        'define-compound-unit/infer', 'define-contract-struct',
+        'define-custom-hash-types', 'define-custom-set-types',
+        'define-for-syntax', 'define-local-member-name', 'define-logger',
+        'define-match-expander', 'define-member-name',
+        'define-module-boundary-contract', 'define-namespace-anchor',
+        'define-opt/c', 'define-sequence-syntax', 'define-serializable-class',
+        'define-serializable-class*', 'define-signature',
+        'define-signature-form', 'define-struct', 'define-struct/contract',
+        'define-struct/derived', 'define-syntax', 'define-syntax-rule',
+        'define-syntaxes', 'define-unit', 'define-unit-binding',
+        'define-unit-from-context', 'define-unit/contract',
+        'define-unit/new-import-export', 'define-unit/s', 'define-values',
+        'define-values-for-export', 'define-values-for-syntax',
+        'define-values/invoke-unit', 'define-values/invoke-unit/infer',
+        'define/augment', 'define/augment-final', 'define/augride',
+        'define/contract', 'define/final-prop', 'define/match',
+        'define/overment', 'define/override', 'define/override-final',
+        'define/private', 'define/public', 'define/public-final',
+        'define/pubment', 'define/subexpression-pos-prop',
+        'define/subexpression-pos-prop/name', 'delay', 'delay/idle',
+        'delay/name', 'delay/strict', 'delay/sync', 'delay/thread', 'do',
+        'else', 'except', 'except-in', 'except-out', 'export', 'extends',
+        'failure-cont', 'false', 'false/c', 'field', 'field-bound?', 'file',
         'flat-murec-contract', 'flat-rec-contract', 'for', 'for*', 'for*/and',
-        'for*/first', 'for*/fold', 'for*/fold/derived', 'for*/hash',
-        'for*/hasheq', 'for*/hasheqv', 'for*/last', 'for*/list', 'for*/lists',
-        'for*/mutable-set', 'for*/mutable-seteq', 'for*/mutable-seteqv',
-        'for*/or', 'for*/product', 'for*/set', 'for*/seteq', 'for*/seteqv',
-        'for*/sum', 'for*/vector', 'for*/weak-set', 'for*/weak-seteq',
-        'for*/weak-seteqv', 'for-label', 'for-meta', 'for-syntax',
-        'for-template', 'for/and', 'for/first', 'for/fold', 'for/fold/derived',
-        'for/hash', 'for/hasheq', 'for/hasheqv', 'for/last', 'for/list',
-        'for/lists', 'for/mutable-set', 'for/mutable-seteq',
-        'for/mutable-seteqv', 'for/or', 'for/product', 'for/set', 'for/seteq',
-        'for/seteqv', 'for/sum', 'for/vector', 'for/weak-set',
-        'for/weak-seteq', 'for/weak-seteqv', 'gen:custom-write', 'gen:dict',
-        'gen:equal+hash', 'gen:set', 'gen:stream', 'generic', 'get-field',
-        'if', 'implies', 'import', 'include', 'include-at/relative-to',
+        'for*/async', 'for*/first', 'for*/fold', 'for*/fold/derived',
+        'for*/hash', 'for*/hasheq', 'for*/hasheqv', 'for*/last', 'for*/list',
+        'for*/lists', 'for*/mutable-set', 'for*/mutable-seteq',
+        'for*/mutable-seteqv', 'for*/or', 'for*/product', 'for*/set',
+        'for*/seteq', 'for*/seteqv', 'for*/stream', 'for*/sum', 'for*/vector',
+        'for*/weak-set', 'for*/weak-seteq', 'for*/weak-seteqv', 'for-label',
+        'for-meta', 'for-syntax', 'for-template', 'for/and', 'for/async',
+        'for/first', 'for/fold', 'for/fold/derived', 'for/hash', 'for/hasheq',
+        'for/hasheqv', 'for/last', 'for/list', 'for/lists', 'for/mutable-set',
+        'for/mutable-seteq', 'for/mutable-seteqv', 'for/or', 'for/product',
+        'for/set', 'for/seteq', 'for/seteqv', 'for/stream', 'for/sum',
+        'for/vector', 'for/weak-set', 'for/weak-seteq', 'for/weak-seteqv',
+        'gen:custom-write', 'gen:dict', 'gen:equal+hash', 'gen:set',
+        'gen:stream', 'generic', 'get-field', 'hash/dc', 'if', 'implies',
+        'import', 'include', 'include-at/relative-to',
         'include-at/relative-to/reader', 'include/reader', 'inherit',
         'inherit-field', 'inherit/inner', 'inherit/super', 'init',
         'init-depend', 'init-field', 'init-rest', 'inner', 'inspect',
-        'instantiate', 'interface', 'interface*', 'invoke-unit',
-        'invoke-unit/infer', 'lambda', 'lazy', 'let', 'let*', 'let*-values',
-        'let-syntax', 'let-syntaxes', 'let-values', 'let/cc', 'let/ec',
-        'letrec', 'letrec-syntax', 'letrec-syntaxes', 'letrec-syntaxes+values',
-        'letrec-values', 'lib', 'link', 'local', 'local-require', 'log-debug',
-        'log-error', 'log-fatal', 'log-info', 'log-warning', 'match', 'match*',
-        'match*/derived', 'match-define', 'match-define-values',
-        'match-lambda', 'match-lambda*', 'match-lambda**', 'match-let',
-        'match-let*', 'match-let*-values', 'match-let-values', 'match-letrec',
-        'match/derived', 'match/values', 'member-name-key', 'method-contract?',
-        'mixin', 'module', 'module*', 'module+', 'nand', 'new', 'nor',
-        'object-contract', 'object/c', 'only', 'only-in', 'only-meta-in',
-        'open', 'opt/c', 'or', 'overment', 'overment*', 'override',
-        'override*', 'override-final', 'override-final*', 'parameterize',
-        'parameterize*', 'parameterize-break', 'parametric->/c', 'place',
-        'place*', 'planet', 'prefix', 'prefix-in', 'prefix-out', 'private',
-        'private*', 'prompt-tag/c', 'protect-out', 'provide',
+        'instantiate', 'interface', 'interface*', 'invariant-assertion',
+        'invoke-unit', 'invoke-unit/infer', 'lambda', 'lazy', 'let', 'let*',
+        'let*-values', 'let-syntax', 'let-syntaxes', 'let-values', 'let/cc',
+        'let/ec', 'letrec', 'letrec-syntax', 'letrec-syntaxes',
+        'letrec-syntaxes+values', 'letrec-values', 'lib', 'link', 'local',
+        'local-require', 'log-debug', 'log-error', 'log-fatal', 'log-info',
+        'log-warning', 'match', 'match*', 'match*/derived', 'match-define',
+        'match-define-values', 'match-lambda', 'match-lambda*',
+        'match-lambda**', 'match-let', 'match-let*', 'match-let*-values',
+        'match-let-values', 'match-letrec', 'match-letrec-values',
+        'match/derived', 'match/values', 'member-name-key', 'mixin', 'module',
+        'module*', 'module+', 'nand', 'new', 'nor', 'object-contract',
+        'object/c', 'only', 'only-in', 'only-meta-in', 'open', 'opt/c', 'or',
+        'overment', 'overment*', 'override', 'override*', 'override-final',
+        'override-final*', 'parameterize', 'parameterize*',
+        'parameterize-break', 'parametric->/c', 'place', 'place*',
+        'place/context', 'planet', 'prefix', 'prefix-in', 'prefix-out',
+        'private', 'private*', 'prompt-tag/c', 'protect-out', 'provide',
         'provide-signature-elements', 'provide/contract', 'public', 'public*',
         'public-final', 'public-final*', 'pubment', 'pubment*', 'quasiquote',
         'quasisyntax', 'quasisyntax/loc', 'quote', 'quote-syntax',
@@ -548,41 +683,46 @@ class RacketLexer(RegexLexer):
         'relative-in', 'rename', 'rename-in', 'rename-inner', 'rename-out',
         'rename-super', 'require', 'send', 'send*', 'send+', 'send-generic',
         'send/apply', 'send/keyword-apply', 'set!', 'set!-values',
-        'set-field!', 'shared', 'stream', 'stream-cons', 'struct', 'struct*',
-        'struct-copy', 'struct-field-index', 'struct-out', 'struct/c',
-        'struct/ctc', 'struct/dc', 'submod', 'super', 'super-instantiate',
-        'super-make-object', 'super-new', 'syntax', 'syntax-case',
-        'syntax-case*', 'syntax-id-rules', 'syntax-rules', 'syntax/loc', 'tag',
-        'this', 'this%', 'thunk', 'thunk*', 'time', 'unconstrained-domain->',
-        'unit', 'unit-from-context', 'unit/c', 'unit/new-import-export',
-        'unit/s', 'unless', 'unquote', 'unquote-splicing', 'unsyntax',
-        'unsyntax-splicing', 'values/drop', 'when', 'with-continuation-mark',
-        'with-contract', 'with-handlers', 'with-handlers*', 'with-method',
-        'with-syntax', u'λ'
+        'set-field!', 'shared', 'stream', 'stream*', 'stream-cons', 'struct',
+        'struct*', 'struct-copy', 'struct-field-index', 'struct-out',
+        'struct/c', 'struct/ctc', 'struct/dc', 'submod', 'super',
+        'super-instantiate', 'super-make-object', 'super-new', 'syntax',
+        'syntax-case', 'syntax-case*', 'syntax-id-rules', 'syntax-rules',
+        'syntax/loc', 'tag', 'this', 'this%', 'thunk', 'thunk*', 'time',
+        'unconstrained-domain->', 'unit', 'unit-from-context', 'unit/c',
+        'unit/new-import-export', 'unit/s', 'unless', 'unquote',
+        'unquote-splicing', 'unsyntax', 'unsyntax-splicing', 'values/drop',
+        'when', 'with-continuation-mark', 'with-contract',
+        'with-contract-continuation-mark', 'with-handlers', 'with-handlers*',
+        'with-method', 'with-syntax', 'λ'
     )
 
     # Generated by example.rkt
     _builtins = (
-        '*', '+', '-', '/', '<', '</c', '<=', '<=/c', '=', '=/c', '>', '>/c',
-        '>=', '>=/c', 'abort-current-continuation', 'abs', 'absolute-path?',
-        'acos', 'add-between', 'add1', 'alarm-evt', 'always-evt', 'and/c',
-        'andmap', 'angle', 'any/c', 'append', 'append*', 'append-map', 'apply',
-        'argmax', 'argmin', 'arithmetic-shift', 'arity-at-least',
-        'arity-at-least-value', 'arity-at-least?', 'arity-checking-wrapper',
-        'arity-includes?', 'arity=?', 'asin', 'assf', 'assoc', 'assq', 'assv',
-        'atan', 'bad-number-of-results', 'banner', 'base->-doms/c',
-        'base->-rngs/c', 'base->?', 'between/c', 'bitwise-and',
-        'bitwise-bit-field', 'bitwise-bit-set?', 'bitwise-ior', 'bitwise-not',
-        'bitwise-xor', 'blame-add-car-context', 'blame-add-cdr-context',
-        'blame-add-context', 'blame-add-missing-party',
-        'blame-add-nth-arg-context', 'blame-add-or-context',
+        '*', '*list/c', '+', '-', '/', '<', '</c', '<=', '<=/c', '=', '=/c',
+        '>', '>/c', '>=', '>=/c', 'abort-current-continuation', 'abs',
+        'absolute-path?', 'acos', 'add-between', 'add1', 'alarm-evt',
+        'always-evt', 'and/c', 'andmap', 'angle', 'any/c', 'append', 'append*',
+        'append-map', 'apply', 'argmax', 'argmin', 'arithmetic-shift',
+        'arity-at-least', 'arity-at-least-value', 'arity-at-least?',
+        'arity-checking-wrapper', 'arity-includes?', 'arity=?',
+        'arrow-contract-info', 'arrow-contract-info-accepts-arglist',
+        'arrow-contract-info-chaperone-procedure',
+        'arrow-contract-info-check-first-order', 'arrow-contract-info?',
+        'asin', 'assf', 'assoc', 'assq', 'assv', 'atan',
+        'bad-number-of-results', 'banner', 'base->-doms/c', 'base->-rngs/c',
+        'base->?', 'between/c', 'bitwise-and', 'bitwise-bit-field',
+        'bitwise-bit-set?', 'bitwise-ior', 'bitwise-not', 'bitwise-xor',
+        'blame-add-car-context', 'blame-add-cdr-context', 'blame-add-context',
+        'blame-add-missing-party', 'blame-add-nth-arg-context',
         'blame-add-range-context', 'blame-add-unknown-context',
         'blame-context', 'blame-contract', 'blame-fmt->-string',
-        'blame-negative', 'blame-original?', 'blame-positive',
-        'blame-replace-negative', 'blame-source', 'blame-swap',
-        'blame-swapped?', 'blame-update', 'blame-value', 'blame?', 'boolean=?',
-        'boolean?', 'bound-identifier=?', 'box', 'box-cas!', 'box-immutable',
-        'box-immutable/c', 'box/c', 'box?', 'break-enabled', 'break-thread',
+        'blame-missing-party?', 'blame-negative', 'blame-original?',
+        'blame-positive', 'blame-replace-negative', 'blame-source',
+        'blame-swap', 'blame-swapped?', 'blame-update', 'blame-value',
+        'blame?', 'boolean=?', 'boolean?', 'bound-identifier=?', 'box',
+        'box-cas!', 'box-immutable', 'box-immutable/c', 'box/c', 'box?',
+        'break-enabled', 'break-parameterization?', 'break-thread',
         'build-chaperone-contract-property', 'build-compound-type-name',
         'build-contract-property', 'build-flat-contract-property',
         'build-list', 'build-path', 'build-path/convention-type',
@@ -612,67 +752,76 @@ class RacketLexer(RegexLexer):
         'call-with-output-file*', 'call-with-output-string',
         'call-with-parameterization', 'call-with-semaphore',
         'call-with-semaphore/enable-break', 'call-with-values', 'call/cc',
-        'call/ec', 'car', 'cdaaar', 'cdaadr', 'cdaar', 'cdadar', 'cdaddr',
-        'cdadr', 'cdar', 'cddaar', 'cddadr', 'cddar', 'cdddar', 'cddddr',
-        'cdddr', 'cddr', 'cdr', 'ceiling', 'channel-get', 'channel-put',
-        'channel-put-evt', 'channel-put-evt?', 'channel-try-get', 'channel/c',
-        'channel?', 'chaperone-box', 'chaperone-channel',
-        'chaperone-continuation-mark-key', 'chaperone-contract-property?',
-        'chaperone-contract?', 'chaperone-evt', 'chaperone-hash',
-        'chaperone-of?', 'chaperone-procedure', 'chaperone-prompt-tag',
+        'call/ec', 'car', 'cartesian-product', 'cdaaar', 'cdaadr', 'cdaar',
+        'cdadar', 'cdaddr', 'cdadr', 'cdar', 'cddaar', 'cddadr', 'cddar',
+        'cdddar', 'cddddr', 'cdddr', 'cddr', 'cdr', 'ceiling', 'channel-get',
+        'channel-put', 'channel-put-evt', 'channel-put-evt?',
+        'channel-try-get', 'channel/c', 'channel?', 'chaperone-box',
+        'chaperone-channel', 'chaperone-continuation-mark-key',
+        'chaperone-contract-property?', 'chaperone-contract?', 'chaperone-evt',
+        'chaperone-hash', 'chaperone-hash-set', 'chaperone-of?',
+        'chaperone-procedure', 'chaperone-procedure*', 'chaperone-prompt-tag',
         'chaperone-struct', 'chaperone-struct-type', 'chaperone-vector',
         'chaperone?', 'char->integer', 'char-alphabetic?', 'char-blank?',
         'char-ci<=?', 'char-ci<?', 'char-ci=?', 'char-ci>=?', 'char-ci>?',
         'char-downcase', 'char-foldcase', 'char-general-category',
-        'char-graphic?', 'char-iso-control?', 'char-lower-case?',
-        'char-numeric?', 'char-punctuation?', 'char-ready?', 'char-symbolic?',
-        'char-title-case?', 'char-titlecase', 'char-upcase',
-        'char-upper-case?', 'char-utf-8-length', 'char-whitespace?', 'char<=?',
-        'char<?', 'char=?', 'char>=?', 'char>?', 'char?',
-        'check-duplicate-identifier', 'checked-procedure-check-and-extract',
-        'choice-evt', 'class->interface', 'class-info', 'class?',
-        'cleanse-path', 'close-input-port', 'close-output-port',
+        'char-graphic?', 'char-in', 'char-in/c', 'char-iso-control?',
+        'char-lower-case?', 'char-numeric?', 'char-punctuation?',
+        'char-ready?', 'char-symbolic?', 'char-title-case?', 'char-titlecase',
+        'char-upcase', 'char-upper-case?', 'char-utf-8-length',
+        'char-whitespace?', 'char<=?', 'char<?', 'char=?', 'char>=?', 'char>?',
+        'char?', 'check-duplicate-identifier', 'check-duplicates',
+        'checked-procedure-check-and-extract', 'choice-evt',
+        'class->interface', 'class-info', 'class-seal', 'class-unseal',
+        'class?', 'cleanse-path', 'close-input-port', 'close-output-port',
         'coerce-chaperone-contract', 'coerce-chaperone-contracts',
         'coerce-contract', 'coerce-contract/f', 'coerce-contracts',
         'coerce-flat-contract', 'coerce-flat-contracts', 'collect-garbage',
-        'collection-file-path', 'collection-path', 'compile',
+        'collection-file-path', 'collection-path', 'combinations', 'compile',
         'compile-allow-set!-undefined', 'compile-context-preservation-enabled',
         'compile-enforce-module-constants', 'compile-syntax',
-        'compiled-expression?', 'compiled-module-expression?',
-        'complete-path?', 'complex?', 'compose', 'compose1', 'conjugate',
-        'cons', 'cons/c', 'cons?', 'const', 'continuation-mark-key/c',
-        'continuation-mark-key?', 'continuation-mark-set->context',
-        'continuation-mark-set->list', 'continuation-mark-set->list*',
-        'continuation-mark-set-first', 'continuation-mark-set?',
-        'continuation-marks', 'continuation-prompt-available?',
-        'continuation-prompt-tag?', 'continuation?',
-        'contract-continuation-mark-key', 'contract-first-order',
-        'contract-first-order-passes?', 'contract-name', 'contract-proc',
+        'compiled-expression-recompile', 'compiled-expression?',
+        'compiled-module-expression?', 'complete-path?', 'complex?', 'compose',
+        'compose1', 'conjoin', 'conjugate', 'cons', 'cons/c', 'cons?', 'const',
+        'continuation-mark-key/c', 'continuation-mark-key?',
+        'continuation-mark-set->context', 'continuation-mark-set->list',
+        'continuation-mark-set->list*', 'continuation-mark-set-first',
+        'continuation-mark-set?', 'continuation-marks',
+        'continuation-prompt-available?', 'continuation-prompt-tag?',
+        'continuation?', 'contract-continuation-mark-key',
+        'contract-custom-write-property-proc', 'contract-exercise',
+        'contract-first-order', 'contract-first-order-passes?',
+        'contract-late-neg-projection', 'contract-name', 'contract-proc',
         'contract-projection', 'contract-property?',
-        'contract-random-generate', 'contract-stronger?',
-        'contract-struct-exercise', 'contract-struct-generate',
-        'contract-val-first-projection', 'contract?', 'convert-stream',
-        'copy-directory/files', 'copy-file', 'copy-port', 'cos', 'cosh',
-        'count', 'current-blame-format', 'current-break-parameterization',
-        'current-code-inspector', 'current-command-line-arguments',
-        'current-compile', 'current-compiled-file-roots',
-        'current-continuation-marks', 'current-contract-region',
-        'current-custodian', 'current-directory', 'current-directory-for-user',
-        'current-drive', 'current-environment-variables', 'current-error-port',
-        'current-eval', 'current-evt-pseudo-random-generator',
-        'current-future', 'current-gc-milliseconds',
-        'current-get-interaction-input-port', 'current-inexact-milliseconds',
-        'current-input-port', 'current-inspector',
-        'current-library-collection-links', 'current-library-collection-paths',
-        'current-load', 'current-load-extension',
-        'current-load-relative-directory', 'current-load/use-compiled',
-        'current-locale', 'current-logger', 'current-memory-use',
-        'current-milliseconds', 'current-module-declare-name',
-        'current-module-declare-source', 'current-module-name-resolver',
-        'current-module-path-for-load', 'current-namespace',
-        'current-output-port', 'current-parameterization',
-        'current-preserved-thread-cell-values', 'current-print',
-        'current-process-milliseconds', 'current-prompt-read',
+        'contract-random-generate', 'contract-random-generate-fail',
+        'contract-random-generate-fail?',
+        'contract-random-generate-get-current-environment',
+        'contract-random-generate-stash', 'contract-random-generate/choose',
+        'contract-stronger?', 'contract-struct-exercise',
+        'contract-struct-generate', 'contract-struct-late-neg-projection',
+        'contract-struct-list-contract?', 'contract-val-first-projection',
+        'contract?', 'convert-stream', 'copy-directory/files', 'copy-file',
+        'copy-port', 'cos', 'cosh', 'count', 'current-blame-format',
+        'current-break-parameterization', 'current-code-inspector',
+        'current-command-line-arguments', 'current-compile',
+        'current-compiled-file-roots', 'current-continuation-marks',
+        'current-contract-region', 'current-custodian', 'current-directory',
+        'current-directory-for-user', 'current-drive',
+        'current-environment-variables', 'current-error-port', 'current-eval',
+        'current-evt-pseudo-random-generator',
+        'current-force-delete-permissions', 'current-future',
+        'current-gc-milliseconds', 'current-get-interaction-input-port',
+        'current-inexact-milliseconds', 'current-input-port',
+        'current-inspector', 'current-library-collection-links',
+        'current-library-collection-paths', 'current-load',
+        'current-load-extension', 'current-load-relative-directory',
+        'current-load/use-compiled', 'current-locale', 'current-logger',
+        'current-memory-use', 'current-milliseconds',
+        'current-module-declare-name', 'current-module-declare-source',
+        'current-module-name-resolver', 'current-module-path-for-load',
+        'current-namespace', 'current-output-port', 'current-parameterization',
+        'current-plumber', 'current-preserved-thread-cell-values',
+        'current-print', 'current-process-milliseconds', 'current-prompt-read',
         'current-pseudo-random-generator', 'current-read-interaction',
         'current-reader-guard', 'current-readtable', 'current-seconds',
         'current-security-guard', 'current-subprocess-custodian-mode',
@@ -699,14 +848,15 @@ class RacketLexer(RegexLexer):
         'dict-mutable?', 'dict-ref', 'dict-ref!', 'dict-remove',
         'dict-remove!', 'dict-set', 'dict-set!', 'dict-set*', 'dict-set*!',
         'dict-update', 'dict-update!', 'dict-value-contract', 'dict-values',
-        'dict?', 'directory-exists?', 'directory-list', 'display',
+        'dict?', 'directory-exists?', 'directory-list', 'disjoin', 'display',
         'display-lines', 'display-lines-to-file', 'display-to-file',
-        'displayln', 'double-flonum?', 'drop', 'drop-right', 'dropf',
-        'dropf-right', 'dump-memory-stats', 'dup-input-port',
-        'dup-output-port', 'dynamic-get-field', 'dynamic-place',
-        'dynamic-place*', 'dynamic-require', 'dynamic-require-for-syntax',
-        'dynamic-send', 'dynamic-set-field!', 'dynamic-wind', 'eighth',
-        'empty', 'empty-sequence', 'empty-stream', 'empty?',
+        'displayln', 'double-flonum?', 'drop', 'drop-common-prefix',
+        'drop-right', 'dropf', 'dropf-right', 'dump-memory-stats',
+        'dup-input-port', 'dup-output-port', 'dynamic->*', 'dynamic-get-field',
+        'dynamic-object/c', 'dynamic-place', 'dynamic-place*',
+        'dynamic-require', 'dynamic-require-for-syntax', 'dynamic-send',
+        'dynamic-set-field!', 'dynamic-wind', 'eighth', 'empty',
+        'empty-sequence', 'empty-stream', 'empty?',
         'environment-variables-copy', 'environment-variables-names',
         'environment-variables-ref', 'environment-variables-set!',
         'environment-variables?', 'eof', 'eof-evt', 'eof-object?',
@@ -756,10 +906,10 @@ class RacketLexer(RegexLexer):
         'exn:missing-module?', 'exn:srclocs-accessor', 'exn:srclocs?', 'exn?',
         'exp', 'expand', 'expand-once', 'expand-syntax', 'expand-syntax-once',
         'expand-syntax-to-top-form', 'expand-to-top-form', 'expand-user-path',
-        'explode-path', 'expt', 'externalizable<%>', 'false?', 'field-names',
-        'fifth', 'file->bytes', 'file->bytes-lines', 'file->lines',
-        'file->list', 'file->string', 'file->value', 'file-exists?',
-        'file-name-from-path', 'file-or-directory-identity',
+        'explode-path', 'expt', 'externalizable<%>', 'failure-result/c',
+        'false?', 'field-names', 'fifth', 'file->bytes', 'file->bytes-lines',
+        'file->lines', 'file->list', 'file->string', 'file->value',
+        'file-exists?', 'file-name-from-path', 'file-or-directory-identity',
         'file-or-directory-modify-seconds', 'file-or-directory-permissions',
         'file-position', 'file-position*', 'file-size',
         'file-stream-buffer-mode', 'file-stream-port?', 'file-truncate',
@@ -768,26 +918,27 @@ class RacketLexer(RegexLexer):
         'filesystem-root-list', 'filter', 'filter-map', 'filter-not',
         'filter-read-input-port', 'find-executable-path', 'find-files',
         'find-library-collection-links', 'find-library-collection-paths',
-        'find-relative-path', 'find-system-path', 'findf', 'first', 'fixnum?',
-        'flat-contract', 'flat-contract-predicate', 'flat-contract-property?',
-        'flat-contract?', 'flat-named-contract', 'flatten',
-        'floating-point-bytes->real', 'flonum?', 'floor', 'flush-output',
-        'fold-files', 'foldl', 'foldr', 'for-each', 'force', 'format',
-        'fourth', 'fprintf', 'free-identifier=?', 'free-label-identifier=?',
-        'free-template-identifier=?', 'free-transformer-identifier=?',
-        'fsemaphore-count', 'fsemaphore-post', 'fsemaphore-try-wait?',
-        'fsemaphore-wait', 'fsemaphore?', 'future', 'future?',
-        'futures-enabled?', 'gcd', 'generate-member-key',
+        'find-relative-path', 'find-system-path', 'findf', 'first',
+        'first-or/c', 'fixnum?', 'flat-contract', 'flat-contract-predicate',
+        'flat-contract-property?', 'flat-contract?', 'flat-named-contract',
+        'flatten', 'floating-point-bytes->real', 'flonum?', 'floor',
+        'flush-output', 'fold-files', 'foldl', 'foldr', 'for-each', 'force',
+        'format', 'fourth', 'fprintf', 'free-identifier=?',
+        'free-label-identifier=?', 'free-template-identifier=?',
+        'free-transformer-identifier=?', 'fsemaphore-count', 'fsemaphore-post',
+        'fsemaphore-try-wait?', 'fsemaphore-wait', 'fsemaphore?', 'future',
+        'future?', 'futures-enabled?', 'gcd', 'generate-member-key',
         'generate-temporaries', 'generic-set?', 'generic?', 'gensym',
         'get-output-bytes', 'get-output-string', 'get-preference',
-        'get/build-val-first-projection', 'getenv',
-        'global-port-print-handler', 'group-execute-bit', 'group-read-bit',
-        'group-write-bit', 'guard-evt', 'handle-evt', 'handle-evt?',
-        'has-contract?', 'hash', 'hash->list', 'hash-clear', 'hash-clear!',
-        'hash-copy', 'hash-copy-clear', 'hash-count', 'hash-empty?',
-        'hash-eq?', 'hash-equal?', 'hash-eqv?', 'hash-for-each',
-        'hash-has-key?', 'hash-iterate-first', 'hash-iterate-key',
-        'hash-iterate-next', 'hash-iterate-value', 'hash-keys', 'hash-map',
+        'get/build-late-neg-projection', 'get/build-val-first-projection',
+        'getenv', 'global-port-print-handler', 'group-by', 'group-execute-bit',
+        'group-read-bit', 'group-write-bit', 'guard-evt', 'handle-evt',
+        'handle-evt?', 'has-blame?', 'has-contract?', 'hash', 'hash->list',
+        'hash-clear', 'hash-clear!', 'hash-copy', 'hash-copy-clear',
+        'hash-count', 'hash-empty?', 'hash-eq?', 'hash-equal?', 'hash-eqv?',
+        'hash-for-each', 'hash-has-key?', 'hash-iterate-first',
+        'hash-iterate-key', 'hash-iterate-key+value', 'hash-iterate-next',
+        'hash-iterate-pair', 'hash-iterate-value', 'hash-keys', 'hash-map',
         'hash-placeholder?', 'hash-ref', 'hash-ref!', 'hash-remove',
         'hash-remove!', 'hash-set', 'hash-set!', 'hash-set*', 'hash-set*!',
         'hash-update', 'hash-update!', 'hash-values', 'hash-weak?', 'hash/c',
@@ -797,48 +948,61 @@ class RacketLexer(RegexLexer):
         'identifier-prune-to-source-module',
         'identifier-remove-from-definition-context',
         'identifier-template-binding', 'identifier-transformer-binding',
-        'identifier?', 'identity', 'imag-part', 'immutable?',
+        'identifier?', 'identity', 'if/c', 'imag-part', 'immutable?',
         'impersonate-box', 'impersonate-channel',
         'impersonate-continuation-mark-key', 'impersonate-hash',
-        'impersonate-procedure', 'impersonate-prompt-tag',
+        'impersonate-hash-set', 'impersonate-procedure',
+        'impersonate-procedure*', 'impersonate-prompt-tag',
         'impersonate-struct', 'impersonate-vector', 'impersonator-contract?',
         'impersonator-ephemeron', 'impersonator-of?',
-        'impersonator-prop:application-mark', 'impersonator-prop:contracted',
+        'impersonator-prop:application-mark', 'impersonator-prop:blame',
+        'impersonator-prop:contracted',
         'impersonator-property-accessor-procedure?', 'impersonator-property?',
         'impersonator?', 'implementation?', 'implementation?/c', 'in-bytes',
-        'in-bytes-lines', 'in-cycle', 'in-dict', 'in-dict-keys',
-        'in-dict-pairs', 'in-dict-values', 'in-directory', 'in-hash',
-        'in-hash-keys', 'in-hash-pairs', 'in-hash-values', 'in-indexed',
-        'in-input-port-bytes', 'in-input-port-chars', 'in-lines', 'in-list',
-        'in-mlist', 'in-naturals', 'in-parallel', 'in-permutations', 'in-port',
-        'in-producer', 'in-range', 'in-sequences', 'in-set', 'in-stream',
-        'in-string', 'in-value', 'in-values*-sequence', 'in-values-sequence',
-        'in-vector', 'inexact->exact', 'inexact-real?', 'inexact?',
-        'infinite?', 'input-port-append', 'input-port?', 'inspector?',
-        'instanceof/c', 'integer->char', 'integer->integer-bytes',
-        'integer-bytes->integer', 'integer-in', 'integer-length',
-        'integer-sqrt', 'integer-sqrt/remainder', 'integer?',
+        'in-bytes-lines', 'in-combinations', 'in-cycle', 'in-dict',
+        'in-dict-keys', 'in-dict-pairs', 'in-dict-values', 'in-directory',
+        'in-hash', 'in-hash-keys', 'in-hash-pairs', 'in-hash-values',
+        'in-immutable-hash', 'in-immutable-hash-keys',
+        'in-immutable-hash-pairs', 'in-immutable-hash-values',
+        'in-immutable-set', 'in-indexed', 'in-input-port-bytes',
+        'in-input-port-chars', 'in-lines', 'in-list', 'in-mlist',
+        'in-mutable-hash', 'in-mutable-hash-keys', 'in-mutable-hash-pairs',
+        'in-mutable-hash-values', 'in-mutable-set', 'in-naturals',
+        'in-parallel', 'in-permutations', 'in-port', 'in-producer', 'in-range',
+        'in-sequences', 'in-set', 'in-slice', 'in-stream', 'in-string',
+        'in-syntax', 'in-value', 'in-values*-sequence', 'in-values-sequence',
+        'in-vector', 'in-weak-hash', 'in-weak-hash-keys', 'in-weak-hash-pairs',
+        'in-weak-hash-values', 'in-weak-set', 'inexact->exact',
+        'inexact-real?', 'inexact?', 'infinite?', 'input-port-append',
+        'input-port?', 'inspector?', 'instanceof/c', 'integer->char',
+        'integer->integer-bytes', 'integer-bytes->integer', 'integer-in',
+        'integer-length', 'integer-sqrt', 'integer-sqrt/remainder', 'integer?',
         'interface->method-names', 'interface-extension?', 'interface?',
+        'internal-definition-context-binding-identifiers',
+        'internal-definition-context-introduce',
         'internal-definition-context-seal', 'internal-definition-context?',
         'is-a?', 'is-a?/c', 'keyword->string', 'keyword-apply', 'keyword<?',
         'keyword?', 'keywords-match', 'kill-thread', 'last', 'last-pair',
         'lcm', 'length', 'liberal-define-context?', 'link-exists?', 'list',
-        'list*', 'list->bytes', 'list->mutable-set', 'list->mutable-seteq',
-        'list->mutable-seteqv', 'list->set', 'list->seteq', 'list->seteqv',
-        'list->string', 'list->vector', 'list->weak-set', 'list->weak-seteq',
-        'list->weak-seteqv', 'list-ref', 'list-tail', 'list/c', 'list?',
-        'listof', 'load', 'load-extension', 'load-on-demand-enabled',
-        'load-relative', 'load-relative-extension', 'load/cd',
-        'load/use-compiled', 'local-expand', 'local-expand/capture-lifts',
+        'list*', 'list*of', 'list->bytes', 'list->mutable-set',
+        'list->mutable-seteq', 'list->mutable-seteqv', 'list->set',
+        'list->seteq', 'list->seteqv', 'list->string', 'list->vector',
+        'list->weak-set', 'list->weak-seteq', 'list->weak-seteqv',
+        'list-contract?', 'list-prefix?', 'list-ref', 'list-set', 'list-tail',
+        'list-update', 'list/c', 'list?', 'listen-port-number?', 'listof',
+        'load', 'load-extension', 'load-on-demand-enabled', 'load-relative',
+        'load-relative-extension', 'load/cd', 'load/use-compiled',
+        'local-expand', 'local-expand/capture-lifts',
         'local-transformer-expand', 'local-transformer-expand/capture-lifts',
-        'locale-string-encoding', 'log', 'log-level?', 'log-max-level',
-        'log-message', 'log-receiver?', 'logger-name', 'logger?', 'magnitude',
-        'make-arity-at-least', 'make-base-empty-namespace',
-        'make-base-namespace', 'make-bytes', 'make-channel',
-        'make-chaperone-contract', 'make-continuation-mark-key',
-        'make-continuation-prompt-tag', 'make-contract', 'make-custodian',
-        'make-custodian-box', 'make-custom-hash', 'make-custom-hash-types',
-        'make-custom-set', 'make-custom-set-types', 'make-date', 'make-date*',
+        'locale-string-encoding', 'log', 'log-all-levels', 'log-level-evt',
+        'log-level?', 'log-max-level', 'log-message', 'log-receiver?',
+        'logger-name', 'logger?', 'magnitude', 'make-arity-at-least',
+        'make-base-empty-namespace', 'make-base-namespace', 'make-bytes',
+        'make-channel', 'make-chaperone-contract',
+        'make-continuation-mark-key', 'make-continuation-prompt-tag',
+        'make-contract', 'make-custodian', 'make-custodian-box',
+        'make-custom-hash', 'make-custom-hash-types', 'make-custom-set',
+        'make-custom-set-types', 'make-date', 'make-date*',
         'make-derived-parameter', 'make-directory', 'make-directory*',
         'make-do-sequence', 'make-empty-namespace',
         'make-environment-variables', 'make-ephemeron', 'make-exn',
@@ -870,27 +1034,28 @@ class RacketLexer(RegexLexer):
         'make-limited-input-port', 'make-list', 'make-lock-file-name',
         'make-log-receiver', 'make-logger', 'make-mixin-contract',
         'make-mutable-custom-set', 'make-none/c', 'make-object',
-        'make-output-port', 'make-parameter', 'make-phantom-bytes',
-        'make-pipe', 'make-pipe-with-specials', 'make-placeholder',
-        'make-polar', 'make-prefab-struct', 'make-primitive-class',
-        'make-proj-contract', 'make-pseudo-random-generator',
-        'make-reader-graph', 'make-readtable', 'make-rectangular',
-        'make-rename-transformer', 'make-resolved-module-path',
-        'make-security-guard', 'make-semaphore', 'make-set!-transformer',
-        'make-shared-bytes', 'make-sibling-inspector', 'make-special-comment',
-        'make-srcloc', 'make-string', 'make-struct-field-accessor',
-        'make-struct-field-mutator', 'make-struct-type',
-        'make-struct-type-property', 'make-syntax-delta-introducer',
-        'make-syntax-introducer', 'make-temporary-file',
-        'make-tentative-pretty-print-output-port', 'make-thread-cell',
-        'make-thread-group', 'make-vector', 'make-weak-box',
-        'make-weak-custom-hash', 'make-weak-custom-set', 'make-weak-hash',
-        'make-weak-hasheq', 'make-weak-hasheqv', 'make-will-executor', 'map',
-        'match-equality-test', 'matches-arity-exactly?', 'max', 'mcar', 'mcdr',
-        'mcons', 'member', 'member-name-key-hash-code', 'member-name-key=?',
-        'member-name-key?', 'memf', 'memq', 'memv', 'merge-input',
-        'method-in-interface?', 'min', 'mixin-contract', 'module->exports',
-        'module->imports', 'module->language-info', 'module->namespace',
+        'make-output-port', 'make-parameter', 'make-parent-directory*',
+        'make-phantom-bytes', 'make-pipe', 'make-pipe-with-specials',
+        'make-placeholder', 'make-plumber', 'make-polar', 'make-prefab-struct',
+        'make-primitive-class', 'make-proj-contract',
+        'make-pseudo-random-generator', 'make-reader-graph', 'make-readtable',
+        'make-rectangular', 'make-rename-transformer',
+        'make-resolved-module-path', 'make-security-guard', 'make-semaphore',
+        'make-set!-transformer', 'make-shared-bytes', 'make-sibling-inspector',
+        'make-special-comment', 'make-srcloc', 'make-string',
+        'make-struct-field-accessor', 'make-struct-field-mutator',
+        'make-struct-type', 'make-struct-type-property',
+        'make-syntax-delta-introducer', 'make-syntax-introducer',
+        'make-temporary-file', 'make-tentative-pretty-print-output-port',
+        'make-thread-cell', 'make-thread-group', 'make-vector',
+        'make-weak-box', 'make-weak-custom-hash', 'make-weak-custom-set',
+        'make-weak-hash', 'make-weak-hasheq', 'make-weak-hasheqv',
+        'make-will-executor', 'map', 'match-equality-test',
+        'matches-arity-exactly?', 'max', 'mcar', 'mcdr', 'mcons', 'member',
+        'member-name-key-hash-code', 'member-name-key=?', 'member-name-key?',
+        'memf', 'memq', 'memv', 'merge-input', 'method-in-interface?', 'min',
+        'mixin-contract', 'module->exports', 'module->imports',
+        'module->language-info', 'module->namespace',
         'module-compiled-cross-phase-persistent?', 'module-compiled-exports',
         'module-compiled-imports', 'module-compiled-language-info',
         'module-compiled-name', 'module-compiled-submodules',
@@ -910,26 +1075,26 @@ class RacketLexer(RegexLexer):
         'namespace-syntax-introduce', 'namespace-undefine-variable!',
         'namespace-unprotect-module', 'namespace-variable-value', 'namespace?',
         'nan?', 'natural-number/c', 'negate', 'negative?', 'never-evt',
-        u'new-∀/c', u'new-∃/c', 'newline', 'ninth', 'non-empty-listof',
-        'none/c', 'normal-case-path', 'normalize-arity', 'normalize-path',
-        'normalized-arity?', 'not', 'not/c', 'null', 'null?', 'number->string',
-        'number?', 'numerator', 'object%', 'object->vector', 'object-info',
-        'object-interface', 'object-method-arity-includes?', 'object-name',
-        'object=?', 'object?', 'odd?', 'one-of/c', 'open-input-bytes',
-        'open-input-file', 'open-input-output-file', 'open-input-string',
-        'open-output-bytes', 'open-output-file', 'open-output-nowhere',
-        'open-output-string', 'or/c', 'order-of-magnitude', 'ormap',
-        'other-execute-bit', 'other-read-bit', 'other-write-bit',
-        'output-port?', 'pair?', 'parameter-procedure=?', 'parameter/c',
-        'parameter?', 'parameterization?', 'parse-command-line', 'partition',
-        'path->bytes', 'path->complete-path', 'path->directory-path',
-        'path->string', 'path-add-suffix', 'path-convention-type',
-        'path-element->bytes', 'path-element->string', 'path-element?',
-        'path-for-some-system?', 'path-list-string->path-list', 'path-only',
-        'path-replace-suffix', 'path-string?', 'path<?', 'path?',
-        'pathlist-closure', 'peek-byte', 'peek-byte-or-special', 'peek-bytes',
-        'peek-bytes!', 'peek-bytes!-evt', 'peek-bytes-avail!',
-        'peek-bytes-avail!*', 'peek-bytes-avail!-evt',
+        'new-∀/c', 'new-∃/c', 'newline', 'ninth', 'non-empty-listof',
+        'non-empty-string?', 'none/c', 'normal-case-path', 'normalize-arity',
+        'normalize-path', 'normalized-arity?', 'not', 'not/c', 'null', 'null?',
+        'number->string', 'number?', 'numerator', 'object%', 'object->vector',
+        'object-info', 'object-interface', 'object-method-arity-includes?',
+        'object-name', 'object-or-false=?', 'object=?', 'object?', 'odd?',
+        'one-of/c', 'open-input-bytes', 'open-input-file',
+        'open-input-output-file', 'open-input-string', 'open-output-bytes',
+        'open-output-file', 'open-output-nowhere', 'open-output-string',
+        'or/c', 'order-of-magnitude', 'ormap', 'other-execute-bit',
+        'other-read-bit', 'other-write-bit', 'output-port?', 'pair?',
+        'parameter-procedure=?', 'parameter/c', 'parameter?',
+        'parameterization?', 'parse-command-line', 'partition', 'path->bytes',
+        'path->complete-path', 'path->directory-path', 'path->string',
+        'path-add-suffix', 'path-convention-type', 'path-element->bytes',
+        'path-element->string', 'path-element?', 'path-for-some-system?',
+        'path-list-string->path-list', 'path-only', 'path-replace-suffix',
+        'path-string?', 'path<?', 'path?', 'pathlist-closure', 'peek-byte',
+        'peek-byte-or-special', 'peek-bytes', 'peek-bytes!', 'peek-bytes!-evt',
+        'peek-bytes-avail!', 'peek-bytes-avail!*', 'peek-bytes-avail!-evt',
         'peek-bytes-avail!/enable-break', 'peek-bytes-evt', 'peek-char',
         'peek-char-or-special', 'peek-string', 'peek-string!',
         'peek-string!-evt', 'peek-string-evt', 'peeking-input-port',
@@ -939,18 +1104,20 @@ class RacketLexer(RegexLexer):
         'place-dead-evt', 'place-enabled?', 'place-kill', 'place-location?',
         'place-message-allowed?', 'place-sleep', 'place-wait', 'place?',
         'placeholder-get', 'placeholder-set!', 'placeholder?',
+        'plumber-add-flush!', 'plumber-flush-all',
+        'plumber-flush-handle-remove!', 'plumber-flush-handle?', 'plumber?',
         'poll-guard-evt', 'port->bytes', 'port->bytes-lines', 'port->lines',
         'port->list', 'port->string', 'port-closed-evt', 'port-closed?',
         'port-commit-peeked', 'port-count-lines!', 'port-count-lines-enabled',
         'port-counts-lines?', 'port-display-handler', 'port-file-identity',
-        'port-file-unlock', 'port-next-location', 'port-print-handler',
-        'port-progress-evt', 'port-provides-progress-evts?',
-        'port-read-handler', 'port-try-file-lock?', 'port-write-handler',
-        'port-writes-atomic?', 'port-writes-special?', 'port?', 'positive?',
-        'predicate/c', 'prefab-key->struct-type', 'prefab-key?',
-        'prefab-struct-key', 'preferences-lock-file-mode', 'pregexp',
-        'pregexp?', 'pretty-display', 'pretty-format', 'pretty-print',
-        'pretty-print-.-symbol-without-bars',
+        'port-file-unlock', 'port-next-location', 'port-number?',
+        'port-print-handler', 'port-progress-evt',
+        'port-provides-progress-evts?', 'port-read-handler',
+        'port-try-file-lock?', 'port-write-handler', 'port-writes-atomic?',
+        'port-writes-special?', 'port?', 'positive?', 'predicate/c',
+        'prefab-key->struct-type', 'prefab-key?', 'prefab-struct-key',
+        'preferences-lock-file-mode', 'pregexp', 'pregexp?', 'pretty-display',
+        'pretty-format', 'pretty-print', 'pretty-print-.-symbol-without-bars',
         'pretty-print-abbreviate-read-macros', 'pretty-print-columns',
         'pretty-print-current-style-table', 'pretty-print-depth',
         'pretty-print-exact-as-decimal', 'pretty-print-extend-style-table',
@@ -966,30 +1133,36 @@ class RacketLexer(RegexLexer):
         'print-pair-curly-braces', 'print-reader-abbreviations',
         'print-struct', 'print-syntax-width', 'print-unreadable',
         'print-vector-length', 'printable/c', 'printable<%>', 'printf',
-        'procedure->method', 'procedure-arity', 'procedure-arity-includes/c',
-        'procedure-arity-includes?', 'procedure-arity?',
-        'procedure-closure-contents-eq?', 'procedure-extract-target',
-        'procedure-keywords', 'procedure-reduce-arity',
-        'procedure-reduce-keyword-arity', 'procedure-rename',
+        'println', 'procedure->method', 'procedure-arity',
+        'procedure-arity-includes/c', 'procedure-arity-includes?',
+        'procedure-arity?', 'procedure-closure-contents-eq?',
+        'procedure-extract-target', 'procedure-keywords',
+        'procedure-reduce-arity', 'procedure-reduce-keyword-arity',
+        'procedure-rename', 'procedure-result-arity', 'procedure-specialize',
         'procedure-struct-type?', 'procedure?', 'process', 'process*',
         'process*/ports', 'process/ports', 'processor-count', 'progress-evt?',
-        'promise-forced?', 'promise-running?', 'promise/c', 'promise?',
-        'prop:arity-string', 'prop:chaperone-contract',
-        'prop:checked-procedure', 'prop:contract', 'prop:contracted',
-        'prop:custom-print-quotable', 'prop:custom-write', 'prop:dict',
-        'prop:dict/contract', 'prop:equal+hash', 'prop:evt',
-        'prop:exn:missing-module', 'prop:exn:srclocs', 'prop:flat-contract',
+        'promise-forced?', 'promise-running?', 'promise/c', 'promise/name?',
+        'promise?', 'prop:arity-string', 'prop:arrow-contract',
+        'prop:arrow-contract-get-info', 'prop:arrow-contract?', 'prop:blame',
+        'prop:chaperone-contract', 'prop:checked-procedure', 'prop:contract',
+        'prop:contracted', 'prop:custom-print-quotable', 'prop:custom-write',
+        'prop:dict', 'prop:dict/contract', 'prop:equal+hash', 'prop:evt',
+        'prop:exn:missing-module', 'prop:exn:srclocs',
+        'prop:expansion-contexts', 'prop:flat-contract',
         'prop:impersonator-of', 'prop:input-port',
-        'prop:liberal-define-context', 'prop:opt-chaperone-contract',
-        'prop:opt-chaperone-contract-get-test', 'prop:opt-chaperone-contract?',
+        'prop:liberal-define-context', 'prop:object-name',
+        'prop:opt-chaperone-contract', 'prop:opt-chaperone-contract-get-test',
+        'prop:opt-chaperone-contract?', 'prop:orc-contract',
+        'prop:orc-contract-get-subcontracts', 'prop:orc-contract?',
         'prop:output-port', 'prop:place-location', 'prop:procedure',
-        'prop:rename-transformer', 'prop:sequence', 'prop:set!-transformer',
-        'prop:stream', 'proper-subset?', 'pseudo-random-generator->vector',
-        'pseudo-random-generator-vector?', 'pseudo-random-generator?',
-        'put-preferences', 'putenv', 'quotient', 'quotient/remainder',
-        'radians->degrees', 'raise', 'raise-argument-error',
-        'raise-arguments-error', 'raise-arity-error', 'raise-blame-error',
-        'raise-contract-error', 'raise-mismatch-error',
+        'prop:recursive-contract', 'prop:recursive-contract-unroll',
+        'prop:recursive-contract?', 'prop:rename-transformer', 'prop:sequence',
+        'prop:set!-transformer', 'prop:stream', 'proper-subset?',
+        'pseudo-random-generator->vector', 'pseudo-random-generator-vector?',
+        'pseudo-random-generator?', 'put-preferences', 'putenv', 'quotient',
+        'quotient/remainder', 'radians->degrees', 'raise',
+        'raise-argument-error', 'raise-arguments-error', 'raise-arity-error',
+        'raise-blame-error', 'raise-contract-error', 'raise-mismatch-error',
         'raise-not-cons-blame-error', 'raise-range-error',
         'raise-result-error', 'raise-syntax-error', 'raise-type-error',
         'raise-user-error', 'random', 'random-seed', 'range', 'rational?',
@@ -1000,11 +1173,12 @@ class RacketLexer(RegexLexer):
         'read-bytes', 'read-bytes!', 'read-bytes!-evt', 'read-bytes-avail!',
         'read-bytes-avail!*', 'read-bytes-avail!-evt',
         'read-bytes-avail!/enable-break', 'read-bytes-evt', 'read-bytes-line',
-        'read-bytes-line-evt', 'read-case-sensitive', 'read-char',
+        'read-bytes-line-evt', 'read-case-sensitive', 'read-cdot', 'read-char',
         'read-char-or-special', 'read-curly-brace-as-paren',
-        'read-decimal-as-inexact', 'read-eval-print-loop', 'read-language',
-        'read-line', 'read-line-evt', 'read-on-demand-source',
-        'read-square-bracket-as-paren', 'read-string', 'read-string!',
+        'read-curly-brace-with-tag', 'read-decimal-as-inexact',
+        'read-eval-print-loop', 'read-language', 'read-line', 'read-line-evt',
+        'read-on-demand-source', 'read-square-bracket-as-paren',
+        'read-square-bracket-with-tag', 'read-string', 'read-string!',
         'read-string!-evt', 'read-string-evt', 'read-syntax',
         'read-syntax/recursive', 'read/recursive', 'readtable-mapping',
         'readtable?', 'real->decimal-string', 'real->double-flonum',
@@ -1022,20 +1196,21 @@ class RacketLexer(RegexLexer):
         'regexp-quote', 'regexp-replace', 'regexp-replace*',
         'regexp-replace-quote', 'regexp-replaces', 'regexp-split',
         'regexp-try-match', 'regexp?', 'relative-path?', 'relocate-input-port',
-        'relocate-output-port', 'remainder', 'remove', 'remove*',
-        'remove-duplicates', 'remq', 'remq*', 'remv', 'remv*',
-        'rename-file-or-directory', 'rename-transformer-target',
-        'rename-transformer?', 'reroot-path', 'resolve-path',
-        'resolved-module-path-name', 'resolved-module-path?', 'rest',
-        'reverse', 'round', 'second', 'seconds->date', 'security-guard?',
-        'semaphore-peek-evt', 'semaphore-peek-evt?', 'semaphore-post',
-        'semaphore-try-wait?', 'semaphore-wait', 'semaphore-wait/enable-break',
-        'semaphore?', 'sequence->list', 'sequence->stream',
-        'sequence-add-between', 'sequence-andmap', 'sequence-append',
-        'sequence-count', 'sequence-filter', 'sequence-fold',
-        'sequence-for-each', 'sequence-generate', 'sequence-generate*',
-        'sequence-length', 'sequence-map', 'sequence-ormap', 'sequence-ref',
-        'sequence-tail', 'sequence?', 'set', 'set!-transformer-procedure',
+        'relocate-output-port', 'remainder', 'remf', 'remf*', 'remove',
+        'remove*', 'remove-duplicates', 'remq', 'remq*', 'remv', 'remv*',
+        'rename-contract', 'rename-file-or-directory',
+        'rename-transformer-target', 'rename-transformer?', 'replace-evt',
+        'reroot-path', 'resolve-path', 'resolved-module-path-name',
+        'resolved-module-path?', 'rest', 'reverse', 'round', 'second',
+        'seconds->date', 'security-guard?', 'semaphore-peek-evt',
+        'semaphore-peek-evt?', 'semaphore-post', 'semaphore-try-wait?',
+        'semaphore-wait', 'semaphore-wait/enable-break', 'semaphore?',
+        'sequence->list', 'sequence->stream', 'sequence-add-between',
+        'sequence-andmap', 'sequence-append', 'sequence-count',
+        'sequence-filter', 'sequence-fold', 'sequence-for-each',
+        'sequence-generate', 'sequence-generate*', 'sequence-length',
+        'sequence-map', 'sequence-ormap', 'sequence-ref', 'sequence-tail',
+        'sequence/c', 'sequence?', 'set', 'set!-transformer-procedure',
         'set!-transformer?', 'set->list', 'set->stream', 'set-add', 'set-add!',
         'set-box!', 'set-clear', 'set-clear!', 'set-copy', 'set-copy-clear',
         'set-count', 'set-empty?', 'set-eq?', 'set-equal?', 'set-eqv?',
@@ -1043,38 +1218,39 @@ class RacketLexer(RegexLexer):
         'set-intersect', 'set-intersect!', 'set-map', 'set-mcar!', 'set-mcdr!',
         'set-member?', 'set-mutable?', 'set-phantom-bytes!',
         'set-port-next-location!', 'set-remove', 'set-remove!', 'set-rest',
-        'set-subtract', 'set-subtract!', 'set-symmetric-difference',
-        'set-symmetric-difference!', 'set-union', 'set-union!', 'set-weak?',
-        'set/c', 'set=?', 'set?', 'seteq', 'seteqv', 'seventh', 'sgn',
-        'shared-bytes', 'shell-execute', 'shrink-path-wrt', 'shuffle',
-        'simple-form-path', 'simplify-path', 'sin', 'single-flonum?', 'sinh',
-        'sixth', 'skip-projection-wrapper?', 'sleep',
+        'set-some-basic-contracts!', 'set-subtract', 'set-subtract!',
+        'set-symmetric-difference', 'set-symmetric-difference!', 'set-union',
+        'set-union!', 'set-weak?', 'set/c', 'set=?', 'set?', 'seteq', 'seteqv',
+        'seventh', 'sgn', 'shared-bytes', 'shell-execute', 'shrink-path-wrt',
+        'shuffle', 'simple-form-path', 'simplify-path', 'sin',
+        'single-flonum?', 'sinh', 'sixth', 'skip-projection-wrapper?', 'sleep',
         'some-system-path->string', 'sort', 'special-comment-value',
         'special-comment?', 'special-filter-input-port', 'split-at',
-        'split-at-right', 'split-path', 'splitf-at', 'splitf-at-right', 'sqr',
-        'sqrt', 'srcloc', 'srcloc->string', 'srcloc-column', 'srcloc-line',
-        'srcloc-position', 'srcloc-source', 'srcloc-span', 'srcloc?',
-        'stop-after', 'stop-before', 'stream->list', 'stream-add-between',
-        'stream-andmap', 'stream-append', 'stream-count', 'stream-empty?',
-        'stream-filter', 'stream-first', 'stream-fold', 'stream-for-each',
-        'stream-length', 'stream-map', 'stream-ormap', 'stream-ref',
-        'stream-rest', 'stream-tail', 'stream?', 'string',
-        'string->bytes/latin-1', 'string->bytes/locale', 'string->bytes/utf-8',
-        'string->immutable-string', 'string->keyword', 'string->list',
-        'string->number', 'string->path', 'string->path-element',
-        'string->some-system-path', 'string->symbol',
+        'split-at-right', 'split-common-prefix', 'split-path', 'splitf-at',
+        'splitf-at-right', 'sqr', 'sqrt', 'srcloc', 'srcloc->string',
+        'srcloc-column', 'srcloc-line', 'srcloc-position', 'srcloc-source',
+        'srcloc-span', 'srcloc?', 'stop-after', 'stop-before', 'stream->list',
+        'stream-add-between', 'stream-andmap', 'stream-append', 'stream-count',
+        'stream-empty?', 'stream-filter', 'stream-first', 'stream-fold',
+        'stream-for-each', 'stream-length', 'stream-map', 'stream-ormap',
+        'stream-ref', 'stream-rest', 'stream-tail', 'stream/c', 'stream?',
+        'string', 'string->bytes/latin-1', 'string->bytes/locale',
+        'string->bytes/utf-8', 'string->immutable-string', 'string->keyword',
+        'string->list', 'string->number', 'string->path',
+        'string->path-element', 'string->some-system-path', 'string->symbol',
         'string->uninterned-symbol', 'string->unreadable-symbol',
         'string-append', 'string-append*', 'string-ci<=?', 'string-ci<?',
-        'string-ci=?', 'string-ci>=?', 'string-ci>?', 'string-copy',
-        'string-copy!', 'string-downcase', 'string-environment-variable-name?',
-        'string-fill!', 'string-foldcase', 'string-join', 'string-len/c',
-        'string-length', 'string-locale-ci<?', 'string-locale-ci=?',
-        'string-locale-ci>?', 'string-locale-downcase', 'string-locale-upcase',
-        'string-locale<?', 'string-locale=?', 'string-locale>?',
-        'string-no-nuls?', 'string-normalize-nfc', 'string-normalize-nfd',
-        'string-normalize-nfkc', 'string-normalize-nfkd',
-        'string-normalize-spaces', 'string-ref', 'string-replace',
-        'string-set!', 'string-split', 'string-titlecase', 'string-trim',
+        'string-ci=?', 'string-ci>=?', 'string-ci>?', 'string-contains?',
+        'string-copy', 'string-copy!', 'string-downcase',
+        'string-environment-variable-name?', 'string-fill!', 'string-foldcase',
+        'string-join', 'string-len/c', 'string-length', 'string-locale-ci<?',
+        'string-locale-ci=?', 'string-locale-ci>?', 'string-locale-downcase',
+        'string-locale-upcase', 'string-locale<?', 'string-locale=?',
+        'string-locale>?', 'string-no-nuls?', 'string-normalize-nfc',
+        'string-normalize-nfd', 'string-normalize-nfkc',
+        'string-normalize-nfkd', 'string-normalize-spaces', 'string-port?',
+        'string-prefix?', 'string-ref', 'string-replace', 'string-set!',
+        'string-split', 'string-suffix?', 'string-titlecase', 'string-trim',
         'string-upcase', 'string-utf-8-length', 'string<=?', 'string<?',
         'string=?', 'string>=?', 'string>?', 'string?', 'struct->vector',
         'struct-accessor-procedure?', 'struct-constructor-procedure?',
@@ -1083,10 +1259,11 @@ class RacketLexer(RegexLexer):
         'struct-type-make-constructor', 'struct-type-make-predicate',
         'struct-type-property-accessor-procedure?', 'struct-type-property/c',
         'struct-type-property?', 'struct-type?', 'struct:arity-at-least',
-        'struct:date', 'struct:date*', 'struct:exn', 'struct:exn:break',
-        'struct:exn:break:hang-up', 'struct:exn:break:terminate',
-        'struct:exn:fail', 'struct:exn:fail:contract',
-        'struct:exn:fail:contract:arity', 'struct:exn:fail:contract:blame',
+        'struct:arrow-contract-info', 'struct:date', 'struct:date*',
+        'struct:exn', 'struct:exn:break', 'struct:exn:break:hang-up',
+        'struct:exn:break:terminate', 'struct:exn:fail',
+        'struct:exn:fail:contract', 'struct:exn:fail:contract:arity',
+        'struct:exn:fail:contract:blame',
         'struct:exn:fail:contract:continuation',
         'struct:exn:fail:contract:divide-by-zero',
         'struct:exn:fail:contract:non-fixnum-result',
@@ -1104,16 +1281,17 @@ class RacketLexer(RegexLexer):
         'struct:wrapped-extra-arg-arrow', 'struct?', 'sub1', 'subbytes',
         'subclass?', 'subclass?/c', 'subprocess', 'subprocess-group-enabled',
         'subprocess-kill', 'subprocess-pid', 'subprocess-status',
-        'subprocess-wait', 'subprocess?', 'subset?', 'substring',
+        'subprocess-wait', 'subprocess?', 'subset?', 'substring', 'suggest/c',
         'symbol->string', 'symbol-interned?', 'symbol-unreadable?', 'symbol<?',
         'symbol=?', 'symbol?', 'symbols', 'sync', 'sync/enable-break',
         'sync/timeout', 'sync/timeout/enable-break', 'syntax->datum',
-        'syntax->list', 'syntax-arm', 'syntax-column', 'syntax-disarm',
-        'syntax-e', 'syntax-line', 'syntax-local-bind-syntaxes',
-        'syntax-local-certifier', 'syntax-local-context',
-        'syntax-local-expand-expression', 'syntax-local-get-shadower',
+        'syntax->list', 'syntax-arm', 'syntax-column', 'syntax-debug-info',
+        'syntax-disarm', 'syntax-e', 'syntax-line',
+        'syntax-local-bind-syntaxes', 'syntax-local-certifier',
+        'syntax-local-context', 'syntax-local-expand-expression',
+        'syntax-local-get-shadower', 'syntax-local-identifier-as-binding',
         'syntax-local-introduce', 'syntax-local-lift-context',
-        'syntax-local-lift-expression',
+        'syntax-local-lift-expression', 'syntax-local-lift-module',
         'syntax-local-lift-module-end-declaration',
         'syntax-local-lift-provide', 'syntax-local-lift-require',
         'syntax-local-lift-values-expression',
@@ -1125,20 +1303,22 @@ class RacketLexer(RegexLexer):
         'syntax-local-phase-level', 'syntax-local-submodules',
         'syntax-local-transforming-module-provides?', 'syntax-local-value',
         'syntax-local-value/immediate', 'syntax-original?', 'syntax-position',
-        'syntax-property', 'syntax-property-symbol-keys', 'syntax-protect',
-        'syntax-rearm', 'syntax-recertify', 'syntax-shift-phase-level',
-        'syntax-source', 'syntax-source-module', 'syntax-span', 'syntax-taint',
+        'syntax-property', 'syntax-property-preserved?',
+        'syntax-property-symbol-keys', 'syntax-protect', 'syntax-rearm',
+        'syntax-recertify', 'syntax-shift-phase-level', 'syntax-source',
+        'syntax-source-module', 'syntax-span', 'syntax-taint',
         'syntax-tainted?', 'syntax-track-origin',
-        'syntax-transforming-module-expression?', 'syntax-transforming?',
-        'syntax/c', 'syntax?', 'system', 'system*', 'system*/exit-code',
+        'syntax-transforming-module-expression?',
+        'syntax-transforming-with-lifts?', 'syntax-transforming?', 'syntax/c',
+        'syntax?', 'system', 'system*', 'system*/exit-code',
         'system-big-endian?', 'system-idle-evt', 'system-language+country',
         'system-library-subpath', 'system-path-convention-type', 'system-type',
-        'system/exit-code', 'tail-marks-match?', 'take', 'take-right', 'takef',
-        'takef-right', 'tan', 'tanh', 'tcp-abandon-port', 'tcp-accept',
-        'tcp-accept-evt', 'tcp-accept-ready?', 'tcp-accept/enable-break',
-        'tcp-addresses', 'tcp-close', 'tcp-connect',
-        'tcp-connect/enable-break', 'tcp-listen', 'tcp-listener?', 'tcp-port?',
-        'tentative-pretty-print-port-cancel',
+        'system/exit-code', 'tail-marks-match?', 'take', 'take-common-prefix',
+        'take-right', 'takef', 'takef-right', 'tan', 'tanh',
+        'tcp-abandon-port', 'tcp-accept', 'tcp-accept-evt',
+        'tcp-accept-ready?', 'tcp-accept/enable-break', 'tcp-addresses',
+        'tcp-close', 'tcp-connect', 'tcp-connect/enable-break', 'tcp-listen',
+        'tcp-listener?', 'tcp-port?', 'tentative-pretty-print-port-cancel',
         'tentative-pretty-print-port-transfer', 'tenth', 'terminal-port?',
         'the-unsupplied-arg', 'third', 'thread', 'thread-cell-ref',
         'thread-cell-set!', 'thread-cell-values?', 'thread-cell?',
@@ -1161,7 +1341,7 @@ class RacketLexer(RegexLexer):
         'uncaught-exception-handler', 'unit?', 'unspecified-dom',
         'unsupplied-arg?', 'use-collection-link-paths',
         'use-compiled-file-paths', 'use-user-specific-search-paths',
-        'user-execute-bit', 'user-read-bit', 'user-write-bit',
+        'user-execute-bit', 'user-read-bit', 'user-write-bit', 'value-blame',
         'value-contract', 'values', 'variable-reference->empty-namespace',
         'variable-reference->module-base-phase',
         'variable-reference->module-declaration-inspector',
@@ -1193,14 +1373,14 @@ class RacketLexer(RegexLexer):
         'write-bytes-avail', 'write-bytes-avail*', 'write-bytes-avail-evt',
         'write-bytes-avail/enable-break', 'write-char', 'write-special',
         'write-special-avail*', 'write-special-evt', 'write-string',
-        'write-to-file', 'xor', 'zero?', '~.a', '~.s', '~.v', '~a', '~e', '~r',
-        '~s', '~v'
+        'write-to-file', 'writeln', 'xor', 'zero?', '~.a', '~.s', '~.v', '~a',
+        '~e', '~r', '~s', '~v'
     )
 
     _opening_parenthesis = r'[([{]'
     _closing_parenthesis = r'[)\]}]'
     _delimiters = r'()[\]{}",\'`;\s'
-    _symbol = r'(?u)(?:\|[^|]*\||\\[\w\W]|[^|\\%s]+)+' % _delimiters
+    _symbol = r'(?:\|[^|]*\||\\[\w\W]|[^|\\%s]+)+' % _delimiters
     _exact_decimal_prefix = r'(?:#e)?(?:#d)?(?:#e)?'
     _exponent = r'(?:[defls][-+]?\d+)'
     _inexact_simple_no_hashes = r'(?:\d+(?:/\d+|\.\d*)?|\.\d+)'
@@ -1221,11 +1401,11 @@ class RacketLexer(RegexLexer):
         ],
         'datum': [
             (r'(?s)#;|#![ /]([^\\\n]|\\.)*', Comment),
-            (u';[^\\n\\r\x85\u2028\u2029]*', Comment.Single),
+            (r';[^\n\r\x85\u2028\u2029]*', Comment.Single),
             (r'#\|', Comment.Multiline, 'block-comment'),
 
             # Whitespaces
-            (r'(?u)\s+', Text),
+            (r'(?u)\s+', Whitespace),
 
             # Numbers: Keep in mind Racket reader hash prefixes, which
             # can denote the base or the type. These don't map neatly
@@ -1252,16 +1432,16 @@ class RacketLexer(RegexLexer):
              (_inexact_simple, _delimiters), Number.Float, '#pop'),
 
             # #b
-            (r'(?i)(#[ei])?#b%s' % _symbol, Number.Bin, '#pop'),
+            (r'(?iu)(#[ei])?#b%s' % _symbol, Number.Bin, '#pop'),
 
             # #o
-            (r'(?i)(#[ei])?#o%s' % _symbol, Number.Oct, '#pop'),
+            (r'(?iu)(#[ei])?#o%s' % _symbol, Number.Oct, '#pop'),
 
             # #x
-            (r'(?i)(#[ei])?#x%s' % _symbol, Number.Hex, '#pop'),
+            (r'(?iu)(#[ei])?#x%s' % _symbol, Number.Hex, '#pop'),
 
             # #i is always inexact, i.e. float
-            (r'(?i)(#d)?#i%s' % _symbol, Number.Float, '#pop'),
+            (r'(?iu)(#d)?#i%s' % _symbol, Number.Float, '#pop'),
 
             # Strings and characters
             (r'#?"', String.Double, ('#pop', 'string')),
@@ -1303,9 +1483,9 @@ class RacketLexer(RegexLexer):
             (r'quasiquote(?=[%s])' % _delimiters, Keyword,
              ('#pop', 'quasiquoted-datum')),
             (_opening_parenthesis, Punctuation, ('#pop', 'unquoted-list')),
-            (words(_keywords, prefix='(?u)', suffix='(?=[%s])' % _delimiters),
+            (words(_keywords, suffix='(?=[%s])' % _delimiters),
              Keyword, '#pop'),
-            (words(_builtins, prefix='(?u)', suffix='(?=[%s])' % _delimiters),
+            (words(_builtins, suffix='(?=[%s])' % _delimiters),
              Name.Builtin, '#pop'),
             (_symbol, Name, '#pop'),
             include('datum*')
@@ -1351,17 +1531,18 @@ class RacketLexer(RegexLexer):
 
 class NewLispLexer(RegexLexer):
     """
-    For `newLISP. <www.newlisp.org>`_ source code (version 10.3.0).
+    For newLISP source code (version 10.3.0).
 
     .. versionadded:: 1.5
     """
 
     name = 'NewLisp'
+    url = 'http://www.newlisp.org/'
     aliases = ['newlisp']
-    filenames = ['*.lsp', '*.nl']
+    filenames = ['*.lsp', '*.nl', '*.kif']
     mimetypes = ['text/x-newlisp', 'application/x-newlisp']
 
-    flags = re.IGNORECASE | re.MULTILINE | re.UNICODE
+    flags = re.IGNORECASE | re.MULTILINE
 
     # list of built-in functions for newLISP version 10.3
     builtins = (
@@ -1438,10 +1619,10 @@ class NewLispLexer(RegexLexer):
             (r'#.*$', Comment.Single),
 
             # whitespace
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
 
             # strings, symbols and characters
-            (r'"(\\\\|\\"|[^"])*"', String),
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
 
             # braces
             (r'\{', String, "bracestring"),
@@ -1488,7 +1669,7 @@ class EmacsLispLexer(RegexLexer):
     .. versionadded:: 2.1
     """
     name = 'EmacsLisp'
-    aliases = ['emacs', 'elisp']
+    aliases = ['emacs-lisp', 'elisp', 'emacs']
     filenames = ['*.el']
     mimetypes = ['text/x-elisp', 'application/x-elisp']
 
@@ -1505,7 +1686,7 @@ class EmacsLispLexer(RegexLexer):
     # Take a deep breath...
     symbol = r'((?:%s)(?:%s)*)' % (nonmacro, constituent)
 
-    macros = set((
+    macros = {
         'atomic-change-group', 'case', 'block', 'cl-block', 'cl-callf', 'cl-callf2',
         'cl-case', 'cl-decf', 'cl-declaim', 'cl-declare',
         'cl-define-compiler-macro', 'cl-defmacro', 'cl-defstruct',
@@ -1550,18 +1731,19 @@ class EmacsLispLexer(RegexLexer):
         'with-syntax-table', 'with-temp-buffer', 'with-temp-file',
         'with-temp-message', 'with-timeout', 'with-tramp-connection-property',
         'with-tramp-file-property', 'with-tramp-progress-reporter',
-        'with-wrapper-hook', 'load-time-value', 'locally', 'macrolet', 'progv', 'return-from'
-    ))
+        'with-wrapper-hook', 'load-time-value', 'locally', 'macrolet', 'progv',
+        'return-from',
+    }
 
-    special_forms = set((
+    special_forms = {
         'and', 'catch', 'cond', 'condition-case', 'defconst', 'defvar',
         'function', 'if', 'interactive', 'let', 'let*', 'or', 'prog1',
         'prog2', 'progn', 'quote', 'save-current-buffer', 'save-excursion',
         'save-restriction', 'setq', 'setq-default', 'subr-arity',
         'unwind-protect', 'while',
-    ))
+    }
 
-    builtin_function = set((
+    builtin_function = {
         '%', '*', '+', '-', '/', '/=', '1+', '1-', '<', '<=', '=', '>', '>=',
         'Snarf-documentation', 'abort-recursive-edit', 'abs',
         'accept-process-output', 'access-file', 'accessible-keymaps', 'acos',
@@ -1887,8 +2069,9 @@ class EmacsLispLexer(RegexLexer):
         'split-window-internal', 'sqrt', 'standard-case-table',
         'standard-category-table', 'standard-syntax-table', 'start-kbd-macro',
         'start-process', 'stop-process', 'store-kbd-macro-event', 'string',
-        'string-as-multibyte', 'string-as-unibyte', 'string-bytes',
-        'string-collate-equalp', 'string-collate-lessp', 'string-equal',
+        'string=', 'string<', 'string>', 'string-as-multibyte',
+        'string-as-unibyte', 'string-bytes', 'string-collate-equalp',
+        'string-collate-lessp', 'string-equal', 'string-greaterp',
         'string-lessp', 'string-make-multibyte', 'string-make-unibyte',
         'string-match', 'string-to-char', 'string-to-multibyte',
         'string-to-number', 'string-to-syntax', 'string-to-unibyte',
@@ -2000,23 +2183,23 @@ class EmacsLispLexer(RegexLexer):
         'xw-color-values', 'xw-display-color-p', 'xw-display-color-p',
         'yes-or-no-p', 'zlib-available-p', 'zlib-decompress-region',
         'forward-point',
-    ))
+    }
 
-    builtin_function_highlighted = set((
+    builtin_function_highlighted = {
         'defvaralias', 'provide', 'require',
         'with-no-warnings', 'define-widget', 'with-electric-help',
         'throw', 'defalias', 'featurep'
-    ))
+    }
 
-    lambda_list_keywords = set((
+    lambda_list_keywords = {
         '&allow-other-keys', '&aux', '&body', '&environment', '&key', '&optional',
         '&rest', '&whole',
-    ))
+    }
 
-    error_keywords = set((
+    error_keywords = {
         'cl-assert', 'cl-check-type', 'error', 'signal',
         'user-error', 'warn',
-    ))
+    }
 
     def get_tokens_unprocessed(self, text):
         stack = ['root']
@@ -2048,7 +2231,7 @@ class EmacsLispLexer(RegexLexer):
         ],
         'body': [
             # whitespace
-            (r'\s+', Text),
+            (r'\s+', Whitespace),
 
             # single-line comment
             (r';.*$', Comment.Single),
@@ -2066,8 +2249,8 @@ class EmacsLispLexer(RegexLexer):
             # decimal numbers
             (r'[-+]?\d+\.?' + terminated, Number.Integer),
             (r'[-+]?\d+/\d+' + terminated, Number),
-            (r'[-+]?(\d*\.\d+([defls][-+]?\d+)?|\d+(\.\d*)?[defls][-+]?\d+)'
-                + terminated, Number.Float),
+            (r'[-+]?(\d*\.\d+([defls][-+]?\d+)?|\d+(\.\d*)?[defls][-+]?\d+)' +
+             terminated, Number.Float),
 
             # vectors
             (r'\[|\]', Punctuation),
@@ -2104,7 +2287,7 @@ class EmacsLispLexer(RegexLexer):
             (r'(t|nil)' + terminated, Name.Constant),
 
             # functions and variables
-            (r'\*' + symbol + '\*', Name.Variable.Global),
+            (r'\*' + symbol + r'\*', Name.Variable.Global),
             (symbol, Name.Variable),
 
             # parentheses
@@ -2120,4 +2303,535 @@ class EmacsLispLexer(RegexLexer):
             (r'\\\n', String),
             (r'"', String, '#pop'),
         ],
+    }
+
+
+class ShenLexer(RegexLexer):
+    """
+    Lexer for Shen source code.
+
+    .. versionadded:: 2.1
+    """
+    name = 'Shen'
+    url = 'http://shenlanguage.org/'
+    aliases = ['shen']
+    filenames = ['*.shen']
+    mimetypes = ['text/x-shen', 'application/x-shen']
+
+    DECLARATIONS = (
+        'datatype', 'define', 'defmacro', 'defprolog', 'defcc',
+        'synonyms', 'declare', 'package', 'type', 'function',
+    )
+
+    SPECIAL_FORMS = (
+        'lambda', 'get', 'let', 'if', 'cases', 'cond', 'put', 'time', 'freeze',
+        'value', 'load', '$', 'protect', 'or', 'and', 'not', 'do', 'output',
+        'prolog?', 'trap-error', 'error', 'make-string', '/.', 'set', '@p',
+        '@s', '@v',
+    )
+
+    BUILTINS = (
+        '==', '=', '*', '+', '-', '/', '<', '>', '>=', '<=', '<-address',
+        '<-vector', 'abort', 'absvector', 'absvector?', 'address->', 'adjoin',
+        'append', 'arity', 'assoc', 'bind', 'boolean?', 'bound?', 'call', 'cd',
+        'close', 'cn', 'compile', 'concat', 'cons', 'cons?', 'cut', 'destroy',
+        'difference', 'element?', 'empty?', 'enable-type-theory',
+        'error-to-string', 'eval', 'eval-kl', 'exception', 'explode', 'external',
+        'fail', 'fail-if', 'file', 'findall', 'fix', 'fst', 'fwhen', 'gensym',
+        'get-time', 'hash', 'hd', 'hdstr', 'hdv', 'head', 'identical',
+        'implementation', 'in', 'include', 'include-all-but', 'inferences',
+        'input', 'input+', 'integer?', 'intern', 'intersection', 'is', 'kill',
+        'language', 'length', 'limit', 'lineread', 'loaded', 'macro', 'macroexpand',
+        'map', 'mapcan', 'maxinferences', 'mode', 'n->string', 'nl', 'nth', 'null',
+        'number?', 'occurrences', 'occurs-check', 'open', 'os', 'out', 'port',
+        'porters', 'pos', 'pr', 'preclude', 'preclude-all-but', 'print', 'profile',
+        'profile-results', 'ps', 'quit', 'read', 'read+', 'read-byte', 'read-file',
+        'read-file-as-bytelist', 'read-file-as-string', 'read-from-string',
+        'release', 'remove', 'return', 'reverse', 'run', 'save', 'set',
+        'simple-error', 'snd', 'specialise', 'spy', 'step', 'stinput', 'stoutput',
+        'str', 'string->n', 'string->symbol', 'string?', 'subst', 'symbol?',
+        'systemf', 'tail', 'tc', 'tc?', 'thaw', 'tl', 'tlstr', 'tlv', 'track',
+        'tuple?', 'undefmacro', 'unify', 'unify!', 'union', 'unprofile',
+        'unspecialise', 'untrack', 'variable?', 'vector', 'vector->', 'vector?',
+        'verified', 'version', 'warn', 'when', 'write-byte', 'write-to-file',
+        'y-or-n?',
+    )
+
+    BUILTINS_ANYWHERE = ('where', 'skip', '>>', '_', '!', '<e>', '<!>')
+
+    MAPPINGS = {s: Keyword for s in DECLARATIONS}
+    MAPPINGS.update((s, Name.Builtin) for s in BUILTINS)
+    MAPPINGS.update((s, Keyword) for s in SPECIAL_FORMS)
+
+    valid_symbol_chars = r'[\w!$%*+,<=>?/.\'@&#:-]'
+    valid_name = '%s+' % valid_symbol_chars
+    symbol_name = r'[a-z!$%%*+,<=>?/.\'@&#_-]%s*' % valid_symbol_chars
+    variable = r'[A-Z]%s*' % valid_symbol_chars
+
+    tokens = {
+        'string': [
+            (r'"', String, '#pop'),
+            (r'c#\d{1,3};', String.Escape),
+            (r'~[ARS%]', String.Interpol),
+            (r'(?s).', String),
+        ],
+
+        'root': [
+            (r'(?s)\\\*.*?\*\\', Comment.Multiline),  # \* ... *\
+            (r'\\\\.*', Comment.Single),              # \\ ...
+            (r'\s+', Whitespace),
+            (r'_{5,}', Punctuation),
+            (r'={5,}', Punctuation),
+            (r'(;|:=|\||--?>|<--?)', Punctuation),
+            (r'(:-|:|\{|\})', Literal),
+            (r'[+-]*\d*\.\d+(e[+-]?\d+)?', Number.Float),
+            (r'[+-]*\d+', Number.Integer),
+            (r'"', String, 'string'),
+            (variable, Name.Variable),
+            (r'(true|false|<>|\[\])', Keyword.Pseudo),
+            (symbol_name, Literal),
+            (r'(\[|\]|\(|\))', Punctuation),
+        ],
+    }
+
+    def get_tokens_unprocessed(self, text):
+        tokens = RegexLexer.get_tokens_unprocessed(self, text)
+        tokens = self._process_symbols(tokens)
+        tokens = self._process_declarations(tokens)
+        return tokens
+
+    def _relevant(self, token):
+        return token not in (Text, Whitespace, Comment.Single, Comment.Multiline)
+
+    def _process_declarations(self, tokens):
+        opening_paren = False
+        for index, token, value in tokens:
+            yield index, token, value
+            if self._relevant(token):
+                if opening_paren and token == Keyword and value in self.DECLARATIONS:
+                    declaration = value
+                    yield from self._process_declaration(declaration, tokens)
+                opening_paren = value == '(' and token == Punctuation
+
+    def _process_symbols(self, tokens):
+        opening_paren = False
+        for index, token, value in tokens:
+            if opening_paren and token in (Literal, Name.Variable):
+                token = self.MAPPINGS.get(value, Name.Function)
+            elif token == Literal and value in self.BUILTINS_ANYWHERE:
+                token = Name.Builtin
+            opening_paren = value == '(' and token == Punctuation
+            yield index, token, value
+
+    def _process_declaration(self, declaration, tokens):
+        for index, token, value in tokens:
+            if self._relevant(token):
+                break
+            yield index, token, value
+
+        if declaration == 'datatype':
+            prev_was_colon = False
+            token = Keyword.Type if token == Literal else token
+            yield index, token, value
+            for index, token, value in tokens:
+                if prev_was_colon and token == Literal:
+                    token = Keyword.Type
+                yield index, token, value
+                if self._relevant(token):
+                    prev_was_colon = token == Literal and value == ':'
+        elif declaration == 'package':
+            token = Name.Namespace if token == Literal else token
+            yield index, token, value
+        elif declaration == 'define':
+            token = Name.Function if token == Literal else token
+            yield index, token, value
+            for index, token, value in tokens:
+                if self._relevant(token):
+                    break
+                yield index, token, value
+            if value == '{' and token == Literal:
+                yield index, Punctuation, value
+                for index, token, value in self._process_signature(tokens):
+                    yield index, token, value
+            else:
+                yield index, token, value
+        else:
+            token = Name.Function if token == Literal else token
+            yield index, token, value
+
+        return
+
+    def _process_signature(self, tokens):
+        for index, token, value in tokens:
+            if token == Literal and value == '}':
+                yield index, Punctuation, value
+                return
+            elif token in (Literal, Name.Function):
+                token = Name.Variable if value.istitle() else Keyword.Type
+            yield index, token, value
+
+
+class CPSALexer(RegexLexer):
+    """
+    A CPSA lexer based on the CPSA language as of version 2.2.12
+
+    .. versionadded:: 2.1
+    """
+    name = 'CPSA'
+    aliases = ['cpsa']
+    filenames = ['*.cpsa']
+    mimetypes = []
+
+    # list of known keywords and builtins taken form vim 6.4 scheme.vim
+    # syntax file.
+    _keywords = (
+        'herald', 'vars', 'defmacro', 'include', 'defprotocol', 'defrole',
+        'defskeleton', 'defstrand', 'deflistener', 'non-orig', 'uniq-orig',
+        'pen-non-orig', 'precedes', 'trace', 'send', 'recv', 'name', 'text',
+        'skey', 'akey', 'data', 'mesg',
+    )
+    _builtins = (
+        'cat', 'enc', 'hash', 'privk', 'pubk', 'invk', 'ltk', 'gen', 'exp',
+    )
+
+    # valid names for identifiers
+    # well, names can only not consist fully of numbers
+    # but this should be good enough for now
+    valid_name = r'[\w!$%&*+,/:<=>?@^~|-]+'
+
+    tokens = {
+        'root': [
+            # the comments - always starting with semicolon
+            # and going to the end of the line
+            (r';.*$', Comment.Single),
+
+            # whitespaces - usually not relevant
+            (r'\s+', Whitespace),
+
+            # numbers
+            (r'-?\d+\.\d+', Number.Float),
+            (r'-?\d+', Number.Integer),
+            # support for uncommon kinds of numbers -
+            # have to figure out what the characters mean
+            # (r'(#e|#i|#b|#o|#d|#x)[\d.]+', Number),
+
+            # strings, symbols and characters
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
+            (r"'" + valid_name, String.Symbol),
+            (r"#\\([()/'\"._!§$%& ?=+-]|[a-zA-Z0-9]+)", String.Char),
+
+            # constants
+            (r'(#t|#f)', Name.Constant),
+
+            # special operators
+            (r"('|#|`|,@|,|\.)", Operator),
+
+            # highlight the keywords
+            (words(_keywords, suffix=r'\b'), Keyword),
+
+            # first variable in a quoted string like
+            # '(this is syntactic sugar)
+            (r"(?<='\()" + valid_name, Name.Variable),
+            (r"(?<=#\()" + valid_name, Name.Variable),
+
+            # highlight the builtins
+            (words(_builtins, prefix=r'(?<=\()', suffix=r'\b'), Name.Builtin),
+
+            # the remaining functions
+            (r'(?<=\()' + valid_name, Name.Function),
+            # find the remaining variables
+            (valid_name, Name.Variable),
+
+            # the famous parentheses!
+            (r'(\(|\))', Punctuation),
+            (r'(\[|\])', Punctuation),
+        ],
+    }
+
+
+class XtlangLexer(RegexLexer):
+    """An xtlang lexer for the Extempore programming environment.
+
+    This is a mixture of Scheme and xtlang, really. Keyword lists are
+    taken from the Extempore Emacs mode
+    (https://github.com/extemporelang/extempore-emacs-mode)
+
+    .. versionadded:: 2.2
+    """
+    name = 'xtlang'
+    url = 'http://extempore.moso.com.au'
+    aliases = ['extempore']
+    filenames = ['*.xtm']
+    mimetypes = []
+
+    common_keywords = (
+        'lambda', 'define', 'if', 'else', 'cond', 'and',
+        'or', 'let', 'begin', 'set!', 'map', 'for-each',
+    )
+    scheme_keywords = (
+        'do', 'delay', 'quasiquote', 'unquote', 'unquote-splicing', 'eval',
+        'case', 'let*', 'letrec', 'quote',
+    )
+    xtlang_bind_keywords = (
+        'bind-func', 'bind-val', 'bind-lib', 'bind-type', 'bind-alias',
+        'bind-poly', 'bind-dylib', 'bind-lib-func', 'bind-lib-val',
+    )
+    xtlang_keywords = (
+        'letz', 'memzone', 'cast', 'convert', 'dotimes', 'doloop',
+    )
+    common_functions = (
+        '*', '+', '-', '/', '<', '<=', '=', '>', '>=', '%', 'abs', 'acos',
+        'angle', 'append', 'apply', 'asin', 'assoc', 'assq', 'assv',
+        'atan', 'boolean?', 'caaaar', 'caaadr', 'caaar', 'caadar',
+        'caaddr', 'caadr', 'caar', 'cadaar', 'cadadr', 'cadar',
+        'caddar', 'cadddr', 'caddr', 'cadr', 'car', 'cdaaar',
+        'cdaadr', 'cdaar', 'cdadar', 'cdaddr', 'cdadr', 'cdar',
+        'cddaar', 'cddadr', 'cddar', 'cdddar', 'cddddr', 'cdddr',
+        'cddr', 'cdr', 'ceiling', 'cons', 'cos', 'floor', 'length',
+        'list', 'log', 'max', 'member', 'min', 'modulo', 'not',
+        'reverse', 'round', 'sin', 'sqrt', 'substring', 'tan',
+        'println', 'random', 'null?', 'callback', 'now',
+    )
+    scheme_functions = (
+        'call-with-current-continuation', 'call-with-input-file',
+        'call-with-output-file', 'call-with-values', 'call/cc',
+        'char->integer', 'char-alphabetic?', 'char-ci<=?', 'char-ci<?',
+        'char-ci=?', 'char-ci>=?', 'char-ci>?', 'char-downcase',
+        'char-lower-case?', 'char-numeric?', 'char-ready?',
+        'char-upcase', 'char-upper-case?', 'char-whitespace?',
+        'char<=?', 'char<?', 'char=?', 'char>=?', 'char>?', 'char?',
+        'close-input-port', 'close-output-port', 'complex?',
+        'current-input-port', 'current-output-port', 'denominator',
+        'display', 'dynamic-wind', 'eof-object?', 'eq?', 'equal?',
+        'eqv?', 'even?', 'exact->inexact', 'exact?', 'exp', 'expt',
+        'force', 'gcd', 'imag-part', 'inexact->exact', 'inexact?',
+        'input-port?', 'integer->char', 'integer?',
+        'interaction-environment', 'lcm', 'list->string',
+        'list->vector', 'list-ref', 'list-tail', 'list?', 'load',
+        'magnitude', 'make-polar', 'make-rectangular', 'make-string',
+        'make-vector', 'memq', 'memv', 'negative?', 'newline',
+        'null-environment', 'number->string', 'number?',
+        'numerator', 'odd?', 'open-input-file', 'open-output-file',
+        'output-port?', 'pair?', 'peek-char', 'port?', 'positive?',
+        'procedure?', 'quotient', 'rational?', 'rationalize', 'read',
+        'read-char', 'real-part', 'real?',
+        'remainder', 'scheme-report-environment', 'set-car!', 'set-cdr!',
+        'string', 'string->list', 'string->number', 'string->symbol',
+        'string-append', 'string-ci<=?', 'string-ci<?', 'string-ci=?',
+        'string-ci>=?', 'string-ci>?', 'string-copy', 'string-fill!',
+        'string-length', 'string-ref', 'string-set!', 'string<=?',
+        'string<?', 'string=?', 'string>=?', 'string>?', 'string?',
+        'symbol->string', 'symbol?', 'transcript-off', 'transcript-on',
+        'truncate', 'values', 'vector', 'vector->list', 'vector-fill!',
+        'vector-length', 'vector?',
+        'with-input-from-file', 'with-output-to-file', 'write',
+        'write-char', 'zero?',
+    )
+    xtlang_functions = (
+        'toString', 'afill!', 'pfill!', 'tfill!', 'tbind', 'vfill!',
+        'array-fill!', 'pointer-fill!', 'tuple-fill!', 'vector-fill!', 'free',
+        'array', 'tuple', 'list', '~', 'cset!', 'cref', '&', 'bor',
+        'ang-names', '<<', '>>', 'nil', 'printf', 'sprintf', 'null', 'now',
+        'pset!', 'pref-ptr', 'vset!', 'vref', 'aset!', 'aref', 'aref-ptr',
+        'tset!', 'tref', 'tref-ptr', 'salloc', 'halloc', 'zalloc', 'alloc',
+        'schedule', 'exp', 'log', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+        'sqrt', 'expt', 'floor', 'ceiling', 'truncate', 'round',
+        'llvm_printf', 'push_zone', 'pop_zone', 'memzone', 'callback',
+        'llvm_sprintf', 'make-array', 'array-set!', 'array-ref',
+        'array-ref-ptr', 'pointer-set!', 'pointer-ref', 'pointer-ref-ptr',
+        'stack-alloc', 'heap-alloc', 'zone-alloc', 'make-tuple', 'tuple-set!',
+        'tuple-ref', 'tuple-ref-ptr', 'closure-set!', 'closure-ref', 'pref',
+        'pdref', 'impc_null', 'bitcast', 'void', 'ifret', 'ret->', 'clrun->',
+        'make-env-zone', 'make-env', '<>', 'dtof', 'ftod', 'i1tof',
+        'i1tod', 'i1toi8', 'i1toi32', 'i1toi64', 'i8tof', 'i8tod',
+        'i8toi1', 'i8toi32', 'i8toi64', 'i32tof', 'i32tod', 'i32toi1',
+        'i32toi8', 'i32toi64', 'i64tof', 'i64tod', 'i64toi1',
+        'i64toi8', 'i64toi32',
+    )
+
+    # valid names for Scheme identifiers (names cannot consist fully
+    # of numbers, but this should be good enough for now)
+    valid_scheme_name = r'[\w!$%&*+,/:<=>?@^~|-]+'
+
+    # valid characters in xtlang names & types
+    valid_xtlang_name = r'[\w.!-]+'
+    valid_xtlang_type = r'[]{}[\w<>,*/|!-]+'
+
+    tokens = {
+        # keep track of when we're exiting the xtlang form
+        'xtlang': [
+            (r'\(', Punctuation, '#push'),
+            (r'\)', Punctuation, '#pop'),
+
+            (r'(?<=bind-func\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-val\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-type\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-alias\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-poly\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-lib\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-dylib\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-lib-func\s)' + valid_xtlang_name, Name.Function),
+            (r'(?<=bind-lib-val\s)' + valid_xtlang_name, Name.Function),
+
+            # type annotations
+            (r':' + valid_xtlang_type, Keyword.Type),
+
+            # types
+            (r'(<' + valid_xtlang_type + r'>|\|' + valid_xtlang_type + r'\||/' +
+             valid_xtlang_type + r'/|' + valid_xtlang_type + r'\*)\**',
+             Keyword.Type),
+
+            # keywords
+            (words(xtlang_keywords, prefix=r'(?<=\()'), Keyword),
+
+            # builtins
+            (words(xtlang_functions, prefix=r'(?<=\()'), Name.Function),
+
+            include('common'),
+
+            # variables
+            (valid_xtlang_name, Name.Variable),
+        ],
+        'scheme': [
+            # quoted symbols
+            (r"'" + valid_scheme_name, String.Symbol),
+
+            # char literals
+            (r"#\\([()/'\"._!§$%& ?=+-]|[a-zA-Z0-9]+)", String.Char),
+
+            # special operators
+            (r"('|#|`|,@|,|\.)", Operator),
+
+            # keywords
+            (words(scheme_keywords, prefix=r'(?<=\()'), Keyword),
+
+            # builtins
+            (words(scheme_functions, prefix=r'(?<=\()'), Name.Function),
+
+            include('common'),
+
+            # variables
+            (valid_scheme_name, Name.Variable),
+        ],
+        # common to both xtlang and Scheme
+        'common': [
+            # comments
+            (r';.*$', Comment.Single),
+
+            # whitespaces - usually not relevant
+            (r'\s+', Whitespace),
+
+            # numbers
+            (r'-?\d+\.\d+', Number.Float),
+            (r'-?\d+', Number.Integer),
+
+            # binary/oct/hex literals
+            (r'(#b|#o|#x)[\d.]+', Number),
+
+            # strings
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
+
+            # true/false constants
+            (r'(#t|#f)', Name.Constant),
+
+            # keywords
+            (words(common_keywords, prefix=r'(?<=\()'), Keyword),
+
+            # builtins
+            (words(common_functions, prefix=r'(?<=\()'), Name.Function),
+
+            # the famous parentheses!
+            (r'(\(|\))', Punctuation),
+        ],
+        'root': [
+            # go into xtlang mode
+            (words(xtlang_bind_keywords, prefix=r'(?<=\()', suffix=r'\b'),
+             Keyword, 'xtlang'),
+
+            include('scheme')
+        ],
+    }
+
+
+class FennelLexer(RegexLexer):
+    """A lexer for the Fennel programming language.
+
+    Fennel compiles to Lua, so all the Lua builtins are recognized as well
+    as the special forms that are particular to the Fennel compiler.
+
+    .. versionadded:: 2.3
+    """
+    name = 'Fennel'
+    url = 'https://fennel-lang.org'
+    aliases = ['fennel', 'fnl']
+    filenames = ['*.fnl']
+
+    # this list is current as of Fennel version 0.10.0.
+    special_forms = (
+        '#', '%', '*', '+', '-', '->', '->>', '-?>', '-?>>', '.', '..',
+        '/', '//', ':', '<', '<=', '=', '>', '>=', '?.', '^', 'accumulate',
+        'and', 'band', 'bnot', 'bor', 'bxor', 'collect', 'comment', 'do', 'doc',
+        'doto', 'each', 'eval-compiler', 'for', 'hashfn', 'icollect', 'if',
+        'import-macros', 'include', 'length', 'let', 'lshift', 'lua',
+        'macrodebug', 'match', 'not', 'not=', 'or', 'partial', 'pick-args',
+        'pick-values', 'quote', 'require-macros', 'rshift', 'set',
+        'set-forcibly!', 'tset', 'values', 'when', 'while', 'with-open', '~='
+    )
+
+    declarations = (
+        'fn', 'global', 'lambda', 'local', 'macro', 'macros', 'var', 'λ'
+    )
+
+    builtins = (
+        '_G', '_VERSION', 'arg', 'assert', 'bit32', 'collectgarbage',
+        'coroutine', 'debug', 'dofile', 'error', 'getfenv',
+        'getmetatable', 'io', 'ipairs', 'load', 'loadfile', 'loadstring',
+        'math', 'next', 'os', 'package', 'pairs', 'pcall', 'print',
+        'rawequal', 'rawget', 'rawlen', 'rawset', 'require', 'select',
+        'setfenv', 'setmetatable', 'string', 'table', 'tonumber',
+        'tostring', 'type', 'unpack', 'xpcall'
+    )
+
+    # based on the scheme definition, but disallowing leading digits and
+    # commas, and @ is not allowed.
+    valid_name = r'[a-zA-Z_!$%&*+/:<=>?^~|-][\w!$%&*+/:<=>?^~|\.-]*'
+
+    tokens = {
+        'root': [
+            # the only comment form is a semicolon; goes to the end of the line
+            (r';.*$', Comment.Single),
+
+            (r',+', Text),
+            (r'\s+', Whitespace),
+            (r'-?\d+\.\d+', Number.Float),
+            (r'-?\d+', Number.Integer),
+
+            (r'"(\\\\|\\[^\\]|[^"\\])*"', String),
+
+            (r'(true|false|nil)', Name.Constant),
+
+            # these are technically strings, but it's worth visually
+            # distinguishing them because their intent is different
+            # from regular strings.
+            (r':' + valid_name, String.Symbol),
+
+            # special forms are keywords
+            (words(special_forms, suffix=' '), Keyword),
+            # these are ... even more special!
+            (words(declarations, suffix=' '), Keyword.Declaration),
+            # lua standard library are builtins
+            (words(builtins, suffix=' '), Name.Builtin),
+            # special-case the vararg symbol
+            (r'\.\.\.', Name.Variable),
+            # regular identifiers
+            (valid_name, Name.Variable),
+
+            # all your normal paired delimiters for your programming enjoyment
+            (r'(\(|\))', Punctuation),
+            (r'(\[|\])', Punctuation),
+            (r'(\{|\})', Punctuation),
+
+            # the # symbol is shorthand for a lambda function
+            (r'#', Punctuation),
+        ]
     }

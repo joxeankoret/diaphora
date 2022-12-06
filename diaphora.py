@@ -2,7 +2,7 @@
 
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2021, Joxean Koret
+Copyright (c) 2015-2022, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -48,8 +48,8 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.0.8"
-COPYRIGHT_VALUE="Copyright(c) 2015-2021 Joxean Koret"
+VERSION_VALUE = "2.1.0"
+COPYRIGHT_VALUE="Copyright(c) 2015-2022 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
@@ -1252,18 +1252,12 @@ class CBinDiff:
     return len(self.matched1) == self.total_functions1 or \
            len(self.matched2) == self.total_functions2
 
-  def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
-    if self.all_functions_matched():
-      return
-
-    cur = self.db_cursor()
-    try:
-      cur.execute(sql)
-    except:
-      log("Error: %s" % str(sys.exc_info()[1]))
-      return
-
+  def add_matches_internal(self, cur, best, partial, val=None, unreliable=None, debug=False):
+    """
+    Wrapper for various functions that find matches based on SQL queries.
+    """
     i = 0
+    matches = []
     t = time.monotonic()
     while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
       if time.monotonic() - t > self.timeout:
@@ -1304,32 +1298,65 @@ class CBinDiff:
       if self.hooks is not None:
         if 'on_match' in dir(self.hooks):
           d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+          d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
           should_add, r = self.hooks.on_match(d1, d2, desc, r)
 
       if not should_add or name1 in self.matched1 or name2 in self.matched2:
         continue
 
+      done = True
       if r == 1.0:
-        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       elif r >= 0.5:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif r < 0.5 and unreliable is not None:
-        unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
       else:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
+        done = False
 
+      if done:
+        matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
+      else: #Or "elif not done"
+        if val is None:
+          if r < 0.5 and unreliable is not None:
+            unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+            self.matched1.add(name1)
+            self.matched2.add(name2)
+          else:
+            partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+            self.matched1.add(name1)
+            self.matched2.add(name2)
+        else:
+          if r < 0.5 and r > val:
+            unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+            self.matched1.add(name1)
+            self.matched2.add(name2)
+
+    return matches
+
+  def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
+    """
+    Find matches using the query @sql and the usual rules.
+    """
+    if self.all_functions_matched():
+      return
+
+    cur = self.db_cursor()
+    try:
+      cur.execute(sql)
+    except:
+      log("Error: %s" % str(sys.exc_info()[1]))
+      return
+
+    self.add_matches_internal(cur, best=best, partial=partial, unreliable=unreliable, debug=debug)
     cur.close()
 
   def add_matches_from_query_ratio_max(self, sql, val):
+    """
+    Find matches using the query @sql with a ratio >= @val.
+    """
     if self.all_functions_matched():
       return
     
@@ -1340,63 +1367,10 @@ class CBinDiff:
       log("Error: %s" % str(sys.exc_info()[1]))
       return
 
-    i = 0
-    t = time.monotonic()
-    while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
-      if time.monotonic() - t > self.timeout:
-        log("Timeout")
-        break
-
-      i += 1
-      if i % 50000 == 0:
-        log("Processed %d rows..." % i)
-      row = cur.fetchone()
-      if row is None:
-        break
-
-      ea = str(row["ea"])
-      name1 = row["name1"]
-      ea2 = row["ea2"]
-      name2 = row["name2"]
-      desc = row["description"]
-      pseudo1 = row["pseudo1"]
-      pseudo2 = row["pseudo2"]
-      asm1 = row["asm1"]
-      asm2 = row["asm2"]
-      ast1 = row["pseudo_primes1"]
-      ast2 = row["pseudo_primes2"]
-      bb1 = int(row["bb1"])
-      bb2 = int(row["bb2"])
-      md1 = row["md1"]
-      md2 = row["md2"]
-
-      if name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
-
-      should_add = True
-      if self.hooks is not None:
-        if 'on_match' in dir(self.hooks):
-          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-          should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
-      if not should_add or name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      if r == 1.0:
-        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      elif r >= 0.5:
-        self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      elif r < 0.5 and r > val:
-        self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
+    best = self.best_chooser
+    partial = self.partial_chooser
+    unreliable = self.unreliable_chooser
+    self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable=unreliable)
 
     cur.close()
 
@@ -1404,76 +1378,7 @@ class CBinDiff:
     if self.all_functions_matched():
       return
 
-    matches = []
-    i = 0
-    t = time.monotonic()
-    while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
-      if time.monotonic() - t > self.timeout:
-        log("Timeout")
-        break
-
-      i += 1
-      if i % 50000 == 0:
-        log("Processed %d rows..." % i)
-
-      row = cur.fetchone()
-      if row is None:
-        break
-
-      ea = str(row["ea"])
-      name1 = row["name1"]
-      ea2 = row["ea2"]
-      name2 = row["name2"]
-      desc = row["description"]
-      pseudo1 = row["pseudo1"]
-      pseudo2 = row["pseudo2"]
-      asm1 = row["asm1"]
-      asm2 = row["asm2"]
-      ast1 = row["pseudo_primes1"]
-      ast2 = row["pseudo_primes2"]
-      bb1 = int(row["bb1"])
-      bb2 = int(row["bb2"])
-      md1 = row["md1"]
-      md2 = row["md2"]
-
-      if name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
-
-      should_add = True
-      if self.hooks is not None:
-        if 'on_match' in dir(self.hooks):
-          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-          should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
-      if not should_add or name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      good_ratio = False
-      if r == 1.0:
-        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
-        good_ratio = True
-        self.best_chooser.add_item(item)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      elif r > val:
-        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
-        good_ratio = True
-        best.add_item(item)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      elif partial is not None:
-        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
-        good_ratio = True
-        partial.add_item(item)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      
-      if good_ratio:
-        matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
-
+    matches = self.add_matches_internal(cur, best=best, partial=partial, val=val)
     return matches
 
   def add_matches_from_query(self, sql, choose):
@@ -1847,52 +1752,55 @@ class CBinDiff:
     diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
 
     cur = self.db_cursor()
-    dones = set()
+    try:
+      dones = set()
 
-    prev_best_matches = len(self.best_chooser.items)
-    prev_part_matches = len(self.partial_chooser.items)
+      prev_best_matches = len(self.best_chooser.items)
+      prev_part_matches = len(self.partial_chooser.items)
 
-    total_dones = 0
-    while len(the_items) > 0:
-      total_dones += 1
-      if total_dones % 1000 == 0:
-        log("Processed %d callgraph matches..." % total_dones)
+      total_dones = 0
+      while len(the_items) > 0:
+        total_dones += 1
+        if total_dones % 1000 == 0:
+          log("Processed %d callgraph matches..." % total_dones)
 
-        curr_best_matches = len(self.best_chooser.items)
-        curr_part_matches = len(self.partial_chooser.items)
-        fmt = "Queued item(s) %d, Best matches %d, Partial Matches %d (Previously %d and %d)"
-        log(fmt % (len(the_items), curr_best_matches, curr_part_matches, prev_best_matches, prev_part_matches))
+          curr_best_matches = len(self.best_chooser.items)
+          curr_part_matches = len(self.partial_chooser.items)
+          fmt = "Queued item(s) %d, Best matches %d, Partial Matches %d (Previously %d and %d)"
+          log(fmt % (len(the_items), curr_best_matches, curr_part_matches, prev_best_matches, prev_part_matches))
 
-      match = the_items.pop()
-      ea1 = match[1]
-      name1 = match[2]
-      name2 = match[4]
+        match = the_items.pop()
+        ea1 = match[1]
+        name1 = match[2]
+        name2 = match[4]
 
-      if ea1 in dones:
-        continue
-      dones.add(ea1)
+        if ea1 in dones:
+          continue
+        dones.add(ea1)
 
-      id1 = self.get_function_id(name1)
-      id2 = self.get_function_id(name2, False)
+        id1 = self.get_function_id(name1)
+        id2 = self.get_function_id(name2, False)
 
-      for call_type in ['caller', 'callee']:
-        cur.execute(main_callers_sql, (id1, call_type))
-        main_address_set = set()
-        for row in cur.fetchall():
-          main_address_set.add("'%s'" % row[0])
+        for call_type in ['caller', 'callee']:
+          cur.execute(main_callers_sql, (id1, call_type))
+          main_address_set = set()
+          for row in cur.fetchall():
+            main_address_set.add("'%s'" % row[0])
 
-        cur.execute(diff_callers_sql, (id2, call_type))
-        diff_address_set = set()
-        for row in cur.fetchall():
-          diff_address_set.add("'%s'" % row[0])
+          cur.execute(diff_callers_sql, (id2, call_type))
+          diff_address_set = set()
+          for row in cur.fetchall():
+            diff_address_set.add("'%s'" % row[0])
 
-        if len(main_address_set) > 0 and len(diff_address_set) > 0:
-          tname1 = name1.replace("'", "''")
-          tname2 = name2.replace("'", "''")
-          cur.execute(sql % (("%s of %s/%s" % (call_type, tname1, tname2)), ",".join(main_address_set), ",".join(diff_address_set)))
-          matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
-          if matches is not None and len(matches) > 0 and self.unreliable:
-            the_items.extend(matches)
+          if len(main_address_set) > 0 and len(diff_address_set) > 0:
+            tname1 = name1.replace("'", "''")
+            tname2 = name2.replace("'", "''")
+            cur.execute(sql % (("%s of %s/%s" % (call_type, tname1, tname2)), ",".join(main_address_set), ",".join(diff_address_set)))
+            matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
+            if matches is not None and len(matches) > 0 and self.unreliable:
+              the_items.extend(matches)
+    finally:
+      cur.close()
 
   def find_matches_parallel(self):
     self.run_heuristics_for_category("Partial")
@@ -1930,9 +1838,7 @@ class CBinDiff:
           ea = row[1]
           sql = "insert into unmatched(address,main) values(?,?)"
           cur.execute(sql, (ea, 0))
-    cur.close()
 
-    cur = self.db_cursor()
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Brute forcing' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -1953,6 +1859,7 @@ class CBinDiff:
     cur.execute(sql)
     log_refresh("Finding via brute-forcing...")
     self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+    cur.close()
 
   def find_experimental_matches(self):
     self.run_heuristics_for_category("Experimental")
@@ -1966,33 +1873,34 @@ class CBinDiff:
 
   def find_unmatched(self):
     cur = self.db_cursor()
-    sql = "select name, address from functions"
-    cur.execute(sql)
-    rows = cur.fetchall()
-    if len(rows) > 0:
-      choose = self.chooser("Unmatched in secondary", self, False)
-      for row in rows:
-        name = row["name"]
+    try:
+      sql = "select name, address from functions"
+      cur.execute(sql)
+      rows = cur.fetchall()
+      if len(rows) > 0:
+        choose = self.chooser("Unmatched in secondary", self, False)
+        for row in rows:
+          name = row["name"]
 
-        if name not in self.matched1:
-          ea = row[1]
-          choose.add_item(CChooser.Item(ea, name))
-      self.unmatched_second = choose
+          if name not in self.matched1:
+            ea = row[1]
+            choose.add_item(CChooser.Item(ea, name))
+        self.unmatched_second = choose
 
-    sql = "select name, address from diff.functions"
-    cur.execute(sql)
-    rows = cur.fetchall()
-    if len(rows) > 0:
-      choose = self.chooser("Unmatched in primary", self, False)
-      for row in rows:
-        name = row["name"]
+      sql = "select name, address from diff.functions"
+      cur.execute(sql)
+      rows = cur.fetchall()
+      if len(rows) > 0:
+        choose = self.chooser("Unmatched in primary", self, False)
+        for row in rows:
+          name = row["name"]
 
-        if name not in self.matched2:
-          ea = row["address"]
-          choose.add_item(CChooser.Item(ea, name))
-      self.unmatched_primary = choose
-
-    cur.close()
+          if name not in self.matched2:
+            ea = row["address"]
+            choose.add_item(CChooser.Item(ea, name))
+        self.unmatched_primary = choose
+    finally:
+      cur.close()
 
   def create_choosers(self):
     self.unreliable_chooser = self.chooser("Unreliable matches", self)

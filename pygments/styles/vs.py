@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.vs
     ~~~~~~~~~~~~~~~~~~
 
     Simple style with MS Visual Studio colors.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -17,7 +16,6 @@ from pygments.token import Keyword, Name, Comment, String, Error, \
 class VisualStudioStyle(Style):
 
     background_color = "#ffffff"
-    default_style = ""
 
     styles = {
         Comment:                   "#008000",

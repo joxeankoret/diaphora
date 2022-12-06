@@ -1,18 +1,18 @@
-# -*- coding: utf-8 -*-
 """
     pygments.lexers.idl
     ~~~~~~~~~~~~~~~~~~~
 
     Lexers for IDL.
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
 import re
 
-from pygments.lexer import RegexLexer, words
-from pygments.token import Text, Comment, Operator, Keyword, Name, Number
+from pygments.lexer import RegexLexer, words, bygroups
+from pygments.token import Text, Comment, Operator, Keyword, Name, Number, \
+    String, Whitespace
 
 __all__ = ['IDLLexer']
 
@@ -24,6 +24,7 @@ class IDLLexer(RegexLexer):
     .. versionadded:: 1.6
     """
     name = 'IDL'
+    url = 'https://www.l3harrisgeospatial.com/Software-Technology/IDL'
     aliases = ['idl']
     filenames = ['*.pro']
     mimetypes = ['text/idl']
@@ -32,7 +33,7 @@ class IDLLexer(RegexLexer):
 
     _RESERVED = (
         'and', 'begin', 'break', 'case', 'common', 'compile_opt',
-        'continue', 'do', 'else', 'end', 'endcase', 'elseelse',
+        'continue', 'do', 'else', 'end', 'endcase', 'endelse',
         'endfor', 'endforeach', 'endif', 'endrep', 'endswitch',
         'endwhile', 'eq', 'for', 'foreach', 'forward_function',
         'function', 'ge', 'goto', 'gt', 'if', 'inherits', 'le',
@@ -53,7 +54,7 @@ class IDLLexer(RegexLexer):
         'broyden', 'butterworth', 'bytarr', 'byte', 'byteorder',
         'bytscl', 'caldat', 'calendar', 'call_external',
         'call_function', 'call_method', 'call_procedure', 'canny',
-        'catch', 'cd', 'cdf_\w*', 'ceil', 'chebyshev',
+        'catch', 'cd', r'cdf_\w*', 'ceil', 'chebyshev',
         'check_math',
         'chisqr_cvf', 'chisqr_pdf', 'choldc', 'cholsol', 'cindgen',
         'cir_3pnt', 'close', 'cluster', 'cluster_tree', 'clust_wts',
@@ -87,7 +88,7 @@ class IDLLexer(RegexLexer):
         'dlm_load', 'dlm_register', 'doc_library', 'double',
         'draw_roi', 'edge_dog', 'efont', 'eigenql', 'eigenvec',
         'ellipse', 'elmhes', 'emboss', 'empty', 'enable_sysrtn',
-        'eof', 'eos_\w*', 'erase', 'erf', 'erfc', 'erfcx',
+        'eof', r'eos_\w*', 'erase', 'erf', 'erfc', 'erfcx',
         'erode', 'errorplot', 'errplot', 'estimator_filter',
         'execute', 'exit', 'exp', 'expand', 'expand_path', 'expint',
         'extrac', 'extract_slice', 'factorial', 'fft', 'filepath',
@@ -104,11 +105,11 @@ class IDLLexer(RegexLexer):
         'gauss_cvf', 'gauss_pdf', 'gauss_smooth', 'getenv',
         'getwindows', 'get_drive_list', 'get_dxf_objects',
         'get_kbrd', 'get_login_info', 'get_lun', 'get_screen_size',
-        'greg2jul', 'grib_\w*', 'grid3', 'griddata',
+        'greg2jul', r'grib_\w*', 'grid3', 'griddata',
         'grid_input', 'grid_tps', 'gs_iter',
-        'h5[adfgirst]_\w*', 'h5_browser', 'h5_close',
+        r'h5[adfgirst]_\w*', 'h5_browser', 'h5_close',
         'h5_create', 'h5_get_libversion', 'h5_open', 'h5_parse',
-        'hanning', 'hash', 'hdf_\w*', 'heap_free',
+        'hanning', 'hash', r'hdf_\w*', 'heap_free',
         'heap_gc', 'heap_nosave', 'heap_refcount', 'heap_save',
         'help', 'hilbert', 'histogram', 'hist_2d', 'hist_equal',
         'hls', 'hough', 'hqr', 'hsv', 'h_eq_ct', 'h_eq_int',
@@ -156,7 +157,7 @@ class IDLLexer(RegexLexer):
         'modifyct', 'moment', 'morph_close', 'morph_distance',
         'morph_gradient', 'morph_hitormiss', 'morph_open',
         'morph_thin', 'morph_tophat', 'multi', 'm_correlate',
-        'ncdf_\w*', 'newton', 'noise_hurl', 'noise_pick',
+        r'ncdf_\w*', 'newton', 'noise_hurl', 'noise_pick',
         'noise_scatter', 'noise_slur', 'norm', 'n_elements',
         'n_params', 'n_tags', 'objarr', 'obj_class', 'obj_destroy',
         'obj_hasmethod', 'obj_isa', 'obj_new', 'obj_valid',
@@ -249,14 +250,36 @@ class IDLLexer(RegexLexer):
 
     tokens = {
         'root': [
-            (r'^\s*;.*?\n', Comment.Singleline),
+            (r'(^\s*)(;.*?)(\n)', bygroups(Whitespace, Comment.Single,
+                Whitespace)),
             (words(_RESERVED, prefix=r'\b', suffix=r'\b'), Keyword),
             (words(_BUILTIN_LIB, prefix=r'\b', suffix=r'\b'), Name.Builtin),
             (r'\+=|-=|\^=|\*=|/=|#=|##=|<=|>=|=', Operator),
             (r'\+\+|--|->|\+|-|##|#|\*|/|<|>|&&|\^|~|\|\|\?|:', Operator),
             (r'\b(mod=|lt=|le=|eq=|ne=|ge=|gt=|not=|and=|or=|xor=)', Operator),
             (r'\b(mod|lt|le|eq|ne|ge|gt|not|and|or|xor)\b', Operator),
-            (r'\b[0-9](L|B|S|UL|ULL|LL)?\b', Number),
+            (r'"[^\"]*"', String.Double),
+            (r"'[^\']*'", String.Single),
+            (r'\b[+\-]?([0-9]*\.[0-9]+|[0-9]+\.[0-9]*)(D|E)?([+\-]?[0-9]+)?\b',
+             Number.Float),
+            (r'\b\'[+\-]?[0-9A-F]+\'X(U?(S?|L{1,2})|B)\b', Number.Hex),
+            (r'\b\'[+\-]?[0-7]+\'O(U?(S?|L{1,2})|B)\b', Number.Oct),
+            (r'\b[+\-]?[0-9]+U?L{1,2}\b', Number.Integer.Long),
+            (r'\b[+\-]?[0-9]+U?S?\b', Number.Integer),
+            (r'\b[+\-]?[0-9]+B\b', Number),
+            (r'[ \t]+', Whitespace),
+            (r'\n', Whitespace),
             (r'.', Text),
         ]
     }
+
+    def analyse_text(text):
+        """endelse seems to be unique to IDL, endswitch is rare at least."""
+        result = 0
+
+        if 'endelse' in text:
+            result += 0.2
+        if 'endswitch' in text:
+            result += 0.01
+
+        return result

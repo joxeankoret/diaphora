@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
     pygments.styles.paraiso_dark
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -9,7 +8,7 @@
     Created with Base16 Builder by Chris Kempson
     (https://github.com/chriskempson/base16-builder).
 
-    :copyright: Copyright 2006-2015 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2022 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -33,11 +32,6 @@ PURPLE = "#815ba4"
 
 
 class ParaisoDarkStyle(Style):
-
-    default_style = ''
-
-    background_color = BACKGROUND
-    highlight_color = SELECTION
 
     background_color = BACKGROUND
     highlight_color = SELECTION
