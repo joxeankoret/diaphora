@@ -94,6 +94,11 @@ def log_refresh(msg, show=False, do_log=True):
     log(msg)
 
 #-------------------------------------------------------------------------------
+def debug_refresh(msg, show=False):
+  if os.getenv("DIAPHORA_DEBUG"):
+    log(msg)
+
+#-------------------------------------------------------------------------------
 # TODO: FIX hack
 diaphora.log = log
 diaphora.log_refresh = log_refresh
@@ -2803,6 +2808,7 @@ def remove_file(filename):
 #-------------------------------------------------------------------------------
 def main():
   global g_bindiff
+  # EXPORT
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
     if file_out is None:
@@ -2844,19 +2850,10 @@ def main():
       os.remove("%s-crash" % file_out)
 
     idaapi.qexit(0)
-  # EXPORT - works with pseudocode, better than above
-  elif os.getenv("DIAPHORA_AUTO2") is not None:
-    debug_refresh("Handling DIAPHORA_AUTO2")
-    debug_refresh("DIAPHORA_EXPORT_FILE=%s" % os.getenv("DIAPHORA_EXPORT_FILE"))
-    file_out = os.getenv("DIAPHORA_EXPORT_FILE")
-    if file_out is None:
-      raise Exception("No export file specified!")
-    _diff_or_export(False, file_out=file_out)
-    idaapi.qexit(0)
   # DIFF-SHOW
-  elif os.getenv("DIAPHORA_AUTO4") is not None:
-    debug_refresh("Handling DIAPHORA_AUTO4")
-    debug_refresh("DIAPHORA_AUTO4=%s" % os.getenv("DIAPHORA_AUTO4"))
+  elif os.getenv("DIAPHORA_AUTO_HTML") is not None:
+    debug_refresh("Handling DIAPHORA_AUTO_HTML")
+    debug_refresh("DIAPHORA_AUTO_HTML=%s" % os.getenv("DIAPHORA_AUTO_HTML"))
     debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
     debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
     debug_refresh("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
