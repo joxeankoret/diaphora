@@ -87,6 +87,9 @@ def log_refresh(msg, show=False, do_log=True):
   else:
     replace_wait_box(msg)
 
+  if user_cancelled():
+    raise Exception("Cancelled")
+
   if do_log:
     log(msg)
 
