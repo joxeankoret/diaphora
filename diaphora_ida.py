@@ -78,7 +78,7 @@ LITTLE_ORANGE = 0x026AFD
 
 #-------------------------------------------------------------------------------
 def log(message):
-  msg("[diaphora_ida][%s] %s\n" % (time.asctime(), message))
+  msg("[diaphora][%s] %s\n" % (time.asctime(), message))
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -2604,13 +2604,13 @@ def _diff_or_export(use_ui, **options):
 
 # XXX - db2 is unused so could be removed?
 def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
-    bd = CIDABinDiff(db1)
-    bd.db = sqlite3.connect(db1, check_same_thread=True)
-    bd.db.text_factory = str
-    bd.db.row_factory = sqlite3.Row
-    bd.load_results(diff_db)
-    bd.save_pseudo_diff(ea1, ea2, html_pseudo)
-    bd.save_asm_diff(ea1, ea2, html_asm)
+  bd = CIDABinDiff(db1)
+  bd.db = sqlite3.connect(db1, check_same_thread=True)
+  bd.db.text_factory = str
+  bd.db.row_factory = sqlite3.Row
+  bd.load_results(diff_db)
+  bd.save_pseudo_diff(ea1, ea2, html_pseudo)
+  bd.save_asm_diff(ea1, ea2, html_asm)
 
 #-------------------------------------------------------------------------------
 class BinDiffOptions:
@@ -2801,8 +2801,7 @@ def remove_file(filename):
         cur.close()
 
 #-------------------------------------------------------------------------------
-g_debug = False
-def main():
+ddef main():
   global g_bindiff
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
@@ -2847,9 +2846,8 @@ def main():
     idaapi.qexit(0)
   # EXPORT - works with pseudocode, better than above
   elif os.getenv("DIAPHORA_AUTO2") is not None:
-    if g_debug:
-      log("Handling DIAPHORA_AUTO2")
-      log("DIAPHORA_EXPORT_FILE=%s" % os.getenv("DIAPHORA_EXPORT_FILE"))
+    debug_refresh("Handling DIAPHORA_AUTO2")
+    debug_refresh("DIAPHORA_EXPORT_FILE=%s" % os.getenv("DIAPHORA_EXPORT_FILE"))
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
     if file_out is None:
       raise Exception("No export file specified!")
@@ -2857,16 +2855,15 @@ def main():
     idaapi.qexit(0)
   # DIFF-SHOW
   elif os.getenv("DIAPHORA_AUTO4") is not None:
-    if g_debug:
-      log("Handling DIAPHORA_AUTO4")
-      log("DIAPHORA_AUTO4=%s" % os.getenv("DIAPHORA_AUTO4"))
-      log("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
-      log("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
-      log("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
-      log("DIAPHORA_EA1=%s" % os.getenv("DIAPHORA_EA1"))
-      log("DIAPHORA_EA2=%s" % os.getenv("DIAPHORA_EA2"))
-      log("DIAPHORA_HTML_ASM=%s" % os.getenv("DIAPHORA_HTML_ASM"))
-      log("DIAPHORA_HTML_PSEUDO=%s" % os.getenv("DIAPHORA_HTML_PSEUDO"))
+    debug_refresh("Handling DIAPHORA_AUTO4")
+    debug_refresh("DIAPHORA_AUTO4=%s" % os.getenv("DIAPHORA_AUTO4"))
+    debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+    debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+    debug_refresh("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
+    debug_refresh("DIAPHORA_EA1=%s" % os.getenv("DIAPHORA_EA1"))
+    debug_refresh("DIAPHORA_EA2=%s" % os.getenv("DIAPHORA_EA2"))
+    debug_refresh("DIAPHORA_HTML_ASM=%s" % os.getenv("DIAPHORA_HTML_ASM"))
+    debug_refresh("DIAPHORA_HTML_PSEUDO=%s" % os.getenv("DIAPHORA_HTML_PSEUDO"))
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
       raise Exception("No database file specified!")

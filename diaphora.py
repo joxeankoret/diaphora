@@ -2071,7 +2071,6 @@ class CBinDiff:
       cur.close()
     return True
 
-g_debug = False
 if __name__ == "__main__":
   version_info = sys.version_info
   if version_info[0] == 2:
@@ -2079,11 +2078,10 @@ if __name__ == "__main__":
     log("TIP: There are other branches that contain backward compatibility.")
 
   do_diff = True
-  if g_debug:
-    log("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
-    log("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
-    log("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
-    log("DIAPHORA_DIFF_OUT=%s" % os.getenv("DIAPHORA_DIFF_OUT"))
+  debug_refresh("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
+  debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+  debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+  debug_refresh("DIAPHORA_DIFF_OUT=%s" % os.getenv("DIAPHORA_DIFF_OUT"))
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
