@@ -2801,7 +2801,7 @@ def remove_file(filename):
         cur.close()
 
 #-------------------------------------------------------------------------------
-ddef main():
+def main():
   global g_bindiff
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
