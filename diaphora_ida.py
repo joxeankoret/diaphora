@@ -78,7 +78,7 @@ LITTLE_ORANGE = 0x026AFD
 
 #-------------------------------------------------------------------------------
 def log(message):
-  msg("[%s] %s\n" % (time.asctime(), message))
+  msg("[diaphora][%s] %s\n" % (time.asctime(), message))
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -91,6 +91,11 @@ def log_refresh(msg, show=False, do_log=True):
     raise Exception("Cancelled")
 
   if do_log:
+    log(msg)
+
+#-------------------------------------------------------------------------------
+def debug_refresh(msg, show=False):
+  if os.getenv("DIAPHORA_DEBUG"):
     log(msg)
 
 #-------------------------------------------------------------------------------
@@ -965,7 +970,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_til()
     self.import_definitions()
 
-  def show_asm_diff(self, item):
+  def generate_asm_diff(self, ea1, ea2, error_func=log):
     cur = self.db_cursor()
     sql = """select *
                from (
@@ -978,12 +983,13 @@ class CIDABinDiff(diaphora.CBinDiff):
               where address = ?
                 and assembly is not null)
               order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
+    ea1 = str(int(ea1, 16))
+    ea2 = str(int(ea2, 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
+    res = None
     if len(rows) != 2:
-      warning("Sorry, there is no assembly available for either the first or the second database.")
+      error_func("Sorry, there is no assembly available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -993,7 +999,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       asm2 = self.prettify_asm(row2["assembly"])
       buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
       buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
-      
+
       fmt = HtmlFormatter()
       fmt.noclasses = True
       fmt.linenos = False
@@ -1001,10 +1007,23 @@ class CIDABinDiff(diaphora.CBinDiff):
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
 
       title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
+      res = (src, title)
+
+    cur.close()
+    return res
+
+  def show_asm_diff(self, item):
+    res = self.generate_asm_diff(item[1], item[3], error_func=warning)
+    if res:
+      (src, title) = res
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
-    cur.close()
+  def save_asm_diff(self, ea1, ea2, filename):
+    res = self.generate_asm_diff(ea1, ea2)
+    if res:
+      (src, _) = res
+      open(filename, "w").write(src)
 
   def import_one(self, item):
     ret = ask_yn(1, "AUTOHIDE DATABASE\nDo you want to import all the type libraries, structs and enumerations?")
@@ -1079,7 +1098,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       cdiffer.Show(src, title)
     cur.close()
 
-  def show_pseudo_diff(self, item, html = True):
+  def generate_pseudo_diff(self, ea1, ea2, html = True, error_func=log):
     cur = self.db_cursor()
     sql = """select *
                from (
@@ -1092,12 +1111,13 @@ class CIDABinDiff(diaphora.CBinDiff):
               where address = ?
                 and pseudocode is not null)
               order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
+    ea1 = str(int(ea1, 16))
+    ea2 = str(int(ea2, 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
+    res = None
     if len(rows) != 2:
-      warning("Sorry, there is no pseudo-code available for either the first or the second database.")
+      error_func("Sorry, there is no pseudo-code available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -1112,7 +1132,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
 
       if buf1 == buf2:
-        warning("Both pseudo-codes are equal.")
+        error_func("Both pseudo-codes are equal.")
 
       fmt = HtmlFormatter()
       fmt.noclasses = True
@@ -1125,16 +1145,29 @@ class CIDABinDiff(diaphora.CBinDiff):
           tmp.append(line.strip("\n"))
         tmp = tmp[2:]
         buf = "\n".join(tmp)
-        
+
         src = highlight(buf, DiffLexer(), fmt)
       else:
         src = html_diff.make_file(buf2.split("\n"), buf1.split("\n"), fmt, CppLexer())
 
       title = "Diff pseudo-code %s - %s" % (row2["name"], row1["name"])
+      res = (src, title)
+
+    cur.close()
+    return res
+
+  def show_pseudo_diff(self, item, html = True):
+    res = self.generate_pseudo_diff(item[1], item[3], html=html, error_func=warning)
+    if res:
+      (src, title) = res
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
-    cur.close()
+  def save_pseudo_diff(self, ea1, ea2, filename):
+    res = self.generate_pseudo_diff(ea1, ea2, html=True)
+    if res:
+      (src, _) = res
+      open(filename, "w").write(src)
 
   def diff_external(self, item):
     cmd_line = None
@@ -2574,6 +2607,16 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
+# XXX - db2 is unused so could be removed?
+def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
+  bd = CIDABinDiff(db1)
+  bd.db = sqlite3.connect(db1, check_same_thread=True)
+  bd.db.text_factory = str
+  bd.db.row_factory = sqlite3.Row
+  bd.load_results(diff_db)
+  bd.save_pseudo_diff(ea1, ea2, html_pseudo)
+  bd.save_asm_diff(ea1, ea2, html_asm)
+
 #-------------------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
@@ -2765,6 +2808,7 @@ def remove_file(filename):
 #-------------------------------------------------------------------------------
 def main():
   global g_bindiff
+  # EXPORT
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
     if file_out is None:
@@ -2805,6 +2849,40 @@ def main():
       log("Aborted by user, removing crash file %s-crash..." % file_out)
       os.remove("%s-crash" % file_out)
 
+    idaapi.qexit(0)
+  # DIFF-SHOW
+  elif os.getenv("DIAPHORA_AUTO_HTML") is not None:
+    debug_refresh("Handling DIAPHORA_AUTO_HTML")
+    debug_refresh("DIAPHORA_AUTO_HTML=%s" % os.getenv("DIAPHORA_AUTO_HTML"))
+    debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+    debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+    debug_refresh("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
+    debug_refresh("DIAPHORA_EA1=%s" % os.getenv("DIAPHORA_EA1"))
+    debug_refresh("DIAPHORA_EA2=%s" % os.getenv("DIAPHORA_EA2"))
+    debug_refresh("DIAPHORA_HTML_ASM=%s" % os.getenv("DIAPHORA_HTML_ASM"))
+    debug_refresh("DIAPHORA_HTML_PSEUDO=%s" % os.getenv("DIAPHORA_HTML_PSEUDO"))
+    db1 = os.getenv("DIAPHORA_DB1")
+    if db1 is None:
+      raise Exception("No database file specified!")
+    db2 = os.getenv("DIAPHORA_DB2")
+    if db2 is None:
+      raise Exception("No database file to diff against specified!")
+    diff_db = os.getenv("DIAPHORA_DIFF")
+    if diff_db is None:
+      raise Exception("No diff database file for diff specified!")
+    ea1 = os.getenv("DIAPHORA_EA1")
+    if ea1 is None:
+      raise Exception("No address 1 specified!")
+    ea2 = os.getenv("DIAPHORA_EA2")
+    if ea2 is None:
+      raise Exception("No address 2 specified!")
+    html_asm = os.getenv("DIAPHORA_HTML_ASM")
+    if html_asm is None:
+      raise Exception("No html output file for asm specified!")
+    html_pseudo = os.getenv("DIAPHORA_HTML_PSEUDO")
+    if html_pseudo is None:
+      raise Exception("No html output file for pseudo specified!")
+    _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo)
     idaapi.qexit(0)
   else:
     _diff_or_export(True)

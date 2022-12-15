@@ -34,6 +34,9 @@ from multiprocessing import cpu_count
 
 from diaphora_heuristics import *
 
+from pygments.lexers import NasmLexer, CppLexer, DiffLexer
+from pygments.formatters import HtmlFormatter
+
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
@@ -103,7 +106,7 @@ def ast_ratio(ast1, ast2):
 #-------------------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
-    print(("[%s] %s" % (time.asctime(), msg)))
+    print(("[diaphora][%s] %s" % (time.asctime(), msg)))
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -2072,9 +2075,13 @@ if __name__ == "__main__":
   version_info = sys.version_info
   if version_info[0] == 2:
     log("WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3.")
-    log("TIP: There are other branches that contain backward compatability.")
+    log("TIP: There are other branches that contain backward compatibility.")
 
   do_diff = True
+  debug_refresh("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
+  debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+  debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+  debug_refresh("DIAPHORA_DIFF_OUT=%s" % os.getenv("DIAPHORA_DIFF_OUT"))
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
