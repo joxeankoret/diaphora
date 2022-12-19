@@ -740,6 +740,9 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.unmatched_second.show(force)
 
   def diff(self, db):
+    if user_cancelled():
+      return None
+
     res = diaphora.CBinDiff.diff(self, db)
     if res:
       # And, finally, show the list of best and partial matches and
@@ -853,7 +856,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.export_structures()
     self.export_til()
 
-    replace_wait_box("Creating indexes...")
+    log_refresh("Creating indexes...")
     self.create_indexes()
 
   def export(self):
@@ -1378,14 +1381,15 @@ class CIDABinDiff(diaphora.CBinDiff):
     if import_syms[ea][2] is not None:
       return True
 
-    # Has operand Name
+    # Has operand names
     operand_names = import_syms[ea][3]
-    for operand_name in operand_names:
-      if operand_name[1] != "":
-        return True
+    if operand_names is not None:
+      for operand_name in operand_names:
+        if operand_name[1] != "":
+          return True
 
     # Has a name
-    if import_syms[ea][3] is not None:
+    if import_syms[ea][4] is not None:
       return True
 
     # Has pseudocode comment
@@ -1398,7 +1402,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur = self.db_cursor()
     try:
       # Check first if we have any importable items
-      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
+      sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                   from diff.function_bblocks bb,
                        diff.functions f,
                        diff.bb_instructions bbi,
@@ -1417,7 +1421,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operand_names"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
         sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
