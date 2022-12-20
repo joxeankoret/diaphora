@@ -931,7 +931,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if row["type"] == "enum":
           type_name = "enum"
         elif row["type"] == "union":
-          type_name == "union"
+          type_name = "union"
 
         new_rows.add(row)
         line = "%s %s;" % (type_name, row["name"])
