@@ -701,79 +701,79 @@ class CBinDiff:
     if not self.function_summaries_only:
       # The last 2 fields are basic_blocks_data & bb_relations
       bb_data, bb_relations = props[len(props)-2:]
-    instructions_ids = {}
-    sql = """insert into main.instructions (address, mnemonic, disasm,
-                                            comment1, comment2, operand_names, name,
-                                            type, pseudocomment, pseudoitp)
-                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-    self_get_instruction_id = self.get_instruction_id
-    cur_execute = cur.execute
-    for key in bb_data:
-      for instruction in bb_data[key]:
-        instruction_properties = []
-        for instruction_property in instruction:
-          # XXX: Fixme! This is a hack for 64 bit architectures kernels
-          if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
-            prop = str(prop)
-          elif type(prop) is bytes:
-            prop = prop.encode("utf-8")
-          if type(instruction_property) is list or type(instruction_property) is set:
-            instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
-          else:
-            instruction_properties.append(instruction_property)
+      instructions_ids = {}
+      sql = """insert into main.instructions (address, mnemonic, disasm,
+                                              comment1, comment2, operand_names, name,
+                                              type, pseudocomment, pseudoitp)
+                                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+      self_get_instruction_id = self.get_instruction_id
+      cur_execute = cur.execute
+      for key in bb_data:
+        for instruction in bb_data[key]:
+          instruction_properties = []
+          for instruction_property in instruction:
+            # XXX: Fixme! This is a hack for 64 bit architectures kernels
+            if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+              prop = str(prop)
+            elif type(prop) is bytes:
+              prop = prop.encode("utf-8")
+            if type(instruction_property) is list or type(instruction_property) is set:
+              instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
+            else:
+              instruction_properties.append(instruction_property)
 
-        addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
-        db_id = self_get_instruction_id(str(addr))
-        if db_id is None:
-          pseudocomment = None
-          pseudoitp = None
-          if addr in self.pseudo_comments:
-            pseudocomment, pseudoitp = self.pseudo_comments[addr]
+          addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
+          db_id = self_get_instruction_id(str(addr))
+          if db_id is None:
+            pseudocomment = None
+            pseudoitp = None
+            if addr in self.pseudo_comments:
+              pseudocomment, pseudoitp = self.pseudo_comments[addr]
 
-          instruction_properties.append(pseudocomment)
-          instruction_properties.append(pseudoitp)
-          cur.execute(sql, instruction_properties)
-          db_id = cur.lastrowid
-        instructions_ids[addr] = db_id
+            instruction_properties.append(pseudocomment)
+            instruction_properties.append(pseudoitp)
+            cur.execute(sql, instruction_properties)
+            db_id = cur.lastrowid
+          instructions_ids[addr] = db_id
 
-    num = 0
-    bb_ids = {}
-    sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
-    sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
+      num = 0
+      bb_ids = {}
+      sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
+      sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
 
-    self_get_bb_id = self.get_bb_id
-    for key in bb_data:
-      # Insert each basic block
-      num += 1
-      ins_ea = str(key)
-      last_bb_id = self_get_bb_id(ins_ea)
-      if last_bb_id is None:
-        cur_execute(sql1, (num, str(ins_ea)))
-        last_bb_id = cur.lastrowid
-      bb_ids[ins_ea] = last_bb_id
+      self_get_bb_id = self.get_bb_id
+      for key in bb_data:
+        # Insert each basic block
+        num += 1
+        ins_ea = str(key)
+        last_bb_id = self_get_bb_id(ins_ea)
+        if last_bb_id is None:
+          cur_execute(sql1, (num, str(ins_ea)))
+          last_bb_id = cur.lastrowid
+        bb_ids[ins_ea] = last_bb_id
 
-      # Insert relations between basic blocks and instructions
-      for instruction in bb_data[key]:
-        ins_id = instructions_ids[instruction[0]]
-        cur_execute(sql2, (last_bb_id, ins_id))
+        # Insert relations between basic blocks and instructions
+        for instruction in bb_data[key]:
+          ins_id = instructions_ids[instruction[0]]
+          cur_execute(sql2, (last_bb_id, ins_id))
 
-    # Insert relations between basic blocks
-    sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
-    for key in bb_relations:
-      for bb in bb_relations[key]:
-        bb = str(bb)
-        key = str(key)
-        try:
-          cur_execute(sql, (bb_ids[key], bb_ids[bb]))
-        except:
-          # key doesnt exist because it doesnt have forward references to any bb
-          log("Error: %s" % str(sys.exc_info()[1]))
+      # Insert relations between basic blocks
+      sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+      for key in bb_relations:
+        for bb in bb_relations[key]:
+          bb = str(bb)
+          key = str(key)
+          try:
+            cur_execute(sql, (bb_ids[key], bb_ids[bb]))
+          except:
+            # key doesnt exist because it doesnt have forward references to any bb
+            log("Error: %s" % str(sys.exc_info()[1]))
 
-    # And finally insert the functions to basic blocks relations
-    sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
-    for key in bb_ids:
-      bb_id = bb_ids[key]
-      cur_execute(sql, (func_id, bb_id))
+      # And finally insert the functions to basic blocks relations
+      sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
+      for key in bb_ids:
+        bb_id = bb_ids[key]
+        cur_execute(sql, (func_id, bb_id))
 
     cur.close()
 
@@ -1341,12 +1341,12 @@ class CBinDiff:
             unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
-          elif partial is not None:
+          else:
             partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
         else:
-          if r < 0.5 and r > val and unreliable is not None:
+          if r < 0.5 and r > val:
             unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
