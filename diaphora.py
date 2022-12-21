@@ -221,13 +221,9 @@ class CBinDiff:
     self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
     self.experimental = self.get_value_for("experimental", False)
     self.slow_heuristics = self.get_value_for("slow_heuristics", False)
+    self.use_decompiler_always = self.get_value_for("use_decompiler_always", True)
+    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
 
-    self.unreliable = False
-    self.relaxed_ratio = False
-    self.experimental = False
-    self.slow_heuristics = False
-    self.use_decompiler_always = True
-    self.exclude_library_thunk = True
     self.project_script = None
     self.hooks = None
 
