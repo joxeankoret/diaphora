@@ -1322,7 +1322,7 @@ class CBinDiff:
         best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
-      elif r >= 0.5:
+      elif r >= 0.5 and partial is not None:
         partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
