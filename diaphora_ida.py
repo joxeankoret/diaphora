@@ -2512,9 +2512,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
 
   def load_and_import_all_results(self, filename, main_db, diff_db):
-    results_db = sqlite3.connect(filename, check_same_thread=False)
-    results_db.text_factory = str
-    results_db.row_factory = sqlite3.Row
+    results_db = sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
@@ -2582,9 +2580,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return False
 
   def load_results(self, filename):
-    results_db = sqlite3.connect(filename, check_same_thread=False)
-    results_db.text_factory = str
-    results_db.row_factory = sqlite3.Row
+    results_db = sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
@@ -2797,12 +2793,9 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
-# XXX - db2 is unused so could be removed?
 def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd = CIDABinDiff(db1)
-  bd.db = sqlite3.connect(db1, check_same_thread=True)
-  bd.db.text_factory = str
-  bd.db.row_factory = sqlite3.Row
+  bd.db = sqlite3_connect(db1)
   bd.load_results(diff_db)
   bd.save_pseudo_diff(ea1, ea2, html_pseudo)
   bd.save_asm_diff(ea1, ea2, html_asm)

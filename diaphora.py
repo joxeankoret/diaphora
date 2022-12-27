@@ -196,10 +196,22 @@ class bytes_encoder(json.JSONEncoder):
     return json.JSONEncoder.default(self, obj)
 
 #-------------------------------------------------------------------------------
+if "_DATABASES" in globals():
+  if len(_DATABASES) > 0:
+    for key in dict(_DATABASES):
+      log("Closing previously opened database %s" % key)
+      tmp_db = _DATABASES[key]
+      tmp_db.close()
+      del _DATABASES[key]
+else:
+  _DATABASES = {}
+
 def sqlite3_connect(db_name):
-  db = sqlite3.connect(db_name, check_same_thread=True)
+  global _DATABASES
+  db = sqlite3.connect(db_name, check_same_thread=False)
   db.text_factory = str
   db.row_factory = sqlite3.Row
+  _DATABASES[db_name] = db
   return db
 
 #-------------------------------------------------------------------------------
@@ -480,6 +492,7 @@ class CBinDiff:
     row = cur.fetchone()
     if not row:
       cur.execute("insert into main.version values ('%s')" % VERSION_VALUE)
+      cur.execute("commit")
 
     cur.close()
 
@@ -1827,6 +1840,7 @@ class CBinDiff:
 
       self.find_in_compilation_units()
       cur.execute("drop table best_matches")
+      cur.execute("commit")
     finally:
       cur.close()
 
@@ -1961,7 +1975,7 @@ class CBinDiff:
 
   def find_brute_force(self):
     cur = self.db_cursor()
-    sql = "create temp table unmatched(id integer null primary key, address, main)"
+    sql = "create temporary table unmatched(id integer null primary key, address, main)"
     cur.execute(sql)
 
     # Find functions not matched in the primary database
@@ -2008,6 +2022,7 @@ class CBinDiff:
     cur.execute(sql)
     log_refresh("Finding via brute-forcing...")
     self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+    cur.execute("commit")
     cur.close()
 
   def find_experimental_matches(self):
