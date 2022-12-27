@@ -1,0 +1,153 @@
+##############################################################################################
+# Copyright 2019 The Johns Hopkins University Applied Physics Laboratory LLC
+# All rights reserved.
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this 
+# software and associated documentation files (the "Software"), to deal in the Software 
+# without restriction, including without limitation the rights to use, copy, modify, 
+# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+# permit persons to whom the Software is furnished to do so.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
+# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+# OR OTHER DEALINGS IN THE SOFTWARE.
+#
+# HAVE A NICE DAY.
+
+#################################################################
+####  CodeCut - Detecting Object File Boundaries in IDA Pro  ####
+#################################################################
+
+**** Terminology ****
+
+I tend to use the term "module" for a set of related functions within a binary
+that came from a single object file.  So you will see the terms "module" and
+"object file" used interchangeabley in the CC source and documentation.
+
+**** Dependencies ****
+
+CodeCut relies on:
+Natural Language Toolkit (NLTK) - https://www.nltk.org
+Snap.py - https://snap.stanford.edu/snappy/ 
+
+**** Source Files ****
+
+cc_main.py -             Main entry point - simply load this up with the 
+                         "File -> Script file..." option in IDA. 
+
+lfa.py -                 Analysis engine for LFA.
+
+mc.py -		         Analysis engine for MaxCut.
+
+basicutils_7x.py -       Provides an API to IDA - maybe one day we'll get this
+                         ported to Ghidra!
+
+map_read.py -            For research purposes - compares a ground truth .map
+                         file (from ld) to a .map file from CC and produces
+                         a score.  See RECON slides or the code itself for more
+                         info.  You need to add the option -Map=<target>.map to
+                         the linker options in a Makefile to get a .map file.
+
+                   The syntax to map_read is:
+                         python map_read.py <ground truth file> <CC map file>
+
+**** MaxCut Parameters ****
+
+  - Right now there is only one parameter for MaxCut, a value for the maximum
+    module size (currently set to 16K).  
+
+
+**** LFA Parameters & Interpolation ****
+
+A couple areas for research:
+
+  - The idea behind LFA is that we throw out "external" calls - we can't 
+    determine this exactly in a binary so we throw out calls that are above a 
+    certain threshold.  This is set to 4K in the code but it could be tweaked.
+
+  - There is a threshold set for edge detection - plus a little bit of extra
+    logic (value has to be positive and 2 of last 3 values were negative). You
+    can either vary this threshold or write your own edge_detect() function.
+
+  - Currently "calls to" affinity and "calls from" affinity are treated as
+    separate scores.  If one of these scores is zero an interpolation from
+    the previous score is used - just a simple linear equation assuming
+    decreasing scores.  This could be improved a number of ways but could
+    be replaced with an actual interpolation between scores.
+
+  - If both "calls to" affinity and "calls from" affinity for a function are 0
+    the function is skipped and is essentially treated like it's not there.
+    This happens for functions with no references or where all references are
+    above the "external" threshold.  This means there can be gaps between the
+    modules in the output list.
+
+  - The portion of code that tries to name object files based on common strings
+    is completely researchy and open ended.  Lots of things to play with there.
+
+**** MaxCut Parameters & Interpolation ****
+
+  - The only real parameter for MaxCut is a THRESHOLD variable that corresponds to the size at which the algorithm will stop subdividing modules.  A threshold of 4K (0x1000) seems to provide similar sized modules to LFA.  A threshold of 8K (0x2000) seems to be a good upper bound.  A good area of research would be making this not a static cutoff but maybe deciding to stop subdividing based on a connectedness measurement or something along those lines.
+
+**** Output Files ****
+
+CodeCut produces 7 files:
+
+<target>_cc_results.csv - Raw score output from LFA and MaxCut, including where 
+                          edges are detected.  Graphs can fairly easily be 
+                          generated in your favorite spreadsheet program.
+
+<target>_{lfa,mc}_labels.py - Script that can be used to label your DB with CC's 
+			      output.  After determining module boundaries, CC 
+                              attempts to guess the name (fun!) by looking at
+                              common strings used by the module, for both the 
+                              LFA and MaxCut module lists.  You can use this
+                              script as a scratchpad to name unnamed modules as you
+                              determine what they are, or you can also use other
+			      functions in basicutils to change module names later.
+
+<target>_{lfa,mc}_map.map - A .map file similar to the output from the ld.  This is
+                            for the purposes of comparing to a ground truth .map
+                            file to test CC when you have source code.
+
+<target>_{lfa,mc}_mod_graph.gv - a Graphviz graph file of the module relationships
+                                 This is a directed graph where a -> b indicates
+                                 that a function in module a calls a function in
+                                 module b.  This may take a long time to render if
+                                 you have a large binary (more than a couple
+                                 hundred modules detected).  For smaller binaries
+                                 this can pretty clearly communicate the software
+                                 architecture immediately.  For larger binaries
+                                 this will show you graphically the most heavily
+                                 used modules in the binary.
+
+You can use sfdp to render the graph into a PNG file with a command line like:
+
+sfdp -x -Goverlap=scale -Tpng -Goutputorder=edgesfirst -Nstyle=filled -Nfillcolor=white <target>_lfa_mod_graph.gv > <target>.png
+
+A really nice hierarchical graph can be obtained by adding:
+ranksep=0
+nodesep=0
+to the .gv file and running:
+
+dot -x -Goverlap=scale -Tpng -Goutputorder=edgesfirst -Nstyle=filled -Nfillcolor=white <target>.gv > <target>.png
+
+**** "Canonical" Names ****
+NOTE on IDA and Canonical Names:
+AFAICT IDA doesn't really have a concept of source file / object files in
+the database (it does with source-level debugging but that's it I think).
+In my ideal world, I'd write a nice GUI plugin to manage the object file
+names and regions, and then you'd be able to select how to display object/
+function names in the disassembly.  For now though I have to save both the
+object name and function name in the filename.
+
+For now, my hacky workaround is to name modules and functions in camel case
+(e.g. ReadNetworkString, or HtmlParsingEngine), and then combine them together
+in a nasty snake case "canonical" format, that looks like:
+
+<ObjectName>_<FunctionName>_<Address>
+
+That way I can parse out function and object names to be able to rename
+objects.  I am open to suggestions on better ways to do this.
+			
