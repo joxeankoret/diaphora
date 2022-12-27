@@ -104,6 +104,11 @@ def log_refresh(msg, show=False, do_log=True):
     log(msg)
 
 #-------------------------------------------------------------------------------
+def debug_refresh(msg, show=False):
+  if os.getenv("DIAPHORA_DEBUG"):
+    log(msg)
+
+#-------------------------------------------------------------------------------
 # TODO: FIX hack
 diaphora.log = log
 diaphora.log_refresh = log_refresh
@@ -2994,6 +2999,7 @@ def remove_file(filename):
 #-------------------------------------------------------------------------------
 def main():
   global g_bindiff
+  # EXPORT
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
     if file_out is None:
@@ -3034,6 +3040,40 @@ def main():
       log("Aborted by user, removing crash file %s-crash..." % file_out)
       os.remove("%s-crash" % file_out)
 
+    idaapi.qexit(0)
+  # DIFF-SHOW
+  elif os.getenv("DIAPHORA_AUTO_HTML") is not None:
+    debug_refresh("Handling DIAPHORA_AUTO_HTML")
+    debug_refresh("DIAPHORA_AUTO_HTML=%s" % os.getenv("DIAPHORA_AUTO_HTML"))
+    debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+    debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+    debug_refresh("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
+    debug_refresh("DIAPHORA_EA1=%s" % os.getenv("DIAPHORA_EA1"))
+    debug_refresh("DIAPHORA_EA2=%s" % os.getenv("DIAPHORA_EA2"))
+    debug_refresh("DIAPHORA_HTML_ASM=%s" % os.getenv("DIAPHORA_HTML_ASM"))
+    debug_refresh("DIAPHORA_HTML_PSEUDO=%s" % os.getenv("DIAPHORA_HTML_PSEUDO"))
+    db1 = os.getenv("DIAPHORA_DB1")
+    if db1 is None:
+      raise Exception("No database file specified!")
+    db2 = os.getenv("DIAPHORA_DB2")
+    if db2 is None:
+      raise Exception("No database file to diff against specified!")
+    diff_db = os.getenv("DIAPHORA_DIFF")
+    if diff_db is None:
+      raise Exception("No diff database file for diff specified!")
+    ea1 = os.getenv("DIAPHORA_EA1")
+    if ea1 is None:
+      raise Exception("No address 1 specified!")
+    ea2 = os.getenv("DIAPHORA_EA2")
+    if ea2 is None:
+      raise Exception("No address 2 specified!")
+    html_asm = os.getenv("DIAPHORA_HTML_ASM")
+    if html_asm is None:
+      raise Exception("No html output file for asm specified!")
+    html_pseudo = os.getenv("DIAPHORA_HTML_PSEUDO")
+    if html_pseudo is None:
+      raise Exception("No html output file for pseudo specified!")
+    _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo)
     idaapi.qexit(0)
   else:
     _diff_or_export(True)

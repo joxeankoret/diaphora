@@ -37,6 +37,9 @@ import diaphora_heuristics
 importlib.reload(diaphora_heuristics)
 from diaphora_heuristics import *
 
+from pygments.lexers import NasmLexer, CppLexer, DiffLexer
+from pygments.formatters import HtmlFormatter
+
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
@@ -228,6 +231,8 @@ class CBinDiff:
     self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
     self.experimental = self.get_value_for("experimental", True)
     self.slow_heuristics = self.get_value_for("slow_heuristics", False)
+    self.use_decompiler_always = self.get_value_for("use_decompiler_always", True)
+    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
 
     self.use_decompiler_always = self.get_value_for("use_decompiler", True)
     self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
@@ -1368,7 +1373,11 @@ class CBinDiff:
 
       done = True
       if r == 1.0:
-        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+        self.matched1.add(name1)
+        self.matched2.add(name2)
+      elif r >= 0.5 and partial is not None:
+        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       else:
@@ -2200,6 +2209,10 @@ if __name__ == "__main__":
     log("TIP: There are other branches that contain backward compatibility.")
 
   do_diff = True
+  debug_refresh("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
+  debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
+  debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
+  debug_refresh("DIAPHORA_DIFF_OUT=%s" % os.getenv("DIAPHORA_DIFF_OUT"))
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
