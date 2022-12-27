@@ -25,6 +25,7 @@ import time
 import json
 import decimal
 import sqlite3
+import importlib
 import threading
 
 from threading import Thread
@@ -32,6 +33,8 @@ from io import StringIO
 from difflib import SequenceMatcher
 from multiprocessing import cpu_count
 
+import diaphora_heuristics
+importlib.reload(diaphora_heuristics)
 from diaphora_heuristics import *
 
 from jkutils.kfuzzy import CKoretFuzzyHashing
@@ -48,7 +51,7 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.1.0"
+VERSION_VALUE = "2.2.0"
 COPYRIGHT_VALUE="Copyright(c) 2015-2022 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
@@ -103,7 +106,7 @@ def ast_ratio(ast1, ast2):
 #-------------------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
-    print(("[%s] %s" % (time.asctime(), msg)))
+    print(("[Diaphora: %s] %s" % (time.asctime(), msg)))
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -190,6 +193,13 @@ class bytes_encoder(json.JSONEncoder):
     return json.JSONEncoder.default(self, obj)
 
 #-------------------------------------------------------------------------------
+def sqlite3_connect(db_name):
+  db = sqlite3.connect(db_name, check_same_thread=True)
+  db.text_factory = str
+  db.row_factory = sqlite3.Row
+  return db
+
+#-------------------------------------------------------------------------------
 class CBinDiff:
   def __init__(self, db_name, chooser=CChooser):
     self.names = dict()
@@ -216,16 +226,12 @@ class CBinDiff:
 
     self.unreliable = self.get_value_for("unreliable", False)
     self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
-    self.experimental = self.get_value_for("experimental", False)
+    self.experimental = self.get_value_for("experimental", True)
     self.slow_heuristics = self.get_value_for("slow_heuristics", False)
 
-    self.unreliable = False
-    self.relaxed_ratio = False
-    self.experimental = False
-    self.slow_heuristics = False
-    self.use_decompiler_always = True
-    self.exclude_library_thunk = True
-    self.project_script = None
+    self.use_decompiler_always = self.get_value_for("use_decompiler", True)
+    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
+    self.project_script = self.get_value_for("project_script", None)
     self.hooks = None
 
     # Create the choosers
@@ -235,6 +241,7 @@ class CBinDiff:
 
     self.last_diff_db = None
     self.re_cache = {}
+    self._funcs_cache = {}
 
     ####################################################################
     # LIMITS
@@ -291,9 +298,8 @@ class CBinDiff:
     return default
 
   def open_db(self):
-    db = sqlite3.connect(self.db_name, check_same_thread=True)
-    db.text_factory = str
-    db.row_factory = sqlite3.Row
+    db = sqlite3_connect(self.db_name)
+    db.create_function("check_ratio", 8, self.check_ratio)
 
     tid = threading.current_thread().ident
     self.dbs_dict[tid] = db
@@ -373,6 +379,7 @@ class CBinDiff:
                         segment_rva text,
                         assembly_addrs text,
                         kgh_hash text,
+                        source_file text,
                         userdata text) """
     cur.execute(sql)
 
@@ -445,6 +452,23 @@ class CBinDiff:
                 id integer primary key,
                 func_id integer not null references functions(id) on delete cascade,
                 constant text not null)"""
+    cur.execute(sql)
+
+    sql = """ create table if not exists compilation_units (
+                id integer primary key,
+                name text,
+                score real,
+                functions int,
+                primes_value text,
+                pseudocode_primes text,
+                start_ea text unique,
+                end_ea text)"""
+    cur.execute(sql)
+
+    sql = """ create table if not exists compilation_unit_functions (
+                id integer primary key,
+                cu_id integer not null references compilation_units(id) on delete cascade,
+                func_id integer not null references functions(id) on delete cascade)"""
     cur.execute(sql)
 
     cur.execute("select 1 from version")
@@ -626,6 +650,92 @@ class CBinDiff:
     cur.close()
     return rowid
 
+  def save_instructions_to_database(self, cur, bb_data, prop):
+    instructions_ids = {}
+    sql = """insert into main.instructions (address, mnemonic, disasm,
+                                            comment1, comment2, operand_names, name,
+                                            type, pseudocomment, pseudoitp)
+                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+    self_get_instruction_id = self.get_instruction_id
+    cur_execute = cur.execute
+    for key in bb_data:
+      for instruction in bb_data[key]:
+        instruction_properties = []
+        for instruction_property in instruction:
+          # XXX: Fixme! This is a hack for 64 bit architectures kernels
+          if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+            prop = str(prop)
+          elif type(prop) is bytes:
+            prop = prop.encode("utf-8")
+          if type(instruction_property) is list or type(instruction_property) is set:
+            instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
+          else:
+            instruction_properties.append(instruction_property)
+    
+        addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
+        db_id = self_get_instruction_id(str(addr))
+        if db_id is None:
+          pseudocomment = None
+          pseudoitp = None
+          if addr in self.pseudo_comments:
+            pseudocomment, pseudoitp = self.pseudo_comments[addr]
+    
+          instruction_properties.append(pseudocomment)
+          instruction_properties.append(pseudoitp)
+          cur.execute(sql, instruction_properties)
+          db_id = cur.lastrowid
+        instructions_ids[addr] = db_id
+    
+    return cur_execute, instructions_ids
+
+  def insert_basic_blocks_to_database(self, bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id):
+    num = 0
+    bb_ids = {}
+    sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
+    sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
+    
+    self_get_bb_id = self.get_bb_id
+    for key in bb_data:
+      # Insert each basic block
+      num += 1
+      ins_ea = str(key)
+      last_bb_id = self_get_bb_id(ins_ea)
+      if last_bb_id is None:
+        cur_execute(sql1, (num, str(ins_ea)))
+        last_bb_id = cur.lastrowid
+      bb_ids[ins_ea] = last_bb_id
+    
+      # Insert relations between basic blocks and instructions
+      for instruction in bb_data[key]:
+        ins_id = instructions_ids[instruction[0]]
+        cur_execute(sql2, (last_bb_id, ins_id))
+    
+    # Insert relations between basic blocks
+    sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+    for key in bb_relations:
+      for bb in bb_relations[key]:
+        bb = str(bb)
+        key = str(key)
+        try:
+          cur_execute(sql, (bb_ids[key], bb_ids[bb]))
+        except:
+          # key doesnt exist because it doesnt have forward references to any bb
+          log("Error: %s" % str(sys.exc_info()[1]))
+    
+    # And finally insert the functions to basic blocks relations
+    sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
+    for key in bb_ids:
+      bb_id = bb_ids[key]
+      cur_execute(sql, (func_id, bb_id))
+    return bb_id
+
+  def save_function_to_database(self, props, cur, prop, func_id):
+    # The last 2 fields are basic_blocks_data & bb_relations
+    bb_data, bb_relations = props[len(props)-2:]
+    cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop)
+    bb_id = self.insert_basic_blocks_to_database(bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id)
+    return bb_id
+
   def save_function(self, props):
     if not props:
       log("WARNING: Trying to save a non resolved function?")
@@ -658,10 +768,11 @@ class CBinDiff:
                                     clean_assembly, clean_pseudo, mnemonics_spp, switches,
                                     function_hash, bytes_sum, md_index, constants,
                                     constants_count, segment_rva, assembly_addrs, kgh_hash,
+                                    source_file,
                                     userdata)
                                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
     try:
       cur.execute(sql, new_props)
@@ -670,6 +781,8 @@ class CBinDiff:
       raise
 
     func_id = cur.lastrowid
+    # Save a list of [ id, primes_value, pseudocode_primes ]
+    self._funcs_cache[props[12]] = [ func_id, props[11], props[19] ]
 
     # Phase 2: Save the callers and callees of the function
     callers, callees = props[len(props)-4:len(props)-2]
@@ -696,81 +809,7 @@ class CBinDiff:
 
     # Phase 4: Save the basic blocks relationships
     if not self.function_summaries_only:
-      # The last 2 fields are basic_blocks_data & bb_relations
-      bb_data, bb_relations = props[len(props)-2:]
-      instructions_ids = {}
-      sql = """insert into main.instructions (address, mnemonic, disasm,
-                                              comment1, comment2, operand_names, name,
-                                              type, pseudocomment, pseudoitp)
-                                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-      self_get_instruction_id = self.get_instruction_id
-      cur_execute = cur.execute
-      for key in bb_data:
-        for instruction in bb_data[key]:
-          instruction_properties = []
-          for instruction_property in instruction:
-            # XXX: Fixme! This is a hack for 64 bit architectures kernels
-            if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
-              prop = str(prop)
-            elif type(prop) is bytes:
-              prop = prop.encode("utf-8")
-            if type(instruction_property) is list or type(instruction_property) is set:
-              instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
-            else:
-              instruction_properties.append(instruction_property)
-
-          addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
-          db_id = self_get_instruction_id(str(addr))
-          if db_id is None:
-            pseudocomment = None
-            pseudoitp = None
-            if addr in self.pseudo_comments:
-              pseudocomment, pseudoitp = self.pseudo_comments[addr]
-
-            instruction_properties.append(pseudocomment)
-            instruction_properties.append(pseudoitp)
-            cur.execute(sql, instruction_properties)
-            db_id = cur.lastrowid
-          instructions_ids[addr] = db_id
-
-      num = 0
-      bb_ids = {}
-      sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
-      sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
-
-      self_get_bb_id = self.get_bb_id
-      for key in bb_data:
-        # Insert each basic block
-        num += 1
-        ins_ea = str(key)
-        last_bb_id = self_get_bb_id(ins_ea)
-        if last_bb_id is None:
-          cur_execute(sql1, (num, str(ins_ea)))
-          last_bb_id = cur.lastrowid
-        bb_ids[ins_ea] = last_bb_id
-
-        # Insert relations between basic blocks and instructions
-        for instruction in bb_data[key]:
-          ins_id = instructions_ids[instruction[0]]
-          cur_execute(sql2, (last_bb_id, ins_id))
-
-      # Insert relations between basic blocks
-      sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
-      for key in bb_relations:
-        for bb in bb_relations[key]:
-          bb = str(bb)
-          key = str(key)
-          try:
-            cur_execute(sql, (bb_ids[key], bb_ids[bb]))
-          except:
-            # key doesnt exist because it doesnt have forward references to any bb
-            log("Error: %s" % str(sys.exc_info()[1]))
-
-      # And finally insert the functions to basic blocks relations
-      sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
-      for key in bb_ids:
-        bb_id = bb_ids[key]
-        cur_execute(sql, (func_id, bb_id))
+      bb_id = self.save_function_to_database(props, cur, prop, func_id)
 
     cur.close()
 
@@ -939,7 +978,7 @@ class CBinDiff:
                  and bb.id = fb.basic_block_id
                  and f.id = fb.function_id
                  and f.address = ?
-               order by bb.address asc""" % (db, db, db, db, db)
+               order by bb.address asc""".replace("%s", db)
     cur.execute(sql, (str(ea1),))
     bb_blocks = {}
     for row in result_iter(cur):
@@ -971,7 +1010,7 @@ class CBinDiff:
                and bbs.id = fbs.basic_block_id
                and fbs.basic_block_id = bbr.child_id
                and f.address = ?
-             order by 1 asc, 2 asc""" % (db, db, db, db, db, db)
+             order by 1 asc, 2 asc""".replace("%s", db)
     cur.execute(sql, (str(ea1), ))
     rows = result_iter(cur)
 
@@ -1041,6 +1080,7 @@ class CBinDiff:
     rows = cur.fetchall()
     if len(rows) != 2:
       Warning("Malformed database, only %d rows!" % len(rows))
+      cur.close()
       raise Exception("Malformed database!")
 
     self.total_functions1 = rows[0]["total"]
@@ -1063,10 +1103,12 @@ class CBinDiff:
     if not self.ignore_all_names:
       self.find_same_name(self.partial_chooser)
 
-    self.run_heuristics_for_category("Best")
+    self.run_heuristics_for_category("Best", total_cpus=1)
 
-  def run_heuristics_for_category(self, arg_category):
-    total_cpus = self.cpu_count
+  def run_heuristics_for_category(self, arg_category, total_cpus = None):
+    if total_cpus is None:
+      total_cpus = self.cpu_count
+
     if total_cpus < 1:
       total_cpus = 1
 
@@ -1101,7 +1143,7 @@ class CBinDiff:
       sql   = heur["sql"]
       ratio = heur["ratio"]
       min_value = 0.0
-      if ratio == HEUR_TYPE_RATIO_MAX:
+      if ratio in [HEUR_TYPE_RATIO_MAX, HEUR_TYPE_RATIO_MAX_TRUSTED]:
         min_value = heur["min"]
 
       flags = heur["flags"]
@@ -1133,6 +1175,8 @@ class CBinDiff:
         t = Thread(target=self.add_matches_from_query_ratio, args=(sql, best, partial))
       elif ratio == HEUR_TYPE_RATIO_MAX:
         t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, min_value))
+      elif ratio == HEUR_TYPE_RATIO_MAX_TRUSTED:
+        t = Thread(target=self.add_matches_from_query_ratio_max_trusted, args=(sql, min_value))
       else:
         raise Exception("Invalid heuristic ratio calculation value!")
 
@@ -1194,6 +1238,9 @@ class CBinDiff:
     return ast_ratio(ast1, ast2)
 
   def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2):
+    md1 = float(md1)
+    md2 = float(md2)
+
     fratio = quick_ratio
     decimal_values = "{0:.2f}"
     if self.relaxed_ratio:
@@ -1250,6 +1297,7 @@ class CBinDiff:
       if self.relaxed_ratio and md1 > 10.0:
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
+
 
     r = max(v1, v2, v3, v4)
     if r == 1.0 and md1 != md2:
@@ -1320,15 +1368,24 @@ class CBinDiff:
 
       done = True
       if r == 1.0:
-        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-      elif r >= 0.5:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+        self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
         self.matched1.add(name1)
         self.matched2.add(name2)
       else:
-        done = False
+        do_add = False
+        if val is None:
+          if r >= 0.5:
+            do_add = True
+        else:
+          if r >= val:
+            do_add = True
+
+        if do_add and partial is not None:
+          partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
+          self.matched1.add(name1)
+          self.matched2.add(name2)
+        else:
+          done = False
 
       if done:
         matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
@@ -1338,12 +1395,12 @@ class CBinDiff:
             unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
-          else:
+          elif partial is not None:
             partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
         else:
-          if r < 0.5 and r > val:
+          if r < 0.5 and r > val and unreliable is not None:
             unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
@@ -1385,6 +1442,28 @@ class CBinDiff:
     partial = self.partial_chooser
     unreliable = self.unreliable_chooser
     self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable=unreliable)
+
+    cur.close()
+
+  def add_matches_from_query_ratio_max_trusted(self, sql, val):
+    """
+    Find matches using the query @sql with a ratio >= @val and assign those with
+    a bad ratio to the partial chooser, because they are reliable anyway.
+    """
+    if self.all_functions_matched():
+      return
+
+    cur = self.db_cursor()
+    try:
+      cur.execute(sql)
+    except:
+      log("Error: %s" % str(sys.exc_info()[1]))
+      return
+
+    best = self.best_chooser
+    partial = self.partial_chooser
+    unreliable = self.unreliable_chooser
+    self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable=partial)
 
     cur.close()
 
@@ -1609,7 +1688,7 @@ class CBinDiff:
     
     return rid
 
-  def find_matches_in_hole(self, last, item, row):
+  def find_matches_in_hole(self, last, item, row, the_type):
     cur = self.db_cursor()
     try:
 
@@ -1617,7 +1696,7 @@ class CBinDiff:
       if self.ignore_small_functions:
         postfix = " and instructions > 5"
 
-      desc = "Call address sequence"
+      desc = "Call address sequence (%s)" % the_type
       id1 = row["id1"]
       id2 = row["id2"]
       sql = """ select * from functions where id = ? """ + postfix + """
@@ -1676,7 +1755,7 @@ class CBinDiff:
                 self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-              elif r > 0.5:
+              elif r >= 0.4:
                 self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
@@ -1687,13 +1766,18 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_from_matches(self, the_items, same_name = False):
+  def find_from_matches(self, the_items, the_type, same_name = False):
+    #
     # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
     # Rule 1: if a function A in program P has id X, and function B in
     # the same program has id + 1, then, in program P2, function B maybe
     # the next function to A in P2.
+    #
+    # Also, it tries to search for matches with the given previous results using
+    # the compilation units information.
+    #
 
-    log_refresh("Finding with heuristic 'Call address sequence'")
+    log_refresh("Finding with heuristic 'Call address sequence (%s)'" % the_type)
     cur = self.db_cursor()
     try:
       # Create a copy of all the functions
@@ -1729,10 +1813,52 @@ class CBinDiff:
           continue
 
         item = the_items[row["id"]]
-        self.find_matches_in_hole(last, item, row)
+        self.find_matches_in_hole(last, item, row, the_type)
         last = row_id
 
+      self.find_in_compilation_units()
       cur.execute("drop table best_matches")
+    finally:
+      cur.close()
+
+  def find_in_compilation_units(self):
+    cur = self.db_cursor()
+    try:
+
+      sql = """
+        select cuf.cu_id, dcuf.cu_id, cuf.func_id, dcuf.func_id,
+               bm.name1, bm.name2, bm.ea1, bm.ea2
+          from main.compilation_unit_functions cuf,
+               diff.compilation_unit_functions dcuf,
+               best_matches bm
+         where cuf.func_id = bm.id1
+           and dcuf.func_id = bm.id2
+         order by cuf.cu_id, dcuf.cu_id
+      """
+      cur.execute(sql)
+      rows = list(cur.fetchall())
+
+      sql2 = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                       'Compilation Unit Match' description,
+                       f.pseudocode pseudo1, df.pseudocode pseudo2,
+                       f.assembly asm1, df.assembly asm2,
+                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                       f.nodes bb1, df.nodes bb2,
+                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                  from functions f,
+                       diff.functions df,
+                       main.compilation_unit_functions cuf,
+                       diff.compilation_unit_functions dcuf
+                 where f.id = cuf.id
+                   and df.id = dcuf.id
+                   and cuf.id = ?
+                   and dcuf.id = ?
+      """
+      for row in rows:
+        cur.execute(sql2, (row[0], row[1]))
+        self.add_matches_internal(cur, best=self.best_chooser, \
+                                  partial=self.partial_chooser,\
+                                  unreliable=None, val=0.79)
     finally:
       cur.close()
 
@@ -1817,7 +1943,7 @@ class CBinDiff:
       cur.close()
 
   def find_matches_parallel(self):
-    self.run_heuristics_for_category("Partial")
+    self.run_heuristics_for_category("Partial", 1)
 
     # Search using some of the previous criterias but calculating the
     # edit distance
@@ -1876,14 +2002,14 @@ class CBinDiff:
     cur.close()
 
   def find_experimental_matches(self):
-    self.run_heuristics_for_category("Experimental")
+    self.run_heuristics_for_category("Experimental", 1)
 
     # Find using brute-force
     log_refresh("Brute-forcing...")
     self.find_brute_force()
 
   def find_unreliable_matches(self):
-    self.run_heuristics_for_category("Unreliable")
+    self.run_heuristics_for_category("Unreliable", 1)
 
   def find_unmatched(self):
     cur = self.db_cursor()
@@ -1929,8 +2055,7 @@ class CBinDiff:
       os.remove(filename)
       log("Previous diff results '%s' removed." % filename)
 
-    results_db = sqlite3.connect(filename, check_same_thread=True)
-    results_db.text_factory = str
+    results_db = sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
@@ -2035,9 +2160,9 @@ class CBinDiff:
         log_refresh("Finding partial matches")
         self.find_matches_parallel()
 
-        # Call address sequence heuristic
-        self.find_from_matches(self.best_chooser.items)
-        self.find_from_matches(self.partial_chooser.items, same_name = True)
+        # Call address sequence & Same compilation unit heuristics
+        self.find_from_matches(self.best_chooser.items, the_type="Best")
+        self.find_from_matches(self.partial_chooser.items, the_type="Partial", same_name = True)
 
         if self.slow_heuristics:
           # Find the functions from the callgraph
@@ -2052,7 +2177,7 @@ class CBinDiff:
         if self.experimental:
           # Find using experimental methods modified functions
           log_refresh("Finding experimental matches")
-          self.find_from_matches(self.partial_chooser.items)
+          self.find_from_matches(self.partial_chooser.items, "Partial, Experimental")
           self.find_experimental_matches()
 
         # Show the list of unmatched functions in both databases
@@ -2072,7 +2197,7 @@ if __name__ == "__main__":
   version_info = sys.version_info
   if version_info[0] == 2:
     log("WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3.")
-    log("TIP: There are other branches that contain backward compatability.")
+    log("TIP: There are other branches that contain backward compatibility.")
 
   do_diff = True
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
@@ -2113,8 +2238,7 @@ if __name__ == "__main__":
     bd = CBinDiff(db1)
     if not is_ida:
       bd.ignore_all_names = False
-    bd.db = sqlite3.connect(db1, check_same_thread=True)
-    bd.db.text_factory = str
-    bd.db.row_factory = sqlite3.Row
+    
+    bd.db = sqlite3_connect(db1)
     bd.diff(db2)
     bd.save_results(diff_out)

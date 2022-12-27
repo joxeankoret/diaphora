@@ -36,6 +36,9 @@ import idaapi
 
 idaapi.require("diaphora")
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "codecut"))
+from codecut import lfa
+
 from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
 from pygments.formatters import HtmlFormatter
@@ -44,6 +47,13 @@ from others.tarjan_sort import strongly_connected_components, robust_topological
 
 from jkutils.factor import primesbelow as primes
 from jkutils.graph_hashes import CKoretKaramitasHash
+
+try:
+  from jkutils.IDAMagicStrings import get_source_strings
+  has_get_source_strings = True
+except:
+  print("Error loading IDAMagicStrings.py: %s" % str(sys.exc_info()[1]))
+  has_get_source_strings = False
 
 from PyQt5 import QtWidgets
 
@@ -78,7 +88,7 @@ LITTLE_ORANGE = 0x026AFD
 
 #-------------------------------------------------------------------------------
 def log(message):
-  msg("[%s] %s\n" % (time.asctime(), message))
+  msg("[Diaphora: %s] %s\n" % (time.asctime(), message))
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
@@ -86,6 +96,9 @@ def log_refresh(msg, show=False, do_log=True):
     show_wait_box(msg)
   else:
     replace_wait_box(msg)
+
+  if user_cancelled():
+    raise Exception("Cancelled")
 
   if do_log:
     log(msg)
@@ -169,18 +182,18 @@ class CHtmlViewer(PluginForm):
 #-------------------------------------------------------------------------------
 class CBasicChooser(Choose):
   def __init__(self, title):
-    Choose.__init__(
-        self,
-        title,
-        [["Id",   10 | Choose.CHCOL_PLAIN],
-         ["Name", 30 | Choose.CHCOL_PLAIN]])
-    self.items = []
+      Choose.__init__(
+          self,
+          title,
+          [ ["Id",   10 | Choose.CHCOL_PLAIN] ,
+            ["Name", 30 | Choose.CHCOL_PLAIN] ])
+      self.items = []
 
   def OnGetSize(self):
-    return len(self.items)
+      return len(self.items)
 
   def OnGetLine(self, n):
-    return self.items[n]
+      return self.items[n]
 
 #-------------------------------------------------------------------------------
 # Hex-Rays finally removed AddCommand(). Now, instead of a 1 line call, we need
@@ -667,7 +680,7 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 class CExternalDiffingDialog(Form):
   """Simple Form to test multilinetext and combo box controls"""
   def __init__(self):
-    Form.__init__(self, r"""STARTITEM 0
+      Form.__init__(self, r"""STARTITEM 0
 BUTTON YES* Diff Pseudo-code
 BUTTON NO Diff Assembler
 External Diffing Tool
@@ -736,6 +749,9 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.unmatched_second.show(force)
 
   def diff(self, db):
+    if user_cancelled():
+      return None
+
     res = diaphora.CBinDiff.diff(self, db)
     if res:
       # And, finally, show the list of best and partial matches and
@@ -798,6 +814,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
     i = 0
+    self._funcs_cache = {}
     for func in func_list:
       if user_cancelled():
         raise Exception("Canceled.")
@@ -848,8 +865,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
     self.export_structures()
     self.export_til()
+    self.save_compilation_units()
 
-    replace_wait_box("Creating indexes...")
+    log_refresh("Creating indexes...")
     self.create_indexes()
 
   def export(self):
@@ -924,7 +942,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if row["type"] == "enum":
           type_name = "enum"
         elif row["type"] == "union":
-          type_name == "union"
+          type_name = "union"
 
         new_rows.add(row)
         line = "%s %s;" % (type_name, row["name"])
@@ -966,7 +984,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_til()
     self.import_definitions()
 
-  def show_asm_diff(self, item):
+  def generate_asm_diff(self, ea1, ea2, error_func=log):
     cur = self.db_cursor()
     sql = """select *
                from (
@@ -979,12 +997,13 @@ class CIDABinDiff(diaphora.CBinDiff):
               where address = ?
                 and assembly is not null)
               order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
+    ea1 = str(int(ea1, 16))
+    ea2 = str(int(ea2, 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
+    res = None
     if len(rows) != 2:
-      warning("Sorry, there is no assembly available for either the first or the second database.")
+      error_func("Sorry, there is no assembly available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -994,7 +1013,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       asm2 = self.prettify_asm(row2["assembly"])
       buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
       buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
-      
+
       fmt = HtmlFormatter()
       fmt.noclasses = True
       fmt.linenos = False
@@ -1002,10 +1021,23 @@ class CIDABinDiff(diaphora.CBinDiff):
       src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
 
       title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
+      res = (src, title)
+
+    cur.close()
+    return res
+
+  def show_asm_diff(self, item):
+    res = self.generate_asm_diff(item[1], item[3], error_func=warning)
+    if res:
+      (src, title) = res
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
-    cur.close()
+  def save_asm_diff(self, ea1, ea2, filename):
+    res = self.generate_asm_diff(ea1, ea2)
+    if res:
+      (src, _) = res
+      open(filename, "w").write(src)
 
   def import_one(self, item):
     ret = ask_yn(1, "AUTOHIDE DATABASE\nDo you want to import all the type libraries, structs and enumerations?")
@@ -1080,7 +1112,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       cdiffer.Show(src, title)
     cur.close()
 
-  def show_pseudo_diff(self, item, html = True):
+  def generate_pseudo_diff(self, ea1, ea2, html = True, error_func=log):
     cur = self.db_cursor()
     sql = """select *
                from (
@@ -1093,12 +1125,13 @@ class CIDABinDiff(diaphora.CBinDiff):
               where address = ?
                 and pseudocode is not null)
               order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
+    ea1 = str(int(ea1, 16))
+    ea2 = str(int(ea2, 16))
     cur.execute(sql, (ea1, ea2))
     rows = cur.fetchall()
+    res = None
     if len(rows) != 2:
-      warning("Sorry, there is no pseudo-code available for either the first or the second database.")
+      error_func("Sorry, there is no pseudo-code available for either the first or the second database.")
     else:
       row1 = rows[0]
       row2 = rows[1]
@@ -1113,29 +1146,42 @@ class CIDABinDiff(diaphora.CBinDiff):
       buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
 
       if buf1 == buf2:
-        warning("Both pseudo-codes are equal.")
+        error_func("Both pseudo-codes are equal.")
 
       fmt = HtmlFormatter()
       fmt.noclasses = True
       fmt.linenos = False
       fmt.nobackground = True
       if not html:
-        uni_diff = difflib.unified_diff(buf2.split("\n"), buf1.split("\n"))
+        uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
         tmp = []
         for line in uni_diff:
           tmp.append(line.strip("\n"))
         tmp = tmp[2:]
         buf = "\n".join(tmp)
-        
+
         src = highlight(buf, DiffLexer(), fmt)
       else:
-        src = html_diff.make_file(buf2.split("\n"), buf1.split("\n"), fmt, CppLexer())
+        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, CppLexer())
 
-      title = "Diff pseudo-code %s - %s" % (row2["name"], row1["name"])
+      title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
+      res = (src, title)
+
+    cur.close()
+    return res
+
+  def show_pseudo_diff(self, item, html = True):
+    res = self.generate_pseudo_diff(item[1], item[3], html=html, error_func=warning)
+    if res:
+      (src, title) = res
       cdiffer = CHtmlViewer()
       cdiffer.Show(src, title)
 
-    cur.close()
+  def save_pseudo_diff(self, ea1, ea2, filename):
+    res = self.generate_pseudo_diff(ea1, ea2, html=True)
+    if res:
+      (src, _) = res
+      open(filename, "w").write(src)
 
   def diff_external(self, item):
     cmd_line = None
@@ -1264,7 +1310,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     graph1.Show()
     graph2.Show()
 
-    set_dock_pos(title1, title2, DP_RIGHT)
+    set_dock_pos(title2, title1, DP_RIGHT)
     uitimercallback_t(graph1, 100)
     uitimercallback_t(graph2, 100)
 
@@ -1333,7 +1379,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def row_is_importable(self, ea2, import_syms):
     ea = str(ea2)
-    if ea not in import_syms:
+    if not ea in import_syms:
       return False
 
     operand_names = import_syms[ea][3]
@@ -1346,14 +1392,15 @@ class CIDABinDiff(diaphora.CBinDiff):
     if import_syms[ea][2] is not None:
       return True
 
-    # Has operand Name
+    # Has operand names
     operand_names = import_syms[ea][3]
-    for operand_name in operand_names:
-      if operand_name[1] != "":
-        return True
+    if operand_names is not None:
+      for operand_name in operand_names:
+        if operand_name[1] != "":
+          return True
 
     # Has a name
-    if import_syms[ea][3] is not None:
+    if import_syms[ea][4] is not None:
       return True
 
     # Has pseudocode comment
@@ -1366,7 +1413,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur = self.db_cursor()
     try:
       # Check first if we have any importable items
-      sql = """ select ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
+      sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
                   from diff.function_bblocks bb,
                        diff.functions f,
                        diff.bb_instructions bbi,
@@ -1385,7 +1432,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operand_names"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
         sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
@@ -1484,6 +1531,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     cur.close()
 
   def import_selected(self, items, selected, only_auto):
+    log_refresh("Importing selected row(s)...")
+
     # Import all the type libraries from the diff database
     self.import_til()
     # Import all the struct and enum definitions
@@ -1884,23 +1933,23 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     
     return mnem, disasm
 
-  def read_function(self, f):
+  def read_function(self, ea):
     """
     Extract anything and everything we (might) need from a function.
 
     This is a horribly big (read: huge) function that, from time to time, I try
     to make a bit smaller. Feel free to do the same...
     """
-    name, true_name, demangle_named_name = self.get_function_names(f)
+    name, true_name, demangle_named_name = self.get_function_names(ea)
 
     # Call hooks immediately after we have a proper function name
     if self.hooks is not None:
       if 'before_export_function' in dir(self.hooks):
-        ret = self.hooks.before_export_function(f, name)
+        ret = self.hooks.before_export_function(ea, name)
         if not ret:
           return False
 
-    f = int(f)
+    f = int(ea)
     func = get_func(f)
     if not func:
       log("Cannot get a function object for 0x%x" % f)
@@ -2136,7 +2185,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
-             assembly_addrs, kgh_hash, None,
+             assembly_addrs, kgh_hash, None, None,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -2192,6 +2241,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["seg_rva"],
       d["assembly_addrs"],
       d["kgh_hash"],
+      d["source_file"],
       d["userdata"],
       d["callers"],
       d["callees"],
@@ -2206,8 +2256,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
-    assembly_addrs, kgh_hash, userdata, callers, callees, basic_blocks_data,
-    bb_relations) = l
+    assembly_addrs, kgh_hash, source_file, userdata, callers, callees,
+    basic_blocks_data, bb_relations) = l
     d = dict(
           name = name,
           nodes = nodes,
@@ -2251,6 +2301,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           seg_rva = seg_rva,
           assembly_addrs = assembly_addrs,
           kgh_hash = kgh_hash,
+          source_file = source_file,
           callers = callers,
           callees = callees,
           basic_blocks_data = basic_blocks_data,
@@ -2260,6 +2311,123 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   def get_base_address(self):
     return idaapi.get_imagebase()
+
+  def get_modules_using_lfa(self):
+    # First, try to guess modules areas
+    _, lfa_modules = lfa.analyze()
+
+    # Next, using IDAMagicStrings, try to guess file names using some heuristics
+    func_modules = {}
+    if has_get_source_strings:
+      d, _ = get_source_strings()
+    
+      for source_file in d:
+        for ref_ea, func_name, mod_name in d[source_file]:
+          func_ea = idc.get_name_ea_simple(func_name)
+          if func_ea not in func_modules:
+            # print("0x%08x:%s -> %s" % (func_ea, func_name, mod_name))
+            func_modules[func_ea] = mod_name
+            for module in lfa_modules:
+              if func_ea >= module.start and func_ea <= module.end:
+                if module.name == "":
+                  module.name = mod_name
+                  module.score = 1.0
+    
+      #
+      # Next sub-step: collapse modules when we have defined areas with a file
+      # name with holes between. This horribly explanation means that if we find
+      # something like this:
+      #
+      #   Module 0x004022b8 -> 0x4049cf Name: src/ls.c Score: 1.000000
+      #   Module 0x004049d0 -> 0x404e2f Name:  Score: 0.000000
+      #   Module 0x00404e30 -> 0x405c0f Name: src/ls.c Score: 1.000000
+      #
+      # We can assume that the module between 0x004049d0 & 0x404e2f is, indeed,
+      # the same module as the previous and next one, thus, we can collapse it
+      # to just one and name it "src/ls.c".
+      #
+      last_idx = None
+      last_name = None
+      for i, module in enumerate(lfa_modules):
+        if last_name is None and module.name != "":
+          last_idx = i
+          last_name = module.name
+          continue
+    
+        if last_name is not None and module.name == last_name:
+          #
+          # We have a match. Now, iterate backward to update the module name for
+          # the holes and also set the score to 0.5 (meaning 'guessed name').
+          #
+          for i in range(i-1, last_idx, -1):
+            prev_module = lfa_modules[i]
+            if prev_module.name == "":
+              prev_module.score = 0.5
+              prev_module.name = last_name
+            elif prev_module.name == last_name:
+              break
+    
+          last_idx = i
+        elif module.name != "" and module.name != last_name:
+          last_name = module.name
+          last_idx = i
+
+    return lfa_modules
+
+  def save_compilation_units(self):
+    lfa_modules = self.get_modules_using_lfa()
+
+    sql1 = """insert into compilation_units (name, score, start_ea, end_ea)
+                                    values (?, ?, ?, ?)"""
+    sql2 = """insert or ignore into compilation_unit_functions(
+                                      cu_id, func_id)
+                                    values (?, ?)"""
+    sql3 = """ update compilation_units
+                  set primes_value = ?,
+                      pseudocode_primes = ?,
+                      functions = ?
+                where id = ? """
+    sql4 = """ update functions set source_file = ? where id = ? """
+    cur = self.db_cursor()
+    try:
+      dones = set()
+      for module in lfa_modules:
+        score = getattr(module, 'score', 0.0)
+        module_name = None
+        if module.name != ""''"":
+          module_name = module.name
+
+        cur.execute(sql1, (module.name, score, str(module.start), str(module.end)))
+        cu_id = cur.lastrowid
+
+        primes = 1
+        pseudo_primes = 1
+
+        total_funcs = 0
+        for func in Functions(module.start, module.end):
+          if func not in self._funcs_cache:
+            # Some functions (like thunk ones) might be ignored when exporting
+            continue
+
+          total_funcs += 1
+          func_id, primes_value, pseudocode_primes = self._funcs_cache[func]
+          if func_id not in dones:
+            dones.add(func_id)
+            if primes_value is not None:
+              primes *= int(primes_value)
+            if pseudocode_primes is not None:
+              pseudo_primes *= int(pseudocode_primes)
+            cur.execute(sql2, (cu_id, func_id))
+            cur.execute(sql4, (module.name, func_id))
+
+        cur.execute(sql3, [str(primes), str(pseudo_primes), total_funcs, cu_id])
+        if cur.rowcount == 0:
+          raise Exception("Unable to UPDATE the primes for a compilation unit!")
+    except:
+      print("ERROR saving compilation unit: %s" % str(sys.exc_info()[1]))
+      raise
+    finally:
+      cur.close()
 
   def save_callgraph(self, primes, all_primes, md5sum):
     cur = self.db_cursor()
@@ -2624,6 +2792,16 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
+# XXX - db2 is unused so could be removed?
+def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
+  bd = CIDABinDiff(db1)
+  bd.db = sqlite3.connect(db1, check_same_thread=True)
+  bd.db.text_factory = str
+  bd.db.row_factory = sqlite3.Row
+  bd.load_results(diff_db)
+  bd.save_pseudo_diff(ea1, ea2, html_pseudo)
+  bd.save_asm_diff(ea1, ea2, html_asm)
+
 #-------------------------------------------------------------------------------
 class BinDiffOptions:
   def __init__(self, **kwargs):
@@ -2639,8 +2817,8 @@ class BinDiffOptions:
       warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get('unreliable', False)
-    self.slow = kwargs.get('slow', False)
-    self.experimental = kwargs.get('experimental', False)
+    self.slow = kwargs.get('slow', total_functions <= 2000)
+    self.experimental = kwargs.get('experimental', True)
     self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
     self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))
     self.ida_subs = kwargs.get('ida_subs', True)
@@ -2806,7 +2984,8 @@ def remove_file(filename):
       try:
         funcs = ["functions", "program", "program_data", "version",
                "instructions", "basic_blocks", "bb_relations",
-               "bb_instructions", "function_bblocks"]
+               "bb_instructions", "function_bblocks", "compilation_units",
+               "compilation_unit_functions"]
         for func in funcs:
           db.execute("drop table if exists %s" % func)
       finally:
