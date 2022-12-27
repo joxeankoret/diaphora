@@ -51,7 +51,7 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "2.2.0"
+VERSION_VALUE = "3.0.0"
 COPYRIGHT_VALUE="Copyright(c) 2015-2022 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
