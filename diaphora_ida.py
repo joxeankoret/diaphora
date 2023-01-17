@@ -1569,6 +1569,8 @@ class CIDABinDiff(diaphora.CBinDiff):
         self.delete_function(ea)
         self.save_function(new_func)
         total += 1
+
+      self.db.execute("analyze")
       self.db.commit()
 
       # Update the choosers after importing
@@ -2512,7 +2514,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
 
   def load_and_import_all_results(self, filename, main_db, diff_db):
-    results_db = sqlite3_connect(filename)
+    results_db = diaphora.sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
@@ -2580,7 +2582,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return False
 
   def load_results(self, filename):
-    results_db = sqlite3_connect(filename)
+    results_db = diaphora.sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
@@ -2795,7 +2797,7 @@ def _diff_or_export(use_ui, **options):
 
 def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd = CIDABinDiff(db1)
-  bd.db = sqlite3_connect(db1)
+  bd.db = diaphora.sqlite3_connect(db1)
   bd.load_results(diff_db)
   bd.save_pseudo_diff(ea1, ea2, html_pseudo)
   bd.save_asm_diff(ea1, ea2, html_asm)

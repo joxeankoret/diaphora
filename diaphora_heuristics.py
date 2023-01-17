@@ -110,26 +110,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Bytes hash and names",
-  "category":"Best",
-  "ratio":HEUR_TYPE_NO_FPS,
-  "sql":"""  select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Bytes hash and names' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                from functions f,
-                     diff.functions df
-               where f.bytes_hash = df.bytes_hash
-                 and f.names = df.names
-                 and f.names != '[]'
-                 and f.instructions > 5 and df.instructions > 5""",
-  "flags":HEUR_FLAG_NONE
-})
-
-HEURISTICS.append({
   "name":"Bytes hash",
   "category":"Best",
   "ratio":HEUR_TYPE_NO_FPS,
@@ -171,11 +151,11 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Same cleaned up assembly",
+  "name":"Same cleaned assembly",
   "category":"Best",
   "ratio":HEUR_TYPE_RATIO,
   "sql":""" select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Same cleaned up assembly' description,
+             'Same cleaned assembly' description,
              f.pseudocode pseudo1, df.pseudocode pseudo2,
              f.assembly asm1, df.assembly asm2,
              f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -255,6 +235,45 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not to find anything?
+#
+HEURISTICS.append({
+  "name":"Equal assembly or pseudo-code",
+  "category":"Best",
+  "ratio":HEUR_TYPE_NO_FPS,
+  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
+            f.pseudocode pseudo1, df.pseudocode pseudo2,
+            f.assembly asm1, df.assembly asm2,
+            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from functions f,
+            diff.functions df
+      where f.pseudocode = df.pseudocode
+        and df.pseudocode is not null
+        and f.pseudocode_lines >= 5
+        and f.name not like 'nullsub%'
+        and df.name not like 'nullsub%'
+        %POSTFIX%
+      union
+     select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
+            f.pseudocode pseudo1, df.pseudocode pseudo2,
+            f.assembly asm1, df.assembly asm2,
+            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from functions f,
+            diff.functions df
+      where f.assembly = df.assembly
+        and df.assembly is not null
+        and f.instructions >= 4 and df.instructions >= 4
+        and f.name not like 'nullsub%'
+        and df.name not like 'nullsub%'
+        %POSTFIX% """,
+  "flags":HEUR_FLAG_NONE|HEUR_FLAG_SLOW
+})
+
 HEURISTICS.append({
   "name":"Same Named Compilation Unit Function Match",
   "category":"Partial",
@@ -317,6 +336,30 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
+  "name":"Same KOKA hash and constants",
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same KOKA hash and constants' description,
+            f.pseudocode pseudo1, df.pseudocode pseudo2,
+            f.assembly asm1, df.assembly asm2,
+            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+            f.nodes bb1, df.nodes bb2,
+            cast(f.md_index as real) md1, cast(df.md_index as real) md2
+       from main.constants mc,
+            diff.constants dc,
+            main.functions  f,
+            diff.functions df
+      where mc.constant = dc.constant
+        and  f.id = mc.func_id
+        and df.id = dc.func_id
+        and f.kgh_hash = df.kgh_hash
+        and f.nodes >= 3
+        %POSTFIX%
+      order by f.source_file = df.source_file""",
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
   "name":"Same KOKA hash and MD-Index",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO,
@@ -361,30 +404,6 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
-})
-
-HEURISTICS.append({
-  "name":"Same KOKA hash and constants",
-  "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same KOKA hash and constants' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from main.constants mc,
-            diff.constants dc,
-            main.functions  f,
-            diff.functions df
-      where mc.constant = dc.constant
-        and  f.id = mc.func_id
-        and df.id = dc.func_id
-        and f.kgh_hash = df.kgh_hash
-        and f.nodes >= 3
-        %POSTFIX%
-      order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_NONE
 })
 
@@ -453,6 +472,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"Same address and rare constant",
   "category":"Partial",
@@ -526,6 +548,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"All or most attributes",
   "category":"Partial",
@@ -590,6 +615,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"Same address, nodes, edges and primes (re-ordered instructions)",
   "category":"Partial",
@@ -638,6 +666,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"Nodes, edges, complexity, mnemonics, names, prototype, in-degree and out-degree",
   "category":"Partial",
@@ -707,6 +738,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"Pseudo-code fuzzy hash",
   "category":"Partial",
@@ -753,6 +787,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+#
+# Seems not find anything???
+#
 HEURISTICS.append({
   "name":"Strongly connected components small-primes-product",
   "category":"Partial",
@@ -867,42 +904,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Equal assembly or pseudo-code",
-  "category":"Best",
-  "ratio":HEUR_TYPE_NO_FPS,
-  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.pseudocode = df.pseudocode
-        and df.pseudocode is not null
-        and f.pseudocode_lines >= 5
-        and f.name not like 'nullsub%'
-        and df.name not like 'nullsub%'
-        %POSTFIX%
-      union
-     select f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where f.assembly = df.assembly
-        and df.assembly is not null
-        and f.instructions >= 4 and df.instructions >= 4
-        and f.name not like 'nullsub%'
-        and df.name not like 'nullsub%'
-        %POSTFIX% """,
-  "flags":HEUR_FLAG_NONE|HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Switch structures",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
@@ -926,7 +927,7 @@ HEURISTICS.append({
 HEURISTICS.append({
   "name":"Pseudo-code fuzzy (normal)",
   "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
+  "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy (normal)' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
@@ -936,9 +937,10 @@ HEURISTICS.append({
        from functions f,
             diff.functions df
       where df.pseudocode_hash1 = f.pseudocode_hash1
-        and f.instructions > 5 and df.instructions > 5
+        and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
+  "min": 0.5,
   "flags":HEUR_FLAG_SLOW
 })
 
@@ -955,7 +957,7 @@ HEURISTICS.append({
        from functions f,
             diff.functions df
       where df.pseudocode_hash3 = f.pseudocode_hash3
-        and f.instructions > 5 and df.instructions > 5
+        and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_SLOW
@@ -974,15 +976,16 @@ HEURISTICS.append({
        from functions f,
             diff.functions df
       where df.pseudocode_hash2 = f.pseudocode_hash2
-        and f.instructions > 5 and df.instructions > 5
+        and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_SLOW
 })
+
 HEURISTICS.append({
   "name":"Pseudo-code fuzzy AST hash",
   "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO,
+  "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Pseudo-code fuzzy AST hash' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
@@ -996,6 +999,7 @@ HEURISTICS.append({
         and length(f.pseudocode_primes) >= 35
         %POSTFIX%
       order by f.source_file = df.source_file""",
+  "min": 0.35,
   "flags":HEUR_FLAG_SLOW
 })
 
@@ -1081,28 +1085,6 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Small pseudo-code fuzzy AST hash",
-  "category":"Partial",
-  "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Small pseudo-code fuzzy AST hash' description,
-            f.pseudocode pseudo1, df.pseudocode pseudo2,
-            f.assembly asm1, df.assembly asm2,
-            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-            f.nodes bb1, df.nodes bb2,
-            cast(f.md_index as real) md1, cast(df.md_index as real) md2
-       from functions f,
-            diff.functions df
-      where df.pseudocode_primes = f.pseudocode_primes
-        and f.pseudocode_lines <= 5
-        and f.name not like 'nullsub%'
-        and df.name not like 'nullsub%'
-        %POSTFIX%
-      order by f.source_file = df.source_file""",
-  "min":0.79,
-  "flags":HEUR_FLAG_SLOW
-})
-
-HEURISTICS.append({
   "name":"Same graph",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
@@ -1142,6 +1124,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Strongly connected components",
   "category":"Unreliable",
@@ -1165,6 +1150,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Nodes, edges, complexity and mnemonics",
   "category":"Unreliable",
@@ -1188,6 +1176,10 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+# Duplicate?
+#
 HEURISTICS.append({
   "name":"Nodes, edges, complexity and prototype",
   "category":"Unreliable",
@@ -1211,6 +1203,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Nodes, edges, complexity, in-degree and out-degree",
   "category":"Unreliable",
@@ -1235,6 +1230,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Nodes, edges and complexity",
   "category":"Unreliable",
@@ -1257,6 +1255,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Same high complexity",
   "category":"Unreliable",
@@ -1276,6 +1277,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW
 })
 
+#
+# Seems not to find anything?
+#
 HEURISTICS.append({
   "name":"Topological sort hash",
   "category":"Unreliable",
@@ -1296,30 +1300,6 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_NONE
-})
-
-HEURISTICS.append({
-  "name":"Strongly connected components SPP and names",
-  "category":"Unreliable",
-  "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":""" select f.address ea, f.name name1, df.address ea2, df.name name2,
-             'Strongly connected components SPP and names' description,
-             f.pseudocode pseudo1, df.pseudocode pseudo2,
-             f.assembly asm1, df.assembly asm2,
-             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-             f.nodes bb1, df.nodes bb2,
-             cast(f.md_index as real) md1, cast(df.md_index as real) md2
-        from functions f,
-             diff.functions df
-       where f.names = df.names
-         and f.names != '[]'
-         and f.strongly_connected_spp = df.strongly_connected_spp
-         and f.strongly_connected_spp > 0
-         and f.nodes > 5 and df.nodes > 5
-         %POSTFIX%
-        order by f.source_file = df.source_file""",
-  "min":0.49,
-  "flags":HEUR_FLAG_UNRELIABLE
 })
 
 #-------------------------------------------------------------------------------
@@ -1394,7 +1374,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 25, 2: 20, 0: 6, 3: 1}))
+  assert(ratios == Counter({1: 24, 2: 20, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():

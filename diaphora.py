@@ -186,7 +186,7 @@ class CChooser():
 
 #-------------------------------------------------------------------------------
 MAX_PROCESSED_ROWS = 1000000
-TIMEOUT_LIMIT = 60 * 3
+TIMEOUT_LIMIT = 60 * 5
 
 #-------------------------------------------------------------------------------
 class bytes_encoder(json.JSONEncoder):
@@ -323,10 +323,6 @@ class CBinDiff:
     if isinstance(threading.current_thread(), threading._MainThread):
       self.db = db
       self.create_schema()
-      try:
-        db.execute("analyze")
-      except:
-        log("Error analyzing database: %s" % sys.exc_info()[1])
 
   def get_db(self):
     tid = threading.current_thread().ident
@@ -1290,7 +1286,7 @@ class CBinDiff:
             v1 = quick_ratio(tmp1, tmp2)
             if v1 == 1.0:
               return 1.0
-
+    
     tmp_asm1 = self.get_cmp_asm_lines(asm1)
     tmp_asm2 = self.get_cmp_asm_lines(asm2)
     v2 = fratio(tmp_asm1, tmp_asm2)
@@ -1315,7 +1311,6 @@ class CBinDiff:
       if self.relaxed_ratio and md1 > 10.0:
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
-
 
     r = max(v1, v2, v3, v4)
     if r == 1.0 and md1 != md2:
@@ -1840,7 +1835,8 @@ class CBinDiff:
 
       self.find_in_compilation_units()
       cur.execute("drop table best_matches")
-      cur.execute("commit")
+      if cur.connection.in_transaction:
+        cur.execute("commit")
     finally:
       cur.close()
 
@@ -1876,12 +1872,15 @@ class CBinDiff:
                    and df.id = dcuf.id
                    and cuf.id = ?
                    and dcuf.id = ?
+                   and f.nodes > 3
+                   and df.nodes > 3
       """
       for row in rows:
         cur.execute(sql2, (row[0], row[1]))
         self.add_matches_internal(cur, best=self.best_chooser, \
                                   partial=self.partial_chooser,\
-                                  unreliable=None, val=0.79)
+                                  unreliable=self.unreliable_chooser,\
+                                  val=0.79)
     finally:
       cur.close()
 
@@ -2022,7 +2021,8 @@ class CBinDiff:
     cur.execute(sql)
     log_refresh("Finding via brute-forcing...")
     self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
-    cur.execute("commit")
+    if cur.connection.in_transaction:
+      cur.execute("commit")
     cur.close()
 
   def find_experimental_matches(self):
@@ -2089,7 +2089,8 @@ class CBinDiff:
       sql = "insert into config values (?, ?, ?, ?)"
       cur.execute(sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime()))
 
-      sql = "create table results (type, line, address, name, address2, name2, ratio, bb1, bb2, description)"
+      sql = """create table results (type, line, address, name, address2, name2,
+                                     ratio, bb1, bb2, description)"""
       cur.execute(sql)
 
       sql = "create unique index uq_results on results(address, address2)"
