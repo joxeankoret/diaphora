@@ -521,7 +521,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.2,
-  "flags":HEUR_FLAG_NONE
+  "flags":HEUR_FLAG_SLOW
 })
 
 HEURISTICS.append({

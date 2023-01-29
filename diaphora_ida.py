@@ -58,6 +58,18 @@ except:
 from PyQt5 import QtWidgets
 
 #-------------------------------------------------------------------------------
+# Chooser items indices. They do differ from the CChooser.item items that are
+# handled in diaphora.py.
+CHOOSER_ITEM_INDEX = 0
+CHOOSER_ITEM_MAIN_EA = diaphora.ITEM_MAIN_EA + 1
+CHOOSER_ITEM_MAIN_NAME = diaphora.ITEM_MAIN_NAME + 1
+CHOOSER_ITEM_DIFF_EA = diaphora.ITEM_DIFF_EA + 1
+CHOOSER_ITEM_DIFF_NAME = diaphora.ITEM_DIFF_NAME + 1
+CHOOSER_ITEM_DESCRIPTION = diaphora.ITEM_DESCRIPTION + 1
+CHOOSER_ITEM_RATIO = diaphora.ITEM_RATIO
+CHOOSER_ITEM_MAIN_BBLOCKS = diaphora.ITEM_MAIN_BBLOCKS
+CHOOSER_ITEM_DIFF_BBLOCKS = diaphora.ITEM_DIFF_BBLOCKS
+
 # Constants unexported in IDA Python
 PRTYPE_SEMI = 0x0008
 
@@ -255,7 +267,7 @@ class CIDAChooser(CDiaphoraChooser):
       Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose.CH_MULTI)
     else:
       columns = [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8],
-                  ["Name 2", 20], ["Ratio", 5], ["BBlocks 1", 5], ["BBlocks 2", 5],
+                  ["Name 2", 20], ["Ratio", 8], ["BBlocks 1", 5], ["BBlocks 2", 5],
                   ["Description", 30]
                 ]
       Choose.__init__(self, title, columns, Choose.CH_MULTI)
@@ -264,7 +276,7 @@ class CIDAChooser(CDiaphoraChooser):
     item = self.items[n[0]]
     if self.primary:
       try:
-        jump_ea = int(item[1], 16)
+        jump_ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
         # Only jump for valid addresses
         if is_mapped(jump_ea):
           jumpto(jump_ea)
@@ -291,8 +303,8 @@ class CIDAChooser(CDiaphoraChooser):
           except IndexError:
             return None
         
-        name1 = getItem(2)
-        name2 = getItem(4)
+        name1 = getItem(CHOOSER_ITEM_MAIN_NAME)
+        name2 = getItem(CHOOSER_ITEM_DIFF_NAME)
 
         del self.items[n]
         
@@ -305,7 +317,9 @@ class CIDAChooser(CDiaphoraChooser):
 
   def show(self, force=False):
     if self.show_commands:
-      self.items = sorted(self.items, key=lambda x: decimal.Decimal(x[5]), reverse=True)
+      self.items = sorted(self.items, \
+                          key=lambda x: decimal.Decimal(x[CHOOSER_ITEM_RATIO]),\
+                          reverse=True)
 
     t = self.Show()
     if t < 0:
@@ -364,22 +378,22 @@ class CIDAChooser(CDiaphoraChooser):
       if ask_yn(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
         color = self.get_color()
         for item in self.items:
-          ea = int(item[1], 16)
+          ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
           if not set_color(ea, CIC_FUNC, color):
             print("Error setting color for %x" % ea)
         self.Refresh()
     elif cmd_id == self.cmd_unhighlight_functions:
       for item in self.items:
-        ea = int(item[1], 16)
+        ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
         if not set_color(ea, CIC_FUNC, 0xFFFFFF):
           print("Error setting color for %x" % ea)
       self.Refresh()
     elif cmd_id == self.cmd_diff_graph:
       item = self.items[n]
-      ea1 = int(item[1], 16)
-      name1 = item[2]
-      ea2 = int(item[3], 16)
-      name2 = item[4]
+      ea1 = int(item[CHOOSER_ITEM_MAIN_EA], 16)
+      name1 = item[CHOOSER_ITEM_MAIN_NAME]
+      ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
+      name2 = item[CHOOSER_ITEM_DIFF_NAME]
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_save_results:
@@ -441,8 +455,8 @@ class CIDAChooser(CDiaphoraChooser):
     self.selected_items = sel_list
 
   def seems_false_positive(self, item):
-    name1 = item[2]
-    name2 = item[4]
+    name1 = item[CHOOSER_ITEM_MAIN_NAME]
+    name2 = item[CHOOSER_ITEM_DIFF_NAME]
 
     name1 = name1.rstrip("_0")
     name2 = name2.rstrip("_0")
@@ -457,7 +471,7 @@ class CIDAChooser(CDiaphoraChooser):
   def OnGetLineAttr(self, n):
     if not self.title.startswith("Unmatched"):
       item = self.items[n]
-      ratio = float(item[5])
+      ratio = float(item[CHOOSER_ITEM_RATIO])
       if self.seems_false_positive(item):
         return [LITTLE_ORANGE, 0]
       else:
@@ -740,18 +754,13 @@ class CIDABinDiff(diaphora.CBinDiff):
     idaapi.request_refresh(0xFFFFFFFF)
 
   def show_choosers(self, force=False):
-    if len(self.best_chooser.items) > 0:
-      self.best_chooser.show(force)
-
-    if len(self.partial_chooser.items) > 0:
-      self.partial_chooser.show(force)
-
-    if self.unreliable_chooser is not None and len(self.unreliable_chooser.items) > 0:
-      self.unreliable_chooser.show(force)
-    if self.unmatched_primary is not None and len(self.unmatched_primary.items) > 0:
-      self.unmatched_primary.show(force)
-    if self.unmatched_second is not None and len(self.unmatched_second.items) > 0:
-      self.unmatched_second.show(force)
+    CHOOSERS = [self.best_chooser, self.partial_chooser,
+      self.multimatch_chooser, self.unreliable_chooser, self.unmatched_primary,
+      self.unmatched_second]
+    
+    for chooser in CHOOSERS:
+      if chooser is not None and len(chooser.items) > 0:
+        chooser.show(force)
 
   def diff(self, db):
     if user_cancelled():
@@ -2792,7 +2801,9 @@ def _diff_or_export(use_ui, **options):
   except:
     print(("Error: %s" % sys.exc_info()[1]))
     traceback.print_exc()
-
+  finally:
+    hide_wait_box()
+  
   return bd
 
 def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):

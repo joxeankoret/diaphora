@@ -31,7 +31,7 @@ import threading
 from threading import Thread
 from io import StringIO
 from difflib import SequenceMatcher
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, Lock
 
 import diaphora_heuristics
 importlib.reload(diaphora_heuristics)
@@ -65,6 +65,16 @@ CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
   "stru_", "dbl_", "locret_", "flt_", "jpt_"]
 CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
+DECIMAL_VALUES = "7f"
+
+ITEM_MAIN_EA = 0
+ITEM_MAIN_NAME = 1
+ITEM_DIFF_EA = 2
+ITEM_DIFF_NAME = 3
+ITEM_DESCRIPTION = 4
+ITEM_RATIO = 5
+ITEM_MAIN_BBLOCKS = 6
+ITEM_DIFF_BBLOCKS = 7
 
 #-------------------------------------------------------------------------------
 def result_iter(cursor, arraysize=1000):
@@ -170,8 +180,9 @@ class CChooser():
     if self.title.startswith("Unmatched in"):
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
+      dec_vals = "%." + DECIMAL_VALUES
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
-                         "%08x" % int(item.ea2), item.vfname2, "%.3f" % item.ratio,
+                         "%08x" % int(item.ea2), item.vfname2, dec_vals % item.ratio,
                          "%d" % item.bb1, "%d" % item.bb2, item.description])
     self.n += 1
 
@@ -223,9 +234,13 @@ class CBinDiff:
     self.dbs_dict = {}
     self.db = None # Used exclusively by the exporter!
     self.open_db()
-    self.matched1 = set()
-    self.matched2 = set()
+
+    # Format d["name1-name2"] = ratio
     self.matches_cache = {}
+
+    self.matched_primary = {}
+    self.matched_secondary = {}
+
     self.total_functions1 = None
     self.total_functions2 = None
     self.equal_callgraph = False
@@ -259,6 +274,7 @@ class CBinDiff:
     self.last_diff_db = None
     self.re_cache = {}
     self._funcs_cache = {}
+    self.items_lock = Lock()
 
     ####################################################################
     # LIMITS
@@ -606,7 +622,7 @@ class CBinDiff:
     sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
     cur.execute(sql)
 
-    sql = "create index if not exists idx_constants on constants (constant)"
+    sql = "create index if not exists idx_constants_func on constants (constant, func_id)"
     cur.execute(sql)
 
     sql = "analyze"
@@ -1084,6 +1100,63 @@ class CBinDiff:
 
     cur.close()
 
+  def remove_old_match(self, name1, name2, new_ratio):
+    # This is wrong at so many levels!!!
+    lists = [self.best_chooser, self.partial_chooser, self.unreliable_chooser]
+    done = False
+    for l in lists:
+      for i, element in enumerate(l.items):
+        #
+        # A match is a CChooser.Item object, like the following one:
+        #
+        # CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2)
+        #
+        if element[ITEM_MAIN_NAME] == name1 and element[ITEM_DIFF_NAME] == name2:
+          old_ratio = float(element[ITEM_RATIO])
+          pre_size  = len(l.items)
+          del l.items[i]
+          post_size = len(l.items);
+          if new_ratio > old_ratio:
+            log("Previous worst match %s -> %s %f removed, new ratio %f" % (name1, name2, old_ratio, new_ratio))
+            log("DEBUG: pre-size %d post-size %d" % (pre_size, post_size))
+          done = True
+          break
+    if not done:
+      log("WARNING: Cannot find previous bad result for %s - %s!" % (name1, name2))
+
+  def add_match(self, name1, name2, ratio, item, chooser):
+    with self.items_lock:
+      key = "%s-%s" % (name1, name2)
+      old_ratio = None
+      if key in self.matches_cache:
+        old_ratio = self.matches_cache[key]
+        if ratio > old_ratio:
+          log("Warning: Overwriting previous match %s -> %f with %f" % (key, old_ratio, ratio))
+          self.remove_old_match(name1, name2, ratio)
+
+      if chooser is not None:
+        if old_ratio is None or ratio > old_ratio:
+          chooser.add_item(item)
+
+      self.matches_cache[key] = ratio
+      self.matched_primary[name1] = ratio
+      self.matched_secondary[name2] = ratio
+
+  def exists_best_match(self, name1, name2):
+    if name1 in self.matched_primary and self.matched_primary[name1] == 1.0:
+      return True
+    elif name2 in self.matched_secondary and self.matched_secondary[name2] == 1.0:
+      return True
+    return False
+
+  def better_match_exists(self, name1, name2, ratio):
+    ratio = float(ratio)
+    if name1 in self.matched_primary and self.matched_primary[name1] > ratio:
+      return True
+    elif name2 in self.matched_secondary and self.matched_secondary[name2] > ratio:
+      return True
+    return False
+
   def find_equal_matches_parallel(self):
     cur = self.db_cursor()
     # Start by calculating the total number of functions in both databases
@@ -1109,15 +1182,14 @@ class CBinDiff:
         ea = row["ea"]
         nodes = int(row["nodes"])
 
-        self.best_chooser.add_item(CChooser.Item(ea, name, ea, name, "100% equal", 1, nodes, nodes))
-        self.matched1.add(name)
-        self.matched2.add(name)
+        item = CChooser.Item(ea, name, ea, name, "100% equal", 1, nodes, nodes)
+        self.add_match(name, name, 1.0, item, self.best_chooser)
     cur.close()
 
     if not self.ignore_all_names:
       self.find_same_name(self.partial_chooser)
 
-    self.run_heuristics_for_category("Best", total_cpus=1)
+    self.run_heuristics_for_category("Best")
 
   def run_heuristics_for_category(self, arg_category, total_cpus = None):
     if total_cpus is None:
@@ -1145,7 +1217,8 @@ class CBinDiff:
         heuristics = self.hooks.get_heuristics(arg_category, heuristics)
 
     for heur in heuristics:
-      if len(self.matched1) == self.total_functions1 or len(self.matched2) == self.total_functions2:
+      if len(self.matched_primary) == self.total_functions1 or \
+         len(self.matched_secondary) == self.total_functions2:
         log("All functions matched in at least one database, finishing.")
         break
 
@@ -1256,7 +1329,7 @@ class CBinDiff:
     md2 = float(md2)
 
     fratio = quick_ratio
-    decimal_values = "{0:.2f}"
+    decimal_values = "{0:.%s}" % DECIMAL_VALUES
     if self.relaxed_ratio:
       fratio = real_quick_ratio
       decimal_values = "{0:.1f}"
@@ -1324,8 +1397,53 @@ class CBinDiff:
     return r
 
   def all_functions_matched(self):
-    return len(self.matched1) == self.total_functions1 or \
-           len(self.matched2) == self.total_functions2
+    return len(self.matched_primary)   == self.total_functions1 or \
+           len(self.matched_secondary) == self.total_functions2
+
+  def check_match(self, row, ratio = None, debug=False):
+    ea = str(row["ea"])
+    name1 = row["name1"]
+    ea2 = row["ea2"]
+    name2 = row["name2"]
+    desc = row["description"]
+    pseudo1 = row["pseudo1"]
+    pseudo2 = row["pseudo2"]
+    asm1 = row["asm1"]
+    asm2 = row["asm2"]
+    ast1 = row["pseudo_primes1"]
+    ast2 = row["pseudo_primes2"]
+    bb1 = int(row["bb1"])
+    bb2 = int(row["bb2"])
+    md1 = row["md1"]
+    md2 = row["md2"]
+
+    nullsub = "nullsub_"
+    if name1.startswith(nullsub) or name2.startswith(nullsub):
+      return False, 0.0
+
+    # Do we already have a 1.0 match for any of these functions?
+    if self.exists_best_match(name1, name2):
+      return False, 0.0
+
+    if ratio is None:
+      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+      if debug:
+        print("0x%x 0x%x %d" % (int(ea), int(ea2), r))
+    else:
+      r = ratio
+
+    # Do we have a previous match with a better comparison ratio than this?
+    if self.better_match_exists(name1, name2, r):
+      return False, 0.0
+
+    should_add = True
+    if self.hooks is not None:
+      if 'on_match' in dir(self.hooks):
+        d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+        d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+        should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+    return should_add, r
 
   def add_matches_internal(self, cur, best, partial, val=None, unreliable=None, debug=False):
     """
@@ -1346,48 +1464,28 @@ class CBinDiff:
       if row is None:
         break
 
+      # Check the row match
+      should_add, r = self.check_match(row, debug=debug)
+      if not should_add:
+        continue
+
       ea = str(row["ea"])
       name1 = row["name1"]
       ea2 = row["ea2"]
       name2 = row["name2"]
       desc = row["description"]
-      pseudo1 = row["pseudo1"]
-      pseudo2 = row["pseudo2"]
-      asm1 = row["asm1"]
-      asm2 = row["asm2"]
-      ast1 = row["pseudo_primes1"]
-      ast2 = row["pseudo_primes2"]
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
-      md1 = row["md1"]
-      md2 = row["md2"]
-
-      if name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
-      if debug:
-        print("0x%x 0x%x %d" % (int(ea), int(ea2), r))
-
-      should_add = True
-      if self.hooks is not None:
-        if 'on_match' in dir(self.hooks):
-          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-          d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-          should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
-      if not should_add or name1 in self.matched1 or name2 in self.matched2:
-        continue
 
       done = True
+      chooser = None
+      item = None
       if r == 1.0:
-        best.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
+        chooser = best
+        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
       elif r >= 0.5 and partial is not None:
-        partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-        self.matched1.add(name1)
-        self.matched2.add(name2)
+        chooser = partial
+        item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
       else:
         do_add = False
         if val is None:
@@ -1398,29 +1496,31 @@ class CBinDiff:
             do_add = True
 
         if do_add and partial is not None:
-          partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-          self.matched1.add(name1)
-          self.matched2.add(name2)
+          chooser = partial
+          item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
         else:
           done = False
 
       if done:
         matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
+        self.add_match(name1, name2, r, item, chooser)
       else: #Or "elif not done"
+        chooser = None
+        item = None
         if val is None:
           if r < 0.5 and unreliable is not None:
-            unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-            self.matched1.add(name1)
-            self.matched2.add(name2)
+            chooser = unreliable
+            item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
           elif partial is not None:
-            partial.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-            self.matched1.add(name1)
-            self.matched2.add(name2)
+            chooser = partial
+            item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
         else:
           if r < 0.5 and r > val and unreliable is not None:
-            unreliable.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-            self.matched1.add(name1)
-            self.matched2.add(name2)
+            chooser = unreliable
+            item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
+        
+        if chooser is not None:
+          self.add_match(name1, name2, r, item, chooser)
 
     return matches
 
@@ -1512,38 +1612,24 @@ class CBinDiff:
       if row is None:
         break
 
+      # Check the row match
+      should_add, r = self.check_match(row)
+      if not should_add:
+        continue
+
       ea = str(row["ea"])
       name1 = row["name1"]
-      ea2 = str(row["ea2"])
+      ea2 = row["ea2"]
       name2 = row["name2"]
-      desc = row["description"]
-      pseudo1 = row["pseudo1"]
-      pseudo2 = row["pseudo2"]
-      asm1 = row["asm1"]
-      asm2 = row["asm2"]
-      ast1 = row["pseudo_primes1"]
-      ast2 = row["pseudo_primes2"]
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
-      md1 = row["md1"]
-      md2 = row["md2"]
+      desc = row["description"]
 
-      if name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      should_add = True
-      if self.hooks is not None:
-        if 'on_match' in dir(self.hooks):
-          d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-          d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-          should_add, r = self.hooks.on_match(d1, d2, desc, 1.0)
-
-      if not should_add or name1 in self.matched1 or name2 in self.matched2:
-        continue
-
-      choose.add_item(CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2))
-      self.matched1.add(name1)
-      self.matched2.add(name2)
+      item = CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2)
+      self.add_match(name1, name2, 1.0, item, choose)
+      if r < 0.5:
+        log("Warning: Best match 0x%s:%s -> 0x%sx:%s have a bad ratio: %f" % (ea, name1, ea2, name2, r))
+      
     cur.close()
 
   def search_small_differences(self, choose):
@@ -1551,6 +1637,7 @@ class CBinDiff:
     
     # Same basic blocks, edges, mnemonics, etc... but different names
     sql = """ select distinct f.address ea, f.name name1, df.name name2,
+                     'Nodes, edges, complexity and mnemonics with small differences' description,
                      f.names f_names, df.names df_names, df.address ea2,
                      f.nodes bb1, df.nodes bb2,
                      f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -1563,16 +1650,14 @@ class CBinDiff:
                  and f.edges = df.edges
                  and f.mnemonics = df.mnemonics
                  and f.cyclomatic_complexity = df.cyclomatic_complexity
-                 and f.names != '[]'"""
+                 and f.names != '[]'
+               order by f.source_file = df.source_file"""
     cur.execute(sql)
     rows = result_iter(cur)
     for row in rows:
       ea = str(row["ea"])
       name1 = row["name1"]
       name2 = row["name2"]
-
-      if name1 in self.matched1 or name2 in self.matched2:
-        continue
 
       bb1 = int(row["bb1"])
       bb2 = int(row["bb2"])
@@ -1582,57 +1667,53 @@ class CBinDiff:
       total = max(len(s1), len(s2))
       commons = len(s1.intersection(s2))
       ratio = (commons * 1.) / total
+      if self.better_match_exists(name1, name2, ratio):
+        continue
+
       if ratio >= 0.5:
-        ea2 = row["ea2"]
-        pseudo1 = row["pseudo1"]
-        pseudo2 = row["pseudo2"]
-        asm1 = row["asm1"]
-        asm2 = row["asm2"]
-        ast1 = row["pseudo_primes1"]
-        ast2 = row["pseudo_primes2"]
-        md1 = row["md1"]
-        md2 = row["md2"]
-        desc = "Nodes, edges, complexity and mnemonics with small differences"
-
-        should_add = True
-        if self.hooks is not None:
-          if 'on_match' in dir(self.hooks):
-            d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-            d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-            should_add, ratio = self.hooks.on_match(d1, d2, desc, ratio)
-
-        if not should_add or name1 in self.matched1 or name2 in self.matched2:
+        # Check the row match
+        should_add, ratio2 = self.check_match(row)
+        if not should_add:
           continue
+        print("search_small_differences(): ratio 1 %f ratio 2 %f" % (ratio, ratio2))
+        ea = str(row["ea"])
+        name1 = row["name1"]
+        ea2 = row["ea2"]
+        name2 = row["name2"]
+        desc = row["description"]
+        bb1 = int(row["bb1"])
+        bb2 = int(row["bb2"])
 
         item = CChooser.Item(ea, name1, ea2, name2, desc, ratio, bb1, bb2)
         if ratio == 1.0:
-          self.best_chooser.add_item(item)
+          the_chooser = self.best_chooser
         else:
-          choose.add_item(item)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
+          the_chooser = choose
+
+        self.add_match(name1, name2, ratio, item, the_chooser)
 
     cur.close()
     return
 
   def find_same_name(self, choose):
     cur = self.db_cursor()
-    sql = """select distinct f.address ea1, f.mangled_function mangled1,
-                    d.address ea2, f.name name, d.name name2,
+    desc = "Perfect match, same name"
+    sql = """select distinct f.address ea, f.mangled_function mangled1,
+                    d.address ea2, f.name name1, d.name name2,
                     d.mangled_function mangled2,
                     f.pseudocode pseudo1, d.pseudocode pseudo2,
                     f.assembly asm1, d.assembly asm2,
-                    f.pseudocode_primes primes1,
-                    d.pseudocode_primes primes2,
+                    f.pseudocode_primes pseudo_primes1,
+                    d.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, d.nodes bb2,
-                    cast(f.md_index as real) md1, cast(d.md_index as real) md2
+                    cast(f.md_index as real) md1, cast(d.md_index as real) md2,
+                    '%s' description
                from functions f,
                     diff.functions d
               where (d.mangled_function = f.mangled_function
                  or d.name = f.name)
-                and f.name not like 'nullsub_%'"""
+                and f.name not like 'nullsub_%'""".replace("%s", desc)
     
-    desc = "Perfect match, same name"
     log_refresh("Finding with heuristic '%s'" % desc)
     cur.execute(sql)
     rows = cur.fetchall()
@@ -1640,52 +1721,34 @@ class CBinDiff:
 
     if len(rows) > 0 and not self.all_functions_matched():
       for row in rows:
-        ea = row["ea1"]
         name = row["mangled1"]
-        ea2 = row["ea2"]
-        name1 = row["name"]
+        name1 = row["name1"]
         name2 = row["name2"]
-        name2_1 = row["mangled2"]
-        if name in self.matched1 or name1 in self.matched1 or \
-           name2 in self.matched2 or name2_1 in self.matched2:
-          continue
-
         if self.ignore_sub_names and name.startswith("sub_"):
           continue
 
-        ast1 = row["primes1"]
-        ast2 = row["primes2"]
-        bb1 = int(row["bb1"])
-        bb2 = int(row["bb2"])
-
-        pseudo1 = row["pseudo1"]
-        pseudo2 = row["pseudo2"]
-        asm1 = row["asm1"]
-        asm2 = row["asm2"]
-        md1 = row["md1"]
-        md2 = row["md2"]
-
-        ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
-
-        should_add = True
-        if self.hooks is not None:
-          if 'on_match' in dir(self.hooks):
-            d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-            d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-            should_add, ratio = self.hooks.on_match(d1, d2, desc, ratio)
-
-        if not should_add or name1 in self.matched1 or name2 in self.matched2:
+        # Check the row match
+        should_add, ratio = self.check_match(row)
+        if not should_add:
           continue
 
+        ea = str(row["ea"])
+        name1 = row["name1"]
+        ea2 = row["ea2"]
+        name2 = row["name2"]
+        desc = row["description"]
+        bb1 = int(row["bb1"])
+        bb2 = int(row["bb2"])
+        md1 = row["md1"]
+        md2 = row["md2"]
         if float(ratio) == 1.0 or (self.relaxed_ratio and md1 != 0 and md1 == md2):
-          self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2))
+          the_chooser = self.best_chooser
+          item = CChooser.Item(ea, name1, ea2, name2, desc, 1, bb1, bb2)
         else:
-          choose.add_item(CChooser.Item(ea, name1, ea2, name2, desc, ratio, bb1, bb2))
+          the_chooser = choose
+          item = CChooser.Item(ea, name1, ea2, name2, desc, ratio, bb1, bb2)
 
-        self.matched1.add(name)
-        self.matched1.add(name1)
-        self.matched2.add(name2)
-        self.matched2.add(name2_1)
+        self.add_match(name1, name2, ratio, item, the_chooser)
 
   def get_function_id(self, name, primary=True):
     cur = self.db_cursor()
@@ -1716,11 +1779,11 @@ class CBinDiff:
       desc = "Call address sequence (%s)" % the_type
       id1 = row["id1"]
       id2 = row["id2"]
-      sql = """ select * from functions where id = ? """ + postfix + """
+      sql = """ select * from functions where id = ? """ + postfix + """ 
                 union all 
                 select * from diff.functions where id = ? """ + postfix
 
-      thresold = min(0.6, float(item[5]))
+      thresold = min(0.6, float(item[ITEM_RATIO]))
       for j in range(0, min(10, id1 - last)):
         for i in range(0, min(10, id1 - last)):
           cur.execute(sql, (id1+j, id2+i))
@@ -1728,31 +1791,36 @@ class CBinDiff:
           if len(rows) == 2:
             name1 = rows[0]["name"]
             name2 = rows[1]["name"]
-            if name1 in self.matched1 or name2 in self.matched2:
+            if self.exists_best_match(name1, name2):
               continue
 
-            r = self.check_ratio(rows[0]["pseudocode_primes"], rows[1]["pseudocode_primes"], \
-                                 rows[0]["pseudocode"], rows[1]["pseudocode"], \
-                                 rows[0]["assembly"], rows[1]["assembly"], \
-                                 float(rows[0]["md_index"]), float(rows[1]["md_index"]))
+            ea = rows[0]["address"]
+            ea2 = rows[1]["address"]
+            bb1 = rows[0]["nodes"]
+            bb2 = rows[1]["nodes"]
+            ast1 = rows[0]["pseudocode_primes"]
+            ast2 = rows[1]["pseudocode_primes"]
+            pseudo1 = rows[0]["pseudocode"]
+            pseudo2 = rows[1]["pseudocode"]
+            asm1 = rows[0]["assembly"]
+            asm2 = rows[1]["assembly"]
+            md1 = rows[0]["md_index"]
+            md2 = rows[1]["md_index"]
+            source_file1 = rows[0]["source_file"]
+            source_file2 = rows[1]["source_file"]
+
+            # If we have compilation unit names use them to verify the match
+            if source_file1 != '' and source_file2 != '' and source_file1 is not None and source_file2 is not None:
+              if source_file1 != source_file2:
+                continue
+
+            r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, \
+                                 float(md1), float(md2))
             if r < 0.5:
               if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
                 r = 0.5001
 
             if r > thresold:
-              ea = rows[0]["address"]
-              ea2 = rows[1]["address"]
-              bb1 = rows[0]["nodes"]
-              bb2 = rows[1]["nodes"]
-              ast1 = rows[0]["pseudocode_primes"]
-              ast2 = rows[1]["pseudocode_primes"]
-              pseudo1 = rows[0]["pseudocode"]
-              pseudo2 = rows[1]["pseudocode"]
-              asm1 = rows[0]["assembly"]
-              asm2 = rows[1]["assembly"]
-              md1 = rows[0]["md_index"]
-              md2 = rows[1]["md_index"]
-
               # Pretty much every single heuristic fails with small functions,
               # ignore them...
               if bb1 <= 3 or bb2 <= 3:
@@ -1765,21 +1833,21 @@ class CBinDiff:
                   d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
                   should_add, r = self.hooks.on_match(d1, d2, desc, r)
 
-              if not should_add or name1 in self.matched1 or name2 in self.matched2:
+              if self.better_match_exists(name1, name2, r):
                 continue
 
+              chooser = None
               if r == 1:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+                chooser = self.best_chooser
+                item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
               elif r >= 0.4:
-                self.partial_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+                chooser = self.partial_chooser
+                item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
               else:
-                self.unreliable_chooser.add_item(CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+                chooser = self.unreliable_chooser
+                item = CChooser.Item(ea, name1, ea2, name2, desc, r, bb1, bb2)
+
+              self.add_match(name1, name2, r, item, chooser)
     finally:
       cur.close()
 
@@ -1803,11 +1871,11 @@ class CBinDiff:
       # Insert each matched function into the temporary table
       i = 0
       for match in the_items:
-        ea1 = match[1]
-        name1 = match[2]
-        ea2 = match[3]
-        name2 = match[4]
-        ratio = float(match[5])
+        ea1 = match[ITEM_MAIN_EA]
+        name1 = match[ITEM_MAIN_NAME]
+        ea2 = match[ITEM_DIFF_EA]
+        name2 = match[ITEM_DIFF_NAME]
+        ratio = float(match[ITEM_RATIO])
         if not same_name:
           if ratio < 0.5:
             continue
@@ -1908,7 +1976,8 @@ class CBinDiff:
                 and df.name not like 'nullsub_%%'
                 and abs(f.md_index - df.md_index) < 1
                 and ((f.nodes > 5 and df.nodes > 5) 
-                  or (f.instructions > 10 and df.instructions > 10))"""
+                  or (f.instructions > 10 and df.instructions > 10))
+              order by f.source_file = df.source_file"""
 
     main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
     diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
@@ -1965,7 +2034,7 @@ class CBinDiff:
       cur.close()
 
   def find_matches_parallel(self):
-    self.run_heuristics_for_category("Partial", 1)
+    self.run_heuristics_for_category("Partial")
 
     # Search using some of the previous criterias but calculating the
     # edit distance
@@ -1984,7 +2053,7 @@ class CBinDiff:
     if len(rows) > 0:
       for row in rows:
         name = row["name"]
-        if name not in self.matched1:
+        if name not in self.matched_primary:
           ea = row[1]
           sql = "insert into unmatched(address,main) values(?,?)"
           cur.execute(sql, (ea, 1))
@@ -1996,13 +2065,13 @@ class CBinDiff:
     if len(rows) > 0:
       for row in rows:
         name = row["name"]
-        if name not in self.matched2:
+        if name not in self.matched_secondary:
           ea = row[1]
           sql = "insert into unmatched(address,main) values(?,?)"
           cur.execute(sql, (ea, 0))
 
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Brute forcing' description,
+                    'Brute forcing (MD-Index and KOKA hash)' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -2017,23 +2086,48 @@ class CBinDiff:
                 and ((f.md_index = df.md_index
                 and f.md_index > 1 and df.md_index > 1)
                 or (f.kgh_hash = df.kgh_hash
-                and f.kgh_hash > 7 and df.kgh_hash > 7))"""
+                and f.kgh_hash > 7 and df.kgh_hash > 7))
+              order by f.source_file = df.source_file"""
     cur.execute(sql)
-    log_refresh("Finding via brute-forcing...")
+    log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
     self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+
+    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
+                    'Brute forcing (Compilation Unit)' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
+                    df.tarjan_topological_sort, df.strongly_connected_spp
+               from functions f,
+                    diff.functions df,
+                    unmatched um
+              where ((f.address = um.address and um.main = 1)
+                 or (df.address = um.address and um.main = 0))
+                and f.source_file = df.source_file
+                and f.source_file != ''
+                and df.source_file is not null
+                and f.kgh_hash > 7 and df.kgh_hash > 7
+              order by f.source_file = df.source_file"""
+    cur.execute(sql)
+    log_refresh("Finding via brute-forcing (Compilation Unit)...")
+    self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+
     if cur.connection.in_transaction:
       cur.execute("commit")
     cur.close()
 
   def find_experimental_matches(self):
-    self.run_heuristics_for_category("Experimental", 1)
+    self.run_heuristics_for_category("Experimental")
 
-    # Find using brute-force
-    log_refresh("Brute-forcing...")
-    self.find_brute_force()
+    if self.slow_heuristics:
+      # Find using brute-force
+      log_refresh("Brute-forcing...")
+      self.find_brute_force()
 
   def find_unreliable_matches(self):
-    self.run_heuristics_for_category("Unreliable", 1)
+    self.run_heuristics_for_category("Unreliable")
 
   def find_unmatched(self):
     cur = self.db_cursor()
@@ -2046,7 +2140,7 @@ class CBinDiff:
         for row in rows:
           name = row["name"]
 
-          if name not in self.matched1:
+          if name not in self.matched_primary:
             ea = row[1]
             choose.add_item(CChooser.Item(ea, name))
         self.unmatched_second = choose
@@ -2059,7 +2153,7 @@ class CBinDiff:
         for row in rows:
           name = row["name"]
 
-          if name not in self.matched2:
+          if name not in self.matched_secondary:
             ea = row["address"]
             choose.add_item(CChooser.Item(ea, name))
         self.unmatched_primary = choose
@@ -2070,6 +2164,7 @@ class CBinDiff:
     self.unreliable_chooser = self.chooser("Unreliable matches", self)
     self.partial_chooser = self.chooser("Partial matches", self)
     self.best_chooser = self.chooser("Best matches", self)
+    self.multimatch_chooser = self.chooser("Problematic matches", self)
 
     self.unmatched_second = self.chooser("Unmatched in secondary", self, False)
     self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
@@ -2139,6 +2234,91 @@ class CBinDiff:
     except:
       pass
 
+  def add_multimatch(self, d):
+    from_ea = []
+    to_ea = []
+    for key in d:
+      lists = d[key]
+      for l in lists:
+        from_ea = l[1]
+        to_ea = l[3]
+
+        ea1 = int(l[1], 16)
+        name1 = l[2]
+        ea2 = int(l[3], 16)
+        name2 = l[4]
+        ratio = float(l[5])
+        bb1 = l[6]
+        bb2 = l[7]
+        desc = l[8]
+        item = CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2)
+        self.multimatch_chooser.add_item(item)
+    
+    CHOOSERS = [self.best_chooser, self.partial_chooser, self.unreliable_chooser]
+    for chooser in CHOOSERS:
+      for i, item in enumerate(chooser.items):
+        print(item, from_ea, to_ea)
+        if item[1] in from_ea or item[3] in to_ea:
+          print("deleting", chooser.items[i])
+          del chooser.items[i]
+
+  def find_multimatches(self):
+    """
+    JOXEAN: Jarraitu hamen, ezabatu emoitza txarrak eta gorde bikoiztutakoak
+    beste zerrenda berezi batean.
+    """
+    CHOOSERS = [self.best_chooser, self.partial_chooser, self.unreliable_chooser]
+    for chooser in CHOOSERS:
+      if chooser is not None and len(chooser.items) > 0:
+        main_funcs = {}
+        diff_funcs = {}
+        new_items = []
+        # Sort by name and ratio DESC
+        items = sorted(chooser.items, \
+                       key=lambda x: [x[ITEM_MAIN_NAME], decimal.Decimal(x[ITEM_RATIO])],\
+                       reverse=True)
+        i = 0
+        max_ratio = {}
+        while i < len(items):
+          item = items[i]
+
+          ratio = float(item[ITEM_RATIO])
+          key = item[ITEM_MAIN_NAME]
+          if key in main_funcs and len(main_funcs[key]) > 0:
+            if ratio in main_funcs[key]:
+              main_funcs[key][ratio].append(item)
+            else:
+              main_funcs[key] = {ratio:[item]}
+          else:
+            main_funcs[key] = {ratio:[item]}
+
+          key = item[ITEM_DIFF_NAME]
+          if key in diff_funcs and len(diff_funcs[key]) > 0:
+            if ratio in diff_funcs[key]:
+              diff_funcs[key][ratio].append(item)
+            else:
+              diff_funcs[key] = {ratio:[item]}
+          else:
+            diff_funcs[key] = {ratio:[item]}
+
+          i += 1
+
+        for key in diff_funcs:
+          d2 = diff_funcs[key]
+          max_ratio = max(d2.keys())
+          for key_ratio in d2:
+            if len(d2[key_ratio]) > 1:
+              print("MULTIMATCH-2 (for max ratio %f?)" % max_ratio, key, diff_funcs[key])
+              self.add_multimatch(diff_funcs[key])
+
+        for key in main_funcs:
+          d2 = main_funcs[key]
+          max_ratio = max(d2.keys())
+          for key_ratio in d2:
+            if len(d2[key_ratio]) > 1:
+              print("MULTIMATCH (for max ratio %f?)" % max_ratio, key, main_funcs[key])
+              self.add_multimatch(diff_funcs[key])
+
   def diff(self, db):
     self.last_diff_db = db
     cur = self.db_cursor()
@@ -2199,7 +2379,7 @@ class CBinDiff:
           log_refresh("Finding probably unreliable matches")
           self.find_unreliable_matches()
 
-        if self.experimental:
+        if self.experimental or True:
           # Find using experimental methods modified functions
           log_refresh("Finding experimental matches")
           self.find_from_matches(self.partial_chooser.items, "Partial, Experimental")
@@ -2208,6 +2388,8 @@ class CBinDiff:
         # Show the list of unmatched functions in both databases
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
+
+        self.find_multimatches()
 
         if self.hooks is not None:
           if 'on_finish' in dir(self.hooks):
