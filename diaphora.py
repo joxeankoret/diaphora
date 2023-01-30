@@ -486,7 +486,6 @@ class CBinDiff:
     sql = """ create table if not exists compilation_units (
                 id integer primary key,
                 name text,
-                score real,
                 functions int,
                 primes_value text,
                 pseudocode_primes text,
@@ -2262,62 +2261,68 @@ class CBinDiff:
           print("deleting", chooser.items[i])
           del chooser.items[i]
 
+  def temp_store_match(self, d, ea1, ea2, ratio, item, chooser):
+    stored_values = [ea2, item, chooser]
+    if ea1 in d:
+      values = d[ea1]
+      max_ratio = max(values.keys())
+      if ratio > max_ratio:
+        values.clear()
+        values[ratio] = [ stored_values ]
+      elif ratio == max_ratio:
+        values[ratio].append(stored_values)
+    else:
+      d[ea1] = {}
+      d[ea1][ratio] = [ stored_values ]
+    return d
+
+  def add_multimatches(self, d):
+    for l in d:
+      for item in l:
+        ea1, item, chooser = item
+        ea1 = int(item[1], 16)
+        name1 = item[2]
+        ea2 = int(item[3], 16)
+        name2 = item[4]
+        desc = item[8]
+        ratio = float(item[5])
+        bb1 = int(item[6])
+        bb2 = int(item[7])
+        c_item = CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2)
+        self.multimatch_chooser.add_item(c_item)
+
+        total = 0
+        for i, chooser_item in enumerate(chooser.items):
+          if chooser_item[1] == item[1] or chooser_item[3] == item[3]:
+            del chooser.items[i-total]
+            total += 1
+
+  def find_multimatches_in(self, d):
+    multi = []
+    for key in d:
+      l = list(d[key].values())[0]
+      if len(l) > 1:
+        multi.append(l)
+    return multi
+
   def find_multimatches(self):
-    """
-    JOXEAN: Jarraitu hamen, ezabatu emoitza txarrak eta gorde bikoiztutakoak
-    beste zerrenda berezi batean.
-    """
+    main_d = {}
+    diff_d = {}
     CHOOSERS = [self.best_chooser, self.partial_chooser, self.unreliable_chooser]
     for chooser in CHOOSERS:
       if chooser is not None and len(chooser.items) > 0:
-        main_funcs = {}
-        diff_funcs = {}
-        new_items = []
-        # Sort by name and ratio DESC
-        items = sorted(chooser.items, \
-                       key=lambda x: [x[ITEM_MAIN_NAME], decimal.Decimal(x[ITEM_RATIO])],\
-                       reverse=True)
-        i = 0
-        max_ratio = {}
-        while i < len(items):
-          item = items[i]
-
+        for i, item in enumerate(chooser.items):
+          ea1 = item[ITEM_MAIN_EA+1]
+          ea2 = item[ITEM_DIFF_EA+1]
           ratio = float(item[ITEM_RATIO])
-          key = item[ITEM_MAIN_NAME]
-          if key in main_funcs and len(main_funcs[key]) > 0:
-            if ratio in main_funcs[key]:
-              main_funcs[key][ratio].append(item)
-            else:
-              main_funcs[key] = {ratio:[item]}
-          else:
-            main_funcs[key] = {ratio:[item]}
+          main_d = self.temp_store_match(main_d, ea1, ea2, ratio, item, chooser)
+          diff_d = self.temp_store_match(diff_d, ea2, ea1, ratio, item, chooser)
 
-          key = item[ITEM_DIFF_NAME]
-          if key in diff_funcs and len(diff_funcs[key]) > 0:
-            if ratio in diff_funcs[key]:
-              diff_funcs[key][ratio].append(item)
-            else:
-              diff_funcs[key] = {ratio:[item]}
-          else:
-            diff_funcs[key] = {ratio:[item]}
+    main_multi = self.find_multimatches_in(main_d)
+    diff_multi = self.find_multimatches_in(diff_d)
 
-          i += 1
-
-        for key in diff_funcs:
-          d2 = diff_funcs[key]
-          max_ratio = max(d2.keys())
-          for key_ratio in d2:
-            if len(d2[key_ratio]) > 1:
-              print("MULTIMATCH-2 (for max ratio %f?)" % max_ratio, key, diff_funcs[key])
-              self.add_multimatch(diff_funcs[key])
-
-        for key in main_funcs:
-          d2 = main_funcs[key]
-          max_ratio = max(d2.keys())
-          for key_ratio in d2:
-            if len(d2[key_ratio]) > 1:
-              print("MULTIMATCH (for max ratio %f?)" % max_ratio, key, main_funcs[key])
-              self.add_multimatch(diff_funcs[key])
+    self.add_multimatches(main_multi)
+    self.add_multimatches(diff_multi)
 
   def diff(self, db):
     self.last_diff_db = db

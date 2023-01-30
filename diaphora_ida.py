@@ -2337,6 +2337,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if has_get_source_strings:
       d, _ = get_source_strings()
     
+      # First, put names found with IDAMagicStrings to anonymous modules found
+      # with LFA
       for source_file in d:
         for ref_ea, func_name, mod_name in d[source_file]:
           func_ea = idc.get_name_ea_simple(func_name)
@@ -2347,54 +2349,69 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
               if func_ea >= module.start and func_ea <= module.end:
                 if module.name == "":
                   module.name = mod_name
-                  module.score = 1.0
     
       #
-      # Next sub-step: collapse modules when we have defined areas with a file
-      # name with holes between. This horribly explanation means that if we find
-      # something like this:
+      # Next sub-step: find the limits of modules with the same name that appear
+      # multiple times and update the end address to the last found one.
       #
-      #   Module 0x004022b8 -> 0x4049cf Name: src/ls.c Score: 1.000000
-      #   Module 0x004049d0 -> 0x404e2f Name:  Score: 0.000000
-      #   Module 0x00404e30 -> 0x405c0f Name: src/ls.c Score: 1.000000
-      #
-      # We can assume that the module between 0x004049d0 & 0x404e2f is, indeed,
-      # the same module as the previous and next one, thus, we can collapse it
-      # to just one and name it "src/ls.c".
-      #
-      last_idx = None
-      last_name = None
-      for i, module in enumerate(lfa_modules):
-        if last_name is None and module.name != "":
-          last_idx = i
-          last_name = module.name
-          continue
-    
-        if last_name is not None and module.name == last_name:
-          #
-          # We have a match. Now, iterate backward to update the module name for
-          # the holes and also set the score to 0.5 (meaning 'guessed name').
-          #
-          for i in range(i-1, last_idx, -1):
-            prev_module = lfa_modules[i]
-            if prev_module.name == "":
-              prev_module.score = 0.5
-              prev_module.name = last_name
-            elif prev_module.name == last_name:
-              break
-    
-          last_idx = i
-        elif module.name != "" and module.name != last_name:
-          last_name = module.name
-          last_idx = i
+      new_modules = []
+      named_modules = {}
+      for module in lfa_modules:
+        if module.name != "":
+          if module.name not in named_modules:
+            named_modules[module.name] = {"start":module.start, "end":module.end}
+          else:
+            named_modules[module.name]["end"] = module.end
 
-    return lfa_modules
+      areas = []
+      for name in named_modules:
+        module = named_modules[name]
+        new_modules.append({"name":name, "start": module["start"], "end":module["end"]})
+        areas.append([module["start"], module["end"]])
+
+      #
+      # Next step: find all the modules, discard anonymous modules that fall in
+      # the area (start and end addres) of named modules and return a list with
+      # the proper modules, both anonymous and otherwise.
+      #
+      for module in lfa_modules:
+        if module.name != "":
+          continue
+
+        found = False
+        for start, end in areas:
+          if module.start >= start and module.end <= end:
+            found = True
+            break
+
+        if not found:
+          d = {"name":module.name,  "start":module.start, "end":module.end}
+          new_modules.append(d)
+
+    for module in new_modules:
+      primes = 1
+      pseudo_primes = 1
+      total_funcs = 0
+      for func in Functions(module["start"], module["end"]):
+        if func in self._funcs_cache:
+          total_funcs += 1
+          func_id, primes_value, pseudocode_primes = self._funcs_cache[func]
+          if pseudocode_primes is not None:
+            pseudo_primes *= int(pseudocode_primes)
+          if primes_value is not None:
+            primes *= int(primes_value)
+
+      module["total"] = str(total_funcs)
+      module["primes"] = str(primes)
+      module["pseudo_primes"] = str(pseudocode_primes)
+
+    return new_modules
 
   def save_compilation_units(self):
     lfa_modules = self.get_modules_using_lfa()
 
-    sql1 = """insert into compilation_units (name, score, start_ea, end_ea)
-                                    values (?, ?, ?, ?)"""
+    sql1 = """insert into compilation_units (name, start_ea, end_ea)
+                                    values (?, ?, ?)"""
     sql2 = """insert or ignore into compilation_unit_functions(
                                       cu_id, func_id)
                                     values (?, ?)"""
@@ -2408,35 +2425,28 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     try:
       dones = set()
       for module in lfa_modules:
-        score = getattr(module, 'score', 0.0)
         module_name = None
-        if module.name != ""''"":
-          module_name = module.name
+        if module["name"] != '':
+          module_name = module["name"]
 
-        cur.execute(sql1, (module.name, score, str(module.start), str(module.end)))
+        vals = (module["name"], str(module["start"]), str(module["end"]))
+        cur.execute(sql1, vals)
         cu_id = cur.lastrowid
 
         primes = 1
         pseudo_primes = 1
 
         total_funcs = 0
-        for func in Functions(module.start, module.end):
-          if func not in self._funcs_cache:
-            # Some functions (like thunk ones) might be ignored when exporting
-            continue
+        for func in Functions(module["start"], module["end"]):
+          # Some functions (like thunk ones) might be ignored when exporting
+          if func in self._funcs_cache:
+            func_id, _, _ = self._funcs_cache[func]
+            if func_id not in dones:
+              dones.add(func_id)
+              cur.execute(sql2, (cu_id, func_id))
+              cur.execute(sql4, (module["name"], func_id))
 
-          total_funcs += 1
-          func_id, primes_value, pseudocode_primes = self._funcs_cache[func]
-          if func_id not in dones:
-            dones.add(func_id)
-            if primes_value is not None:
-              primes *= int(primes_value)
-            if pseudocode_primes is not None:
-              pseudo_primes *= int(pseudocode_primes)
-            cur.execute(sql2, (cu_id, func_id))
-            cur.execute(sql4, (module.name, func_id))
-
-        cur.execute(sql3, [str(primes), str(pseudo_primes), total_funcs, cu_id])
+        cur.execute(sql3, [module["primes"], module["pseudo_primes"], module["total"], cu_id])
         if cur.rowcount == 0:
           raise Exception("Unable to UPDATE the primes for a compilation unit!")
     except:
