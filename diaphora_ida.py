@@ -1852,13 +1852,36 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
             assembly[block_ea] = [[x - image_base, "loc_%x:" % x], [x - image_base, disasm]]
 
         decoded_size, ins = diaphora_decode(x)
-        if ins.ops[0].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.ops[0].offb
-        if ins.ops[1].type in [o_mem, o_imm, o_far, o_near, o_displ]:
-          decoded_size -= ins.ops[1].offb
-        if decoded_size <= 0:
-          decoded_size = 1
+        curr_bytes = get_bytes(x, decoded_size, False)
+        
+        if curr_bytes is None or len(curr_bytes) != decoded_size:
+          log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
+        else:
+          is_ref = False
+          for gen in (CodeRefsFrom(x, 0), DataRefsFrom(x)):
+            try:
+              next(gen)
+              # There's a reference from this instruction
+              is_ref = True
+              break
+            except StopIteration:
+              # This generator is empty, meaning there are no references of this kind
+              pass
 
+          if is_ref:
+            # preserve the non-referring bytes
+            prev_offset = decoded_size
+            for operand in reversed(list(ins.ops)):
+              if operand.offb <= 0:
+                # operand not in use
+                continue
+              if operand.type in [o_mem, o_imm, o_far, o_near, o_displ]:
+                # ignore the operand's bytes
+                curr_bytes = curr_bytes[:max(1, operand.offb)] + curr_bytes[prev_offset:]
+              prev_offset = operand.offb
+
+          bytes_hash.append(curr_bytes)
+          bytes_sum += sum(curr_bytes)
 
         for operand in ins.ops:
           if operand.type == o_imm:
@@ -1874,14 +1897,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
                   str_constant = str_constant.decode("utf-8", "backslashreplace")
                   if str_constant not in constants:
                     constants.append(str_constant)
-
-        curr_bytes = get_bytes(x, decoded_size, False)
-        if curr_bytes is None or len(curr_bytes) != decoded_size:
-          log("Failed to read %d bytes at [%08x]" % (decoded_size, x))
-          continue
-
-        bytes_hash.append(curr_bytes)
-        bytes_sum += sum(curr_bytes)
 
         function_hash.append(get_bytes(x, get_item_size(x), False))
         outdegree += len(list(CodeRefsFrom(x, 0)))
