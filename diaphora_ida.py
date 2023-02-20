@@ -60,6 +60,7 @@ from PyQt5 import QtWidgets
 #-------------------------------------------------------------------------------
 # Chooser items indices. They do differ from the CChooser.item items that are
 # handled in diaphora.py.
+import diaphora
 CHOOSER_ITEM_INDEX = 0
 CHOOSER_ITEM_MAIN_EA = diaphora.ITEM_MAIN_EA + 1
 CHOOSER_ITEM_MAIN_NAME = diaphora.ITEM_MAIN_NAME + 1
@@ -308,10 +309,14 @@ class CIDAChooser(CDiaphoraChooser):
 
         del self.items[n]
         
-        if name1 in self.bindiff.matched1:
-          self.bindiff.matched1.remove(name1)
-        if name2 in self.bindiff.matched2:
-          self.bindiff.matched2.remove(name2)
+        if name1 in self.bindiff.matched_primary:
+          del self.bindiff.matched_primary[name1]
+        if name2 in self.bindiff.matched_secondary:
+          del self.bindiff.matched_secondary[name2]
+        
+        key = "%s-%s" % (name1, name2)
+        if key in self.bindiff.matches_cache:
+          del self.bindiff.matches_cache[key]
 
     return [Choose.ALL_CHANGED] + items
 
@@ -430,7 +435,7 @@ class CIDAChooser(CDiaphoraChooser):
         name1 = get_func_name(f.start_ea)
         name2 = diff_funcs[ret][1]
 
-        if name1 in self.bindiff.matched1 or name2 in self.bindiff.matched2:
+        if name1 in self.bindiff.matched_primary or name2 in self.bindiff.matched_secondary:
           line = "Either the local function %s or the foreign function %s are already matched.\n" + \
                  "Please remove the previously assigned match before adding a manual match."
           warning(line % (repr(name1), repr(name2)))
@@ -501,7 +506,7 @@ class CBinDiffExporterSetup(Form):
   <Use probably unreliable methods:{rUnreliable}>
   <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
-  <Use experimental heuristics:{rExperimental}>
+  <Use speed ups:{rExperimental}##Use tricks to speed ups some of the most common diffing tasks>
   <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
   <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
   <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
@@ -811,6 +816,7 @@ class CIDABinDiff(diaphora.CBinDiff):
   def do_export(self, crashed_before = False):
     callgraph_primes = 1
     callgraph_all_primes = {}
+    log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
     t = time.monotonic()
@@ -1781,13 +1787,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return name, true_name, demangle_named_name
 
   def extract_function_callers(self, CodeRefsTo, f, get_func):
-    # Calculate the callers
+    # Calculate the callers *but* considering data references to functions from
+    # functions as code references.
     callers = list()
-    for caller in list(CodeRefsTo(f, 0)):
+    l = list(CodeRefsTo(f, 0))
+    l.extend(DataRefsTo(f))
+    for caller in l:
       caller_func = get_func(caller)
       if caller_func and caller_func.start_ea not in callers:
         callers.append(caller_func.start_ea)
-    
     return callers
 
   def extract_function_constants(self, ins, x, constants):
@@ -1977,17 +1985,20 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if not self.ida_subs:
       # Unnamed function, ignore it...
       if name.startswith("sub_") or name.startswith("j_") or name.startswith("unknown") or name.startswith("nullsub_"):
+        log("Skipping function %s" % repr(name))
         return False
 
       # Already recognized runtime's function?
       flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags == -1:
+        log("Skipping library function %s" % repr(name))
         return False
 
     if self.exclude_library_thunk:
       # Skip library and thunk functions
       flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
+        log("Skipping thunk function %s" % repr(name))
         return False
 
     image_base = self.get_base_address()
@@ -2195,6 +2206,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     kgh_hash = kgh.calculate(f)
 
     rva = f - self.get_base_address()
+
+    # It's better to have names sorted
+    names = list(names)
+    names.sort()
+
     l = (name, nodes, edges, indegree, outdegree, size, instructions, mnems, names,
              proto, cc, prime, f, comment, true_name, bytes_hash, pseudo, pseudo_lines,
              pseudo_hash1, pseudocode_primes, function_flags, asm, proto2,
@@ -2642,6 +2658,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           choose = self.best_chooser
         elif row["type"] == "partial":
           choose = self.partial_chooser
+        elif row["type"] == "multimatch":
+          choose = self.multimatch_chooser
         else:
           choose = self.unreliable_chooser
 
@@ -2677,6 +2695,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
   def re_diff(self):
     self.best_chooser.Close()
     self.partial_chooser.Close()
+    self.multimatch_chooser.Close()
     if self.unreliable_chooser is not None:
       self.unreliable_chooser.Close()
     if self.unmatched_primary is not None:
@@ -2838,7 +2857,7 @@ class BinDiffOptions:
       warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get('unreliable', False)
-    self.slow = kwargs.get('slow', total_functions <= 2000)
+    self.slow = kwargs.get('slow', total_functions <= 1000)
     self.experimental = kwargs.get('experimental', True)
     self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
     self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))

@@ -229,6 +229,8 @@ HEURISTICS.append({
               from functions f,
                    diff.functions df
              where df.rva = f.rva
+               and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
                %POSTFIX%
              order by f.source_file = df.source_file""",
   "min":0.7,
@@ -301,7 +303,7 @@ HEURISTICS.append({
                 and f.nodes >= 5
                 %POSTFIX% 
               order by f.source_file = df.source_file""",
-  "min":0.4,
+  "min":0.44,
   "flags":HEUR_FLAG_NONE
 })
 
