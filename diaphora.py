@@ -1145,25 +1145,6 @@ class CBinDiff:
     else:
       log("Callgraphs from both programs differ in %f%%" % percent)
 
-  def remove_old_match(self, name1, name2, new_ratio):
-    # XXX: FIXME: This is wrong, a better method must be implemented
-    lists = [self.best_chooser, self.partial_chooser, self.unreliable_chooser]
-    done = False
-    for l in lists:
-      for i, element in enumerate(l.items):
-        if element[ITEM_MAIN_NAME+1] == name1 and element[ITEM_DIFF_NAME+1] == name2:
-          old_ratio = float(element[ITEM_RATIO])
-          pre_size  = len(l.items)
-          del l.items[i]
-          post_size = len(l.items);
-          done = True
-          break
-
-    if not done:
-      msg = "WARNING: Cannot find previous worse result for %s - %s!" % (name1, name2)
-      log(msg)
-      raise msg
-
   def add_match(self, name1, name2, ratio, item, chooser):
     with self.items_lock:
       self.matches_log.append([name1, name2, ratio, chooser, item])
