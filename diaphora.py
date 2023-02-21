@@ -244,7 +244,6 @@ class CBinDiff:
     self.db = None # Used exclusively by the exporter!
     self.open_db()
 
-    self.matches_log = []
     self.all_matches = {"best":[], "partial":[], "unreliable":[]}
     self.matched_primary = {}
     self.matched_secondary = {}
@@ -721,7 +720,7 @@ class CBinDiff:
       for instruction in bb_data[key]:
         instruction_properties = []
         for instruction_property in instruction:
-          # XXX: Fixme! This is a hack for 64 bit architectures kernels
+          # This is a hack for 64 bit architectures kernels
           if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
             prop = str(prop)
           elif type(prop) is bytes:
@@ -806,7 +805,7 @@ class CBinDiff:
     try:
       # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
       for prop in props[:len(props)-4]:
-        # XXX: Fixme! This is a hack for 64 bit architectures kernels
+        # This is a hack for 64 bit architectures kernels
         if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
           prop = str(prop)
         elif type(prop) is bytes:
@@ -1147,8 +1146,6 @@ class CBinDiff:
 
   def add_match(self, name1, name2, ratio, item, chooser):
     with self.items_lock:
-      self.matches_log.append([name1, name2, ratio, chooser, item])
-
       # If the function names are the same, it's a best match, regardless of the
       # ratio we got for the match, so fake the ratio as if it was 1.0.
       if name1 == name2:
@@ -2637,6 +2634,7 @@ class CBinDiff:
           # compilation units has been tested since years ago.
           #
           log_refresh("Finding experimental matches")
+          # Joxean, it uses choosers, not the internal dicts
           self.find_experimental_matches()
 
         # Show the list of unmatched functions in both databases
