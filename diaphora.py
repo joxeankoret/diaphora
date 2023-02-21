@@ -57,7 +57,7 @@ if hasattr(sys, "set_int_max_str_digits"):
 
 #-------------------------------------------------------------------------------
 VERSION_VALUE = "3.0.0"
-COPYRIGHT_VALUE="Copyright(c) 2015-2022 Joxean Koret"
+COPYRIGHT_VALUE="Copyright(c) 2015-2023 Joxean Koret"
 COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
 
 # Used to clean-up the pseudo-code and assembly dumps in order to get
@@ -126,7 +126,7 @@ def ast_ratio(ast1, ast2):
 #-------------------------------------------------------------------------------
 def log(msg):
   if isinstance(threading.current_thread(), threading._MainThread):
-    if is_ida:
+    if is_ida or os.getenv("DIAPHORA_LOG_PRINT") is not None:
       print(("[Diaphora: %s] %s" % (time.asctime(), msg)))
     else:
       logging.info(msg)
@@ -905,21 +905,12 @@ class CBinDiff:
       lines.append(get_cmp_asm(line))
     return "\n".join(lines)
 
-  def get_cmp_pseudo_lines(self, pseudo, replace_matches=False):
+  def get_cmp_pseudo_lines(self, pseudo):
     if pseudo is None:
       return pseudo
 
     # Remove all the comments
     tmp = self.re_sub(" // .*", "", pseudo)
-
-    if replace_matches and False:
-      # XXX: FIXME: Joxean, fix this
-      pre = str(tmp)
-      """
-      for key in self.matches_dict:
-        if not self.matches_dict[key].startswith("sub_"):
-          tmp = tmp.replace(key, self.matches_dict[key])
-      """
 
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
     for rep in CMP_REPS:
@@ -1190,7 +1181,6 @@ class CBinDiff:
         if self.matched_primary[name1]["ratio"] < ratio:
           old_ratio = self.matched_primary[name1]["ratio"]
           log("Found a better match for function %s -> %s, %f with %f" % (name1, name2, old_ratio, ratio))
-          #self.remove_old_match(name1, name2, ratio)
 
       if chooser is not None:
         if item not in self.all_matches[chooser]:
@@ -1431,7 +1421,7 @@ class CBinDiff:
 
     v1 = 0
     if pseudo1 is not None and pseudo2 is not None and pseudo1 != "" and pseudo2 != "":
-      tmp1 = self.get_cmp_pseudo_lines(pseudo1, True)
+      tmp1 = self.get_cmp_pseudo_lines(pseudo1)
       tmp2 = self.get_cmp_pseudo_lines(pseudo2)
       if tmp1 == "" or tmp2 == "":
         log("Error cleaning pseudo-code!")
@@ -2433,37 +2423,29 @@ class CBinDiff:
     main = list()
     diff = list()
     cur = self.db_cursor()
-    # XXX: FIXME: This is shit
-    # Joxean, properly get the unmatched functions with only one loop, not two!
     try:
-      sql = "select name, address from functions"
+      sql = """select 'main' db_name, name, address from main.functions
+                union
+               select 'diff' db_name, name, address from diff.functions
+      """
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) > 0:
         for row in rows:
           name = row["name"]
+          d = self.matched_primary
+          l = main
+          if db_name == "diff":
+            d = self.matched_secondary
+            l = diff
 
-          if name not in self.matched_primary:
+          if name not in d:
             ea = row["address"]
             key = [ea, name]
             if key not in main:
-              main.append(key)
-
-      sql = "select name, address from diff.functions"
-      cur.execute(sql)
-      rows = cur.fetchall()
-      if len(rows) > 0:
-        for row in rows:
-          name = row["name"]
-          if name not in self.matched_secondary:
-            ea = row["address"]
-            key = [ea, name]
-            if key not in diff:
-              diff.append(key)
-
+              l.append(key)
     finally:
       cur.close()
-
     return main, diff
 
   def search_remaining_functions(self, main_unmatched, diff_unmatched, config):
@@ -2515,6 +2497,15 @@ class CBinDiff:
     desc = item[7]
     return CChooser.Item(ea1, vfname1, ea2, vfname2, ratio, bb1, bb2, desc)
 
+  def add_multimatches_to_chooser(self, multi, ignore_list):
+    for ea in multi:
+      if len(multi[ea]) > 1:
+        for multi_match in multi[ea]:
+          item = self.itemize_for_chooser(multi_match[2])
+          self.multimatch_chooser.add_item(item)
+          ignore_list.add(ea)
+    return ignore_list
+
   def find_multimatches(self):
     max_main = {}
     max_diff = {}
@@ -2537,18 +2528,18 @@ class CBinDiff:
           continue
         max_main[ea1] = ratio
 
+        item = [ea2, ratio, match]
+        try:
+          multi_main[ea1].append(item)
+        except KeyError:
+          multi_main[ea1] = [item]
+
         if ea2 not in max_diff:
           max_diff[ea2] = ratio        
         # If the previous ratio we got is less than this one, ignore
         if ratio < max_diff[ea2]:
           continue
         max_diff[ea1] = ratio
-
-        item = [ea2, ratio, match]
-        try:
-          multi_main[ea1].append(item)
-        except KeyError:
-          multi_main[ea1] = [item]
 
         item = [ea1, ratio, match]
         try:
@@ -2557,18 +2548,14 @@ class CBinDiff:
           multi_diff[ea2] = [item]
 
     # Second pass, find them
-    ignore_list = set()
-    for multi in [multi_main, multi_diff]:
-      for ea in multi:
-        if len(multi[ea]) > 1:
-          for multi_match in multi[ea]:
-            item = self.itemize_for_chooser(multi_match[2])
-            self.multimatch_chooser.add_item(item)
-            ignore_list.add(ea)
+    ignore_main = set()
+    ignore_diff = set()
+    ignore_main = self.add_multimatches_to_chooser(multi_main, ignore_main)
+    ignore_diff = self.add_multimatches_to_chooser(multi_diff, ignore_diff)
 
-    return max_main, max_diff, ignore_list
+    return max_main, max_diff, ignore_main, ignore_diff
 
-  def add_final_chooser_items(self, ignore, max_main, max_diff):
+  def add_final_chooser_items(self, ignore_main, ignore_diff, max_main, max_diff):
     CHOOSERS = {"best":self.best_chooser, "partial":self.partial_chooser,
                 "unreliable":self.unreliable_chooser}
     for key in self.all_matches:
@@ -2576,7 +2563,7 @@ class CBinDiff:
       l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
       for match in l:
         item = self.itemize_for_chooser(match)
-        if item.ea in ignore or item.ea2 in ignore:
+        if item.ea in ignore_main or item.ea2 in ignore_diff:
           continue
         if item.ratio < max_main[item.ea]:
           continue
@@ -2586,17 +2573,8 @@ class CBinDiff:
 
   def final_pass(self):
     self.cleanup_matches()
-    max_main, max_diff, ignore = self.find_multimatches()
-
-    print("max_main")
-    for ea in max_main:
-      print(hex(int(ea)), max_main[ea])
-    print("\nmax_diff")
-    for ea in max_diff:
-      print(hex(int(ea)), max_diff[ea])
-    print()
-
-    self.add_final_chooser_items(ignore, max_main, max_diff)
+    max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
+    self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
 
   def diff(self, db):
     self.last_diff_db = db
