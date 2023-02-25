@@ -313,10 +313,6 @@ class CIDAChooser(CDiaphoraChooser):
           del self.bindiff.matched_primary[name1]
         if name2 in self.bindiff.matched_secondary:
           del self.bindiff.matched_secondary[name2]
-        
-        key = "%s-%s" % (name1, name2)
-        if key in self.bindiff.matches_cache:
-          del self.bindiff.matches_cache[key]
 
     return [Choose.ALL_CHANGED] + items
 
@@ -888,7 +884,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.save_compilation_units()
 
     log_refresh("Creating indexes...")
-    self.create_indexes()
+    self.create_indices()
 
   def export(self):
     if self.project_script is not None:
@@ -1930,9 +1926,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         if val > 1:
           strongly_connected_spp *= self.primes[val]
     except:
-      # XXX: FIXME: The original implementation that we're using is
-      # recursive and can fail. We really need to create our own non
-      # recursive version.
+      # XXX: FIXME: The original implementation that we're using is recursive
+      # and can fail. We really need to create our own non recursive version.
       strongly_connected = []
       bb_topological = None
     

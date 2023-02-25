@@ -316,6 +316,8 @@ class CBinDiff:
     if cpus < 1:
       cpus = 1
     self.cpu_count = self.get_value_for("CPU_COUNT", cpus)
+
+    # XXX: FIXME: Parallel diffing is broken outside of IDA due to parallelism problems
     if not is_ida:
       self.cpu_count = 1
     
@@ -331,11 +333,15 @@ class CBinDiff:
             with db.cursor() as cur:
               cur.execute('detach "%s"' % self.last_diff_db)
       except:
+        # Ignore any error at this point
         pass
+
       self.db_close()
 
   def get_value_for(self, value_name, default):
-    # Try to search for a DIAPHORA_<value_name> environment variable
+    """
+    Try to search for a DIAPHORA_<value_name> environment variable.
+    """
     value = os.getenv("DIAPHORA_%s" % value_name.upper())
     if value is not None:
       if type(value) != type(default):
@@ -344,6 +350,9 @@ class CBinDiff:
     return default
 
   def open_db(self):
+    """
+    Open the database @self.db_name.
+    """
     db = sqlite3_connect(self.db_name)
     db.create_function("check_ratio", 8, self.check_ratio)
 
@@ -354,6 +363,9 @@ class CBinDiff:
       self.create_schema()
 
   def get_db(self):
+    """
+    Return the current thread's assigned database object.
+    """
     tid = threading.current_thread().ident
     if not tid in self.dbs_dict:
       self.open_db()
@@ -362,10 +374,17 @@ class CBinDiff:
     return self.dbs_dict[tid]
 
   def db_cursor(self):
+    """
+    Get a database cursors. This is the preferred method to use instead of doing
+    db.cursor() every time one cursor is required somewhere.
+    """
     db = self.get_db()
     return db.cursor()
 
   def db_close(self):
+    """
+    Close the main database.
+    """
     tid = threading.current_thread().ident
     if tid in self.dbs_dict:
       self.dbs_dict[tid].close()
@@ -374,6 +393,11 @@ class CBinDiff:
       self.db.close()
 
   def create_schema(self):
+    """
+    Create the database schema.
+
+    XXX: FIXME: It should probably be better to put somewhere else insteaf.
+    """
     cur = self.db_cursor()
     try:
       cur.execute("PRAGMA foreign_keys = ON")
@@ -521,7 +545,13 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def create_indexes(self):
+  def create_indices(self):
+    """
+    Create the required indices for the exported database.
+
+    XXX: FIXME: Indices must be re-reviewed, as some of them aren't required.
+    XXX: FIXME: It also, probably, makes sense to move them to somewhere else.
+    """
     cur = self.db_cursor()
     try:
       sql = "create index if not exists idx_assembly on functions(assembly)"
@@ -644,6 +674,9 @@ class CBinDiff:
       cur.close()
 
   def attach_database(self, diff_db):
+    """
+    Attach @diff_db as the diffing database.
+    """
     cur = self.db_cursor()
     try:
       cur.execute('attach "%s" as diff' % diff_db)
@@ -651,6 +684,9 @@ class CBinDiff:
       cur.close()
 
   def equal_db(self):
+    """
+    Check if both opened databases (main and diff) are equal.
+    """
     cur = self.db_cursor()
     ret = None
     try:
@@ -671,6 +707,9 @@ class CBinDiff:
     return ret
 
   def add_program_data(self, type_name, key, value):
+    """
+    Add a row of program data to the database.
+    """
     cur = self.db_cursor()
     try:
       sql = "insert into main.program_data (name, type, value) values (?, ?, ?)"
@@ -680,6 +719,9 @@ class CBinDiff:
       cur.close()
 
   def get_instruction_id(self, addr):
+    """
+    Get the id of the given instruction with address @addr
+    """
     cur = self.db_cursor()
     rowid = None
     try:
@@ -694,6 +736,9 @@ class CBinDiff:
     return rowid
 
   def get_bb_id(self, addr):
+    """
+    Get the id of the given basic block at address @addr
+    """
     cur = self.db_cursor()
     rowid = None
     try:
@@ -709,6 +754,9 @@ class CBinDiff:
     return rowid
 
   def save_instructions_to_database(self, cur, bb_data, prop):
+    """
+    Save all the instructions in the basic block @bb_data to the database.
+    """
     instructions_ids = {}
     sql = """insert into main.instructions (address, mnemonic, disasm,
                                             comment1, comment2, operand_names, name,
@@ -747,6 +795,10 @@ class CBinDiff:
     return cur_execute, instructions_ids
 
   def insert_basic_blocks_to_database(self, bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id):
+    """
+    Insert basic blocks information as well as the relationship between assembly
+    instructions and basic blocks.
+    """
     num = 0
     bb_ids = {}
     sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
@@ -788,6 +840,9 @@ class CBinDiff:
     return bb_id
 
   def save_function_to_database(self, props, cur, prop, func_id):
+    """
+    Save a single function to the database.
+    """
     # The last 2 fields are basic_blocks_data & bb_relations
     bb_data, bb_relations = props[len(props)-2:]
     cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop)
@@ -795,6 +850,9 @@ class CBinDiff:
     return bb_id
 
   def save_function(self, props):
+    """
+    Save the function with the given properties @props to the database.
+    """
     if not props:
       log("WARNING: Trying to save a non resolved function?")
       return
@@ -880,6 +938,9 @@ class CBinDiff:
     return ret
 
   def prettify_asm(self, asm_source):
+    """
+    Get a prettified form of the given assembly source
+    """
     asm = []
     for line in asm_source.split("\n"):
       if not line.startswith("loc_"):
@@ -889,6 +950,9 @@ class CBinDiff:
     return "\n".join(asm)
 
   def re_sub(self, text, repl, string):
+    """
+    Internal re.sub wrapper to replace things in pseudocodes and assembly
+    """
     if text not in self.re_cache:
       self.re_cache[text] = re.compile(text, flags=re.IGNORECASE)
 
@@ -896,6 +960,9 @@ class CBinDiff:
     return re_obj.sub(repl, string)
 
   def get_cmp_asm_lines(self, asm):
+    """
+    Convert the input assembly @asm to an easier format to text diff using lists
+    """
     sio = StringIO(asm)
     lines = []
     get_cmp_asm = self.get_cmp_asm
@@ -905,6 +972,9 @@ class CBinDiff:
     return "\n".join(lines)
 
   def get_cmp_pseudo_lines(self, pseudo):
+    """
+    Convert the input pseudocode @pseudo to an easier format to text diff using lists
+    """
     if pseudo is None:
       return pseudo
 
@@ -921,6 +991,9 @@ class CBinDiff:
     return tmp
 
   def get_cmp_asm(self, asm):
+    """
+    Return a string better to diff assembly text for the given input @asm text
+    """
     if asm is None:
       return asm
 
@@ -950,6 +1023,10 @@ class CBinDiff:
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
+    """
+    Compare the given basic blocks and calculate each basic block's colour. It's
+    used to, later on, create a nice looking graph view in IDA.
+    """
     dones1 = set()
     dones2 = set()
 
@@ -1004,6 +1081,9 @@ class CBinDiff:
     return colours1, colours2
 
   def compare_graphs(self, g1, ea1, g2, ea2):
+    """
+    Compare two graphs (check `graph_diff` in diaphora_ida.py)
+    """
     colours1 = {}
     colours2 = {}
     bblocks1 = g1[0]
@@ -1020,6 +1100,11 @@ class CBinDiff:
     return colours1, colours2
 
   def get_graph(self, ea1, primary=False):
+    """
+    Get the graph representation of the function at address @ea1
+
+    XXX: FIXME: This code is horrible and screaming for refactorizations.
+    """
     db = "diff"
     if primary:
       db = "main"
@@ -1090,6 +1175,9 @@ class CBinDiff:
     return bb_blocks, bb_relations
 
   def delete_function(self, ea):
+    """
+    Delete the function at address @ea from the database
+    """
     cur = self.db_cursor()
     try:
       cur.execute("delete from functions where address = ?", (str(ea), ))
@@ -1097,12 +1185,18 @@ class CBinDiff:
       cur.close()
 
   def is_auto_generated(self, name):
+    """
+    Check if the function name looks like an IDA's auto-generated one
+    """
     for rep in CMP_REPS:
       if name.startswith(rep):
         return True
     return False
 
   def get_callgraph_difference(self):
+    """
+    Get the percent of difference between the main and diff databases
+    """
     cur = self.db_cursor()
     try:
       sql = """select callgraph_primes, callgraph_all_primes from program
@@ -1136,6 +1230,9 @@ class CBinDiff:
       cur.close()
 
   def check_callgraph(self):
+    """
+    Compare the call graphs of both databases and print out how different they are
+    """
     percent = self.get_callgraph_difference()
     if percent == 0:
       log("Callgraphs are 100% equal")
@@ -1145,6 +1242,12 @@ class CBinDiff:
       log("Callgraphs from both programs differ in %f%%" % percent)
 
   def add_match(self, name1, name2, ratio, item, chooser):
+    """
+    Add a single match to the internal lists before really adding them to the
+    choosers list.
+
+    NOTE: Always call `add_match`, don't try to handle this manually at all ever!
+    """
     with self.items_lock:
       # If the function names are the same, it's a best match, regardless of the
       # ratio we got for the match, so fake the ratio as if it was 1.0.
@@ -1152,22 +1255,24 @@ class CBinDiff:
         ratio = 1.0
 
       if self.has_better_match(name1, name2, ratio):
-        log("add_match: EXCLUDED BAD MATCH", name1, name2, ratio)
         return
 
       if name1 in self.matched_primary:
         if self.matched_primary[name1]["ratio"] < ratio:
           old_ratio = self.matched_primary[name1]["ratio"]
-          log("Found a better match for function %s -> %s, %f with %f" % (name1, name2, old_ratio, ratio))
+          debug_refresh("Found a better match for function %s -> %s, %f with %f" % (name1, name2, old_ratio, ratio))
 
       if chooser is not None:
         if item not in self.all_matches[chooser]:
           self.all_matches[chooser].append(item)
 
-      self.matched_primary[name1]   = {"name":name2, "ratio":ratio}
-      self.matched_secondary[name2] = {"name":name1, "ratio":ratio}
+        self.matched_primary[name1]   = {"name":name2, "ratio":ratio}
+        self.matched_secondary[name2] = {"name":name1, "ratio":ratio}
 
   def has_best_match(self, name1, name2):
+    """
+    Check if we have a best match for the given two functions (not for the pair).
+    """
     if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] == 1.0:
       return True
     elif name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] == 1.0:
@@ -1175,6 +1280,9 @@ class CBinDiff:
     return False
 
   def has_better_match(self, name1, name2, ratio):
+    """
+    Check if there if we found a better match already for either @name1 or @name2.
+    """
     ratio = float(ratio)
     if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] > ratio:
       return True
@@ -1182,7 +1290,10 @@ class CBinDiff:
       return True
     return False
 
-  def find_equal_matches_parallel(self):
+  def find_equal_matches(self):
+    """
+    Find 100% equal matches in both databases
+    """
     cur = self.db_cursor()
     try:
       # Start by calculating the total number of functions in both databases
@@ -1217,6 +1328,9 @@ class CBinDiff:
       self.find_same_name("partial")
 
   def run_heuristics_for_category(self, arg_category, total_cpus = None):
+    """
+    Run a total of @total_cpus threads running SQL heuristics for category @arg_category
+    """
     if total_cpus is None:
       total_cpus = self.cpu_count
 
@@ -1267,7 +1381,7 @@ class CBinDiff:
         log_refresh("Skipping slow heuristic '%s'" % name)
         continue
 
-      if arg_category == "Unreliable":
+      if arg_category.lower() == "unreliable":
         best = "partial"
         partial = "unreliable"
       else:
@@ -1286,7 +1400,7 @@ class CBinDiff:
       elif ratio == HEUR_TYPE_RATIO:
         t = Thread(target=self.add_matches_from_query_ratio, args=(sql, best, partial))
       elif ratio == HEUR_TYPE_RATIO_MAX:
-        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, min_value))
+        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, best, partial, min_value))
       elif ratio == HEUR_TYPE_RATIO_MAX_TRUSTED:
         t = Thread(target=self.add_matches_from_query_ratio_max_trusted, args=(sql, min_value))
       else:
@@ -1315,6 +1429,7 @@ class CBinDiff:
             if is_ida:
               self.refresh()
 
+    # XXX: FIXME: THIS CODE IS TERRIBLE, REFACTOR IT!!!
     if len(threads_list) > 0:
       log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list), do_log=False)
 
@@ -1351,35 +1466,93 @@ class CBinDiff:
     self.show_summary()
 
   def cleanup_matches(self):
+    """
+    Check in all the matches for duplicates and bad matches and remove them.
+    """
     dones = {}
     d = {}
+    ea_ratios = {}
     for key in self.all_matches:
       d[key] = []
       l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
       for item in l:
+        # An example item:
         # item = [ea, name, ea, name, "100% equal", 1, nodes, nodes]
         ea = item[0]
+        name1 = item[1]
+        name2 = item[3]
         ratio = item[5]
-        if ea not in dones:
-          dones[ea] = ratio
-          d[key].append(item)
+
+        # Ignore duplicated matches (might happen due to parallelism)
+        match = "%s-%s" % (name1, name2)
+        if match in dones:
+          continue
+
+        dones[match] = ratio
+        # If the previous ratio for a match with function @ea is worst, ignore
+        # this match
+        if ea in ea_ratios and ea_ratios[ea] > ratio:
+          continue
+        else:
+          ea_ratios[ea] = ratio
+
+        d[key].append(item)
+
+    # Update know the dict of matched functions for both databases
+    self.matched_primary = {}
+    self.matched_secondary = {}
+    for key in d:
+      l = d[key]
+      for item in l:
+        name1 = item[1]
+        name2 = item[3]
+        ratio = item[5]
+        self.matched_primary[name1] = {"name":name2, "ratio":ratio}
+        self.matched_secondary[name2] = {"name":name1, "ratio":ratio}
 
     self.all_matches = d
 
+  def count_different_matches(self, l):
+    """
+    Return the total number of different items using the first field.
+    """
+    dones = set()
+    for item in l:
+      dones.add(item[0])
+    return len(dones)
+
+  def get_total_matches_for(self, category):
+    """
+    Return the total number of matches found, so far, for the given category
+    """
+    return self.count_different_matches(self.all_matches[category])
+
   def show_summary(self):
-    best = len(self.all_matches["best"])
-    partial = len(self.all_matches["partial"])
-    unreliable = len(self.all_matches["unreliable"])
-    total = ((best + partial + unreliable) * 100) / self.total_functions1
+    """
+    Show a summary of how many functions Diaphora found so far and how big the
+    main binary is
+    """
+    best = self.get_total_matches_for("best")
+    partial = self.get_total_matches_for("partial")
+    unreliable = self.get_total_matches_for("unreliable")
+    total = best + partial + unreliable
+    percent = (total * 100) / self.total_functions1
     log("Current results: Best %d, Partial %d, Unreliable %d" % (best, partial, unreliable))
-    log("Matched %1.2f%% of main binary functions (%d)" % (total, self.total_functions1))
+    log("Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1))
 
   def ast_ratio(self, ast1, ast2):
+    """
+    Wrapper for comparing Abstract Syntax Trees
+    """
     if not self.relaxed_ratio:
       return 0
     return ast_ratio(ast1, ast2)
 
   def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2):
+    """
+    Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
+    1.0 would be the best possible match and 0.0 would be the worst one.
+    """
     md1 = float(md1)
     md2 = float(md2)
 
@@ -1452,10 +1625,20 @@ class CBinDiff:
     return r
 
   def all_functions_matched(self):
+    """
+    Did we match already all the functions?
+
+    XXX: FIXME: Double check this function, I'm not sure it really works now
+    after the so many changes made.
+    """
     return len(self.matched_primary)   == self.total_functions1 or \
            len(self.matched_secondary) == self.total_functions2
 
   def check_match(self, row, ratio = None, debug=False):
+    """
+    Check a single SQL heuristic match and return whether it should be ignored
+    or not, and also the similarity ratio for this match.
+    """
     ea = str(row["ea"])
     name1 = row["name1"]
     ea2 = row["ea2"]
@@ -1502,7 +1685,8 @@ class CBinDiff:
 
   def add_matches_internal(self, cur, best, partial, val=None, unreliable=None, debug=False):
     """
-    Wrapper for various functions that find matches based on SQL queries.
+    Wrapper for various functions that find matches based on SQL queries. Always
+    use this function when issuing SQL heuristics (if it's possible).
     """
     i = 0
     matches = []
@@ -1540,10 +1724,10 @@ class CBinDiff:
         val = 0.5
 
       if r == 1.0:
-        chooser = "best"
+        chooser = best
         item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
       elif r >= val and partial is not None:
-        chooser = "partial"
+        chooser = partial
         item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
       else:
         done = False
@@ -1557,6 +1741,7 @@ class CBinDiff:
         if r < 0.5 and r > val and unreliable is not None:
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
+          matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
         
         if chooser is not None:
           self.add_match(name1, name2, r, item, chooser)
@@ -1573,14 +1758,14 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      self.add_matches_internal(cur, best="best", partial="partial", unreliable="unreliable", debug=debug)
+      self.add_matches_internal(cur, best=best, partial=partial, unreliable=unreliable, debug=debug)
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
     finally:
       cur.close()
 
-  def add_matches_from_query_ratio_max(self, sql, val):
+  def add_matches_from_query_ratio_max(self, sql, best, partial, val):
     """
     Find matches using the query @sql with a ratio >= @val.
     """
@@ -1590,10 +1775,7 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      best = self.best_chooser
-      partial = self.partial_chooser
-      unreliable = self.unreliable_chooser
-      self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable=unreliable)
+      self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable="unreliable")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
     finally:
@@ -1610,24 +1792,29 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      best = self.best_chooser
-      partial = self.partial_chooser
-      unreliable = self.unreliable_chooser
-      self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable=partial)
+      self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable="partial")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
     finally:
       cur.close()
 
   def add_matches_from_cursor_ratio_max(self, cur, best, partial, val):
+    """
+    Find matches using the cursor @sql with a ratio >= @val and assign matches
+    to the corresponding lists.
+    """
     if self.all_functions_matched():
       return
 
-    matches = self.add_matches_internal(cur, best="best", partial="partial", val=val)
+    matches = self.add_matches_internal(cur, best=best, partial=partial, val=val)
     return matches
 
-  def add_matches_from_query(self, sql, choose):
-    """ Warning: use this *only* if the ratio is known to be 1.00 """
+  def add_matches_from_query(self, sql, category):
+    """
+    Add all matches from this SQL query without performing any check.
+
+    Warning: use this *only* if the ratio is known to be 1.00.
+    """
     if self.all_functions_matched():
       return
 
@@ -1658,7 +1845,7 @@ class CBinDiff:
         desc = row["description"]
 
         item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
-        self.add_match(name1, name2, 1.0, item, choose)
+        self.add_match(name1, name2, 1.0, item, category)
         if r < 0.5:
           debug_refresh("Warning: Best match 0x%s:%s -> 0x%sx:%s have a bad ratio: %f" % (ea, name1, ea2, name2, r))
     except:
@@ -1667,6 +1854,9 @@ class CBinDiff:
       cur.close()
 
   def search_small_differences(self, choose):
+    """
+    XXX: FIXME: Double check this heuristic because I don't understand what it really does.
+    """
     cur = self.db_cursor()
     
     # Same basic blocks, edges, mnemonics, etc... but different names
@@ -1731,6 +1921,9 @@ class CBinDiff:
       cur.close()
 
   def find_same_name(self, choose):
+    """
+    Find matches by searching for the same name using both mangled and unmangled names.
+    """
     cur = self.db_cursor()
     desc = "Perfect match, same name"
     sql = """select distinct f.address ea, f.mangled_function mangled1,
@@ -1788,6 +1981,10 @@ class CBinDiff:
       cur.close()
 
   def get_function_id(self, name, primary=True):
+    """
+    Get the function id for the function with name @name at either the main or
+    diff function.
+    """
     cur = self.db_cursor()
     rid = None
     db_name = "main"
@@ -1806,6 +2003,11 @@ class CBinDiff:
     return rid
 
   def find_matches_in_hole(self, last, item, row, the_type):
+    """
+    Find matches between two matched functions.
+
+    XXX: FIXME: Joxean, double (or triple) check this heuristic!!!
+    """
     cur = self.db_cursor()
     try:
 
@@ -1887,6 +2089,9 @@ class CBinDiff:
       cur.close()
 
   def find_from_matches(self, the_items, the_type, same_name = False):
+    """
+    Find new matches using previously found matches callers and callees.
+    """
     #
     # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
     # Rule 1: if a function A in program P has id X, and function B in
@@ -1944,6 +2149,11 @@ class CBinDiff:
       cur.close()
 
   def find_in_compilation_units(self):
+    """
+    Find possible matches for each compilation unit.
+
+    XXX: FIXME: Double check this heuristic because I'm not sure how it works.
+    """
     cur = self.db_cursor()
     try:
 
@@ -1988,13 +2198,14 @@ class CBinDiff:
       cur.close()
 
   def find_callgraph_matches(self):
-    best_items = list(self.best_chooser.items)
+    best_items = list(self.all_matches["best"])
     self.find_callgraph_matches_from(best_items, 0.60)
 
-    partial_items = list(self.partial_chooser.items)
+    partial_items = list(self.all_matches["partial"])
     self.find_callgraph_matches_from(partial_items, 0.80)
 
   def find_callgraph_matches_from(self, the_items, min_value):
+    # XXX: FIXME: Joxean, triple check this function as the 'raise' never does!!!!
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Callgraph match (%s)' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
@@ -2021,8 +2232,8 @@ class CBinDiff:
     try:
       dones = set()
 
-      prev_best_matches = len(self.best_chooser.items)
-      prev_part_matches = len(self.partial_chooser.items)
+      prev_best_matches = self.get_total_matches_for("best")
+      prev_part_matches = self.get_total_matches_for("partial")
 
       total_dones = 0
       while len(the_items) > 0:
@@ -2030,8 +2241,8 @@ class CBinDiff:
         if total_dones % 1000 == 0:
           log("Processed %d callgraph matches..." % total_dones)
 
-          curr_best_matches = len(self.best_chooser.items)
-          curr_part_matches = len(self.partial_chooser.items)
+          curr_best_matches = self.get_total_matches_for("best")
+          curr_part_matches = self.get_total_matches_for("partial")
           fmt = "Queued item(s) %d, Best matches %d, Partial Matches %d (Previously %d and %d)"
           log(fmt % (len(the_items), curr_best_matches, curr_part_matches, prev_best_matches, prev_part_matches))
 
@@ -2059,6 +2270,9 @@ class CBinDiff:
             diff_address_set.add("'%s'" % row[0])
 
           if len(main_address_set) > 0 and len(diff_address_set) > 0:
+            print("FUCK "*8)
+            print("FUCK "*8)
+            raise
             tname1 = name1.replace("'", "''")
             tname2 = name2.replace("'", "''")
             cur.execute(sql % (("%s of %s/%s" % (call_type, tname1, tname2)), ",".join(main_address_set), ",".join(diff_address_set)))
@@ -2068,7 +2282,10 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_matches_parallel(self):
+  def find_partial_matches(self):
+    """
+    Find matches using all heuristics assigned to the 'partial' category.
+    """
     self.run_heuristics_for_category("Partial")
 
     # Search using some of the previous criterias but calculating the
@@ -2077,6 +2294,7 @@ class CBinDiff:
     self.search_small_differences("partial")
 
   def find_brute_force(self):
+    # XXX: FIXME: Joxean, double check this!
     cur = self.db_cursor()
     sql = "create temporary table unmatched(id integer null primary key, address, main)"
     cur.execute(sql)
@@ -2126,7 +2344,7 @@ class CBinDiff:
                 order by f.source_file = df.source_file"""
       cur.execute(sql)
       log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
-      self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+      self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
 
     sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
                     'Brute forcing (Compilation Unit)' description,
@@ -2148,14 +2366,14 @@ class CBinDiff:
               order by f.source_file = df.source_file"""
     cur.execute(sql)
     log_refresh("Finding via brute-forcing (Compilation Unit)...")
-    self.add_matches_from_cursor_ratio_max(cur, self.unreliable_chooser, None, 0.5)
+    self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
 
     if cur.connection.in_transaction:
       cur.execute("commit")
     cur.close()
 
   def find_experimental_matches(self):
-    self.find_from_matches(self.partial_chooser.items, "Partial, Experimental")
+    self.find_from_matches(self.all_matches["unreliable"], "Partial, Experimental")
     self.run_heuristics_for_category("Experimental")
 
     # Find using brute-force
@@ -2166,6 +2384,7 @@ class CBinDiff:
     self.run_heuristics_for_category("Unreliable")
 
   def find_unmatched(self):
+    # XXX: FIXME: Joxean, this function is doing what another function does!!!
     cur = self.db_cursor()
     try:
       sql = "select name, address from functions"
@@ -2197,6 +2416,9 @@ class CBinDiff:
       cur.close()
 
   def create_choosers(self):
+    """
+    Create the IDA choosers that Diaphora will use to show the diffing results.
+    """
     self.unreliable_chooser = self.chooser("Unreliable matches", self)
     self.partial_chooser = self.chooser("Partial matches", self)
     self.best_chooser = self.chooser("Best matches", self)
@@ -2206,6 +2428,12 @@ class CBinDiff:
     self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
 
   def save_results(self, filename):
+    """
+    Save all the results (best, partial, unreliable, multimatches and unmatched)
+    to the file @filename.
+
+    XXX: FIXME: Joxean, it must be refactored.
+    """
     if os.path.exists(filename):
       os.remove(filename)
       log("Previous diff results '%s' removed." % filename)
@@ -2270,12 +2498,23 @@ class CBinDiff:
       results_db.close()
 
   def try_attach(self, cur, db):
+    """
+    Try attaching the diff database and ignore any error???
+
+    XXX: FIXME: Joxean, this looks odd, double check.
+    """
     try:
       cur.execute('attach "%s" as diff' % db)
     except:
       pass
 
   def get_function_row(self, name, db_name="main"):
+    """
+    Get the full table row for the given function with name @name in the database
+    @db_name.
+
+    XXX: FIXME: Joxean, this function is not used.
+    """
     row = None
     cur = self.db_cursor()
     try:
@@ -2289,6 +2528,11 @@ class CBinDiff:
     return row
 
   def compare_function_rows(self, main_row, diff_row):
+    """
+    Compare the functions of one SQL match.
+
+    XXX: FIXME: Joxean, this function is not used.
+    """
     pseudo1 = main_row["pseudocode"]
     pseudo2 = diff_row["pseudocode"]
     asm1 = main_row["assembly"]
@@ -2391,6 +2635,9 @@ class CBinDiff:
     return ret
 
   def apply_dirty_heuristics(self):
+    """
+    Apply what internally are called dirty heuristics (aka "speed ups").
+    """
     if self.search_just_stripped_binaries():
       return True
     if self.search_patchdiff_with_symbols():
@@ -2398,6 +2645,9 @@ class CBinDiff:
     return False
 
   def get_unmatched_functions(self):
+    """
+    Get the list of unmatched functions in both databases.
+    """
     main = list()
     diff = list()
     cur = self.db_cursor()
@@ -2413,7 +2663,7 @@ class CBinDiff:
           name = row["name"]
           d = self.matched_primary
           l = main
-          if db_name == "diff":
+          if row["db_name"] == "diff":
             d = self.matched_secondary
             l = diff
 
@@ -2427,6 +2677,9 @@ class CBinDiff:
     return main, diff
 
   def search_remaining_functions(self, main_unmatched, diff_unmatched, config):
+    """
+    Search potentially renamed functions in a usual patch diffing session.
+    """
     sql = """select distinct f.address ea, f.name name1, df.name name2,
                     ? description,
                     f.names f_names, df.names df_names, df.address ea2,
@@ -2458,6 +2711,10 @@ class CBinDiff:
       cur.close()
 
   def find_remaining_functions(self):
+    """
+    After using a dirty heuristic doing patch diffing try to find the remaining
+    functions, if any.
+    """
     main_unmatched, diff_unmatched = self.get_unmatched_functions()
     if self.is_patch_diff:
       heur = "Renamed function in patch diffing session"
@@ -2465,6 +2722,9 @@ class CBinDiff:
       self.search_remaining_functions(main_unmatched, diff_unmatched, config)
 
   def itemize_for_chooser(self, item):
+    """
+    Get a CChoser.Item object from the given list @item.
+    """
     ea1 = item[0]
     vfname1 = item[1]
     ea2 = item[2]
@@ -2476,6 +2736,10 @@ class CBinDiff:
     return CChooser.Item(ea1, vfname1, ea2, vfname2, ratio, bb1, bb2, desc)
 
   def add_multimatches_to_chooser(self, multi, ignore_list):
+    """
+    Add the multimatches found in the list @multi and build the list of functions
+    to be ignored (@ignore_list).
+    """
     for ea in multi:
       if len(multi[ea]) > 1:
         for multi_match in multi[ea]:
@@ -2484,11 +2748,7 @@ class CBinDiff:
           ignore_list.add(ea)
     return ignore_list
 
-  def find_multimatches(self):
-    max_main = {}
-    max_diff = {}
-    multi_main = {}
-    multi_diff = {}
+  def find_unresolved_multimatches(self, max_main, multi_main, max_diff, multi_diff):
     # First pass, group them
     for key in self.all_matches:
       l = self.all_matches[key]
@@ -2497,35 +2757,50 @@ class CBinDiff:
         ea1 = match[0]
         ea2 = match[2]
         ratio = match[5]
-
+    
         if ea1 not in max_main:
           max_main[ea1] = ratio
-        
+    
         # If the previous ratio we got is less than this one, ignore
-        if ratio < max_main[ea1]:
+        if max_main[ea1] > ratio:
           continue
         max_main[ea1] = ratio
-
+    
         item = [ea2, ratio, match]
         try:
           multi_main[ea1].append(item)
         except KeyError:
           multi_main[ea1] = [item]
-
+    
         if ea2 not in max_diff:
           max_diff[ea2] = ratio        
         # If the previous ratio we got is less than this one, ignore
-        if ratio < max_diff[ea2]:
+        if max_diff[ea2] > ratio:
           continue
         max_diff[ea1] = ratio
-
+    
         item = [ea1, ratio, match]
         try:
           multi_diff[ea2].append(item)
         except KeyError:
           multi_diff[ea2] = [item]
+    
+    return max_main, multi_main, max_diff, multi_diff
 
-    # Second pass, find them
+  def find_multimatches(self):
+    """
+    Find all the multimatches that were not solved.
+    """
+    max_main = {}
+    max_diff = {}
+    multi_main = {}
+    multi_diff = {}
+
+    # First, find all the unresolved multimatches
+    values = self.find_unresolved_multimatches(max_main, multi_main, max_diff, multi_diff)
+    max_main, multi_main, max_diff, multi_diff = values
+
+    # Now, add them to the corresponding chooser
     ignore_main = set()
     ignore_diff = set()
     ignore_main = self.add_multimatches_to_chooser(multi_main, ignore_main)
@@ -2534,6 +2809,9 @@ class CBinDiff:
     return max_main, max_diff, ignore_main, ignore_diff
 
   def add_final_chooser_items(self, ignore_main, ignore_diff, max_main, max_diff):
+    """
+    Build the final matches list and add matches to the corresponding chooser.
+    """
     CHOOSERS = {"best":self.best_chooser, "partial":self.partial_chooser,
                 "unreliable":self.unreliable_chooser}
     for key in self.all_matches:
@@ -2550,11 +2828,21 @@ class CBinDiff:
         CHOOSERS[key].add_item(item)
 
   def final_pass(self):
+    """
+    Do the last pass:
+
+    1. Remove duplicated or wrong matches.
+    2. Find multimatches.
+    3. Fill the choosers with the final cleaned up results.
+    """
     self.cleanup_matches()
     max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
     self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
 
   def diff(self, db):
+    """
+    Diff the current two databases (main and diff).
+    """
     self.last_diff_db = db
     cur = self.db_cursor()
     self.try_attach(cur, db)
@@ -2594,7 +2882,7 @@ class CBinDiff:
 
         # Find the unmodified functions
         log_refresh("Finding equal matches...")
-        self.find_equal_matches_parallel()
+        self.find_equal_matches()
 
         skip_others = False
         if self.experimental:
@@ -2610,11 +2898,11 @@ class CBinDiff:
 
           # Find the modified functions
           log_refresh("Finding partial matches")
-          self.find_matches_parallel()
+          self.find_partial_matches()
 
           # Call address sequence & Same compilation unit heuristics
-          self.find_from_matches(self.best_chooser.items, the_type="Best")
-          self.find_from_matches(self.partial_chooser.items, the_type="Partial", same_name = True)
+          self.find_from_matches(self.all_matches["best"], the_type="Best")
+          self.find_from_matches(self.all_matches["partial"], the_type="Partial", same_name = True)
 
           if self.slow_heuristics:
             # Find the functions from the callgraph
@@ -2634,14 +2922,13 @@ class CBinDiff:
           # compilation units has been tested since years ago.
           #
           log_refresh("Finding experimental matches")
-          # Joxean, it uses choosers, not the internal dicts
           self.find_experimental_matches()
+
+        self.final_pass()
 
         # Show the list of unmatched functions in both databases
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
-
-        self.final_pass()
 
         if self.hooks is not None:
           if 'on_finish' in dir(self.hooks):
@@ -2651,10 +2938,10 @@ class CBinDiff:
         partial = len(self.partial_chooser.items)
         unreliable = len(self.unreliable_chooser.items)
         multi = len(self.multimatch_chooser.items)
-        total = ((best + partial + unreliable) * 100) / self.total_functions1
+        total = best + partial + unreliable
+        percent = ((best + partial + unreliable) * 100) / self.total_functions1
         log("Final results: Best %d, Partial %d, Unreliable %d, Multimatches %d" % (best, partial, unreliable, multi))
-        log("Matched %1.2f%% of main binary functions" % total)
-
+        log("Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1))
         log("Done. Took {} seconds.".format(time.monotonic() - t0))
 
     finally:
@@ -2665,7 +2952,7 @@ if __name__ == "__main__":
   version_info = sys.version_info
   if version_info[0] == 2:
     log("WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3.")
-    log("TIP: There are other branches that contain backward compatibility.")
+    log("TIP: There is a fork that contains backward compatibility, check the github's page.")
 
   do_diff = True
   debug_refresh("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
