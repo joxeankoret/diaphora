@@ -448,7 +448,8 @@ class CIDAChooser(CDiaphoraChooser):
                            diff.functions df
                      where f.name = %s
                        and df.name = %s""" % (repr(name1), repr(name2))
-          self.bindiff.add_matches_from_query_ratio(sql, self.bindiff.best_chooser, self.bindiff.partial_chooser)
+          # Joxean, matches aren't added just like this any more, fix this!!!
+          self.bindiff.add_matches_from_query_ratio(sql, "best", "partial")
           for chooser in [self.bindiff.best_chooser, self.bindiff.partial_chooser, self.bindiff.unreliable_chooser]:
             chooser.Refresh()
 
@@ -883,7 +884,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.export_til()
     self.save_compilation_units()
 
-    log_refresh("Creating indexes...")
+    log_refresh("Creating indices...")
     self.create_indices()
 
   def export(self):
@@ -1980,20 +1981,20 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     if not self.ida_subs:
       # Unnamed function, ignore it...
       if name.startswith("sub_") or name.startswith("j_") or name.startswith("unknown") or name.startswith("nullsub_"):
-        log("Skipping function %s" % repr(name))
+        debug_refresh("Skipping function %s" % repr(name))
         return False
 
       # Already recognized runtime's function?
       flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags == -1:
-        log("Skipping library function %s" % repr(name))
+        debug_refresh("Skipping library function %s" % repr(name))
         return False
 
     if self.exclude_library_thunk:
       # Skip library and thunk functions
       flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
-        log("Skipping thunk function %s" % repr(name))
+        debug_refresh("Skipping thunk function %s" % repr(name))
         return False
 
     image_base = self.get_base_address()

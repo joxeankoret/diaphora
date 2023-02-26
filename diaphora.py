@@ -2390,9 +2390,10 @@ class CBinDiff:
     self.find_from_matches(self.all_matches["unreliable"], "Partial, Experimental")
     self.run_heuristics_for_category("Experimental")
 
-    # Find using brute-force
-    log_refresh("Brute-forcing...")
-    self.find_brute_force()
+    if self.slow_heuristics:
+      # Find using brute-force
+      log_refresh("Brute-forcing...")
+      self.find_brute_force()
 
   def find_unreliable_matches(self):
     self.run_heuristics_for_category("Unreliable")
@@ -2910,7 +2911,7 @@ class CBinDiff:
 
     return main_asm, diff_asm
 
-  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur):
+  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur, iteration):
     """
     Diff the lines for the field @field_name and find matches of function names
     (only function names for now) to find new matches candidates.
@@ -2971,7 +2972,8 @@ class CBinDiff:
               r += CALLEES_MATCHES_BONUS_RATIO
 
             # Warning: It's counterintuitive!!!
-            new_item = [ea2, name2, ea1, name1, heur, r, bb2, bb1]
+            heur_text = "%s (iteration #%d)" % (heur, iteration)
+            new_item = [ea2, name2, ea1, name1, heur_text, r, bb2, bb1]
             self.add_match(name1, name2, r, new_item, chooser)
         first = None
         second = None
@@ -2980,6 +2982,7 @@ class CBinDiff:
     log_refresh("Finding with heuristic '%s'" % heur)
     db = self.db_cursor()
     try:
+      iteration = 1
       while 1:
         old_best_count = len(self.all_matches["best"])
         old_partial_count = len(self.all_matches["partial"])
@@ -2994,7 +2997,7 @@ class CBinDiff:
                 continue
               if diff_row[field_name] is None:
                 continue
-              self.find_one_match_diffing(main_row, diff_row, field_name, item, heur)
+              self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration)
 
         self.cleanup_matches()
         if len(self.all_matches["best"]) <= old_best_count:
@@ -3002,7 +3005,8 @@ class CBinDiff:
         if len(self.all_matches["partial"]) <= old_partial_count:
           break
 
-        log("New iteration with heuristic %s..." % heur)
+        log("New iteration with heuristic '%s'..." % heur)
+        iteration += 1
     finally:
       db.close()
 
