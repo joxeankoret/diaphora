@@ -32,7 +32,7 @@ import traceback
 
 from threading import Thread
 from io import StringIO
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, ndiff
 from multiprocessing import cpu_count, Lock
 
 import diaphora_heuristics
@@ -77,6 +77,22 @@ ITEM_DESCRIPTION = 4
 ITEM_RATIO = 5
 ITEM_MAIN_BBLOCKS = 6
 ITEM_DIFF_BBLOCKS = 7
+
+# Yes, yes, I know, parsing C/C++ with regular expressions is wrong and cannot
+# be done, but we don't need to parse neither real nor complete C/C++, and we
+# just want to extract potentital function names from matching lines of assembly
+# and pseudo-code that, also, can be partial or non C/C++ compliant but, for a
+# reason, in a format supported by IDA.
+CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]*((::){0,1}[a-zA-Z0-9_]+)*)"
+
+# This is a value that we add when we found a match by diffing previous known
+# good matches assembly and pseudocode. The problem is that 2 functions can have
+# the same assembly or pseudo-code but be different functions. However, as we're
+# getting the match from previously known good matches, even if our internal
+# function to calculate similarity gives out the same ratio, we know for a fact
+# that the match found by diffing matches is *the* match. To prevent such little
+# problems, we just add this value to the calculated ratio and that's about it.
+CALEES_MATCHES_BONUS_RATIO = 0.01
 
 #-------------------------------------------------------------------------------
 import logging
@@ -1420,7 +1436,6 @@ class CBinDiff:
           if not t.is_alive():
             debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
             del threads_list[i]
-            self.show_summary()
             debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
             break
           else:
@@ -1442,7 +1457,6 @@ class CBinDiff:
           if not t.is_alive():
             debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
             del threads_list[i]
-            self.show_summary()
             debug_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
             break
 
@@ -2735,7 +2749,7 @@ class CBinDiff:
     desc = item[7]
     return CChooser.Item(ea1, vfname1, ea2, vfname2, ratio, bb1, bb2, desc)
 
-  def add_multimatches_to_chooser(self, multi, ignore_list):
+  def add_multimatches_to_chooser(self, multi, ignore_list, dones):
     """
     Add the multimatches found in the list @multi and build the list of functions
     to be ignored (@ignore_list).
@@ -2744,20 +2758,28 @@ class CBinDiff:
       if len(multi[ea]) > 1:
         for multi_match in multi[ea]:
           item = self.itemize_for_chooser(multi_match[2])
-          self.multimatch_chooser.add_item(item)
-          ignore_list.add(ea)
-    return ignore_list
+          key = "%s-%s" % (item.ea, item.ea2)
+          if key not in dones:
+            dones.add(key)
+            self.multimatch_chooser.add_item(item)
+            ignore_list.add(ea)
+    return ignore_list, dones
 
   def find_unresolved_multimatches(self, max_main, multi_main, max_diff, multi_diff):
     # First pass, group them
+    dones = set()
     for key in self.all_matches:
-      l = self.all_matches[key]
       l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
       for match in l:
         ea1 = match[0]
         ea2 = match[2]
         ratio = match[5]
     
+        key = "%s-%s" % (ea1, ea2)
+        if key in dones:
+          continue
+        dones.add(key)
+
         if ea1 not in max_main:
           max_main[ea1] = ratio
     
@@ -2803,8 +2825,9 @@ class CBinDiff:
     # Now, add them to the corresponding chooser
     ignore_main = set()
     ignore_diff = set()
-    ignore_main = self.add_multimatches_to_chooser(multi_main, ignore_main)
-    ignore_diff = self.add_multimatches_to_chooser(multi_diff, ignore_diff)
+    dones = set()
+    ignore_main, dones = self.add_multimatches_to_chooser(multi_main, ignore_main, dones)
+    ignore_diff, dones = self.add_multimatches_to_chooser(multi_diff, ignore_diff, dones)
 
     return max_main, max_diff, ignore_main, ignore_diff
 
@@ -2838,6 +2861,171 @@ class CBinDiff:
     self.cleanup_matches()
     max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
     self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
+
+  def same_processor_both_databases(self):
+    """
+    Check if the processor of both databases is the same.
+    """
+    ret = False
+    cur = self.db_cursor()
+    try:
+      sql = """ select 1
+                  from main.program mp,
+                       diff.program dp
+                 where mp.processor = dp.processor"""
+      cur.execute(sql)
+      row = cur.fetchone()
+      if row is not None:
+        ret = True
+    finally:
+      cur.close()
+    return ret
+
+  def functions_exists(self, name1, name2):
+    l = []
+    cur = self.db_cursor()
+    try:
+      sql = """select 'main' db_name, * from main.functions where name = ?
+                union
+               select 'diff' db_name, * from diff.functions where name = ?
+            """
+      cur.execute(sql, (name1, name2))
+      rows = cur.fetchall()
+      ret = False
+      if rows is not None:
+        size = len(rows)
+        ret = size == 2
+        l = rows
+    finally:
+      cur.close()
+    return ret, l
+
+  def get_row_for_items(self, item):
+    """
+    Get the assembly source for the functions involved in a match
+    """
+
+    main_asm = self.get_function_row(item.vfname)
+    diff_asm = self.get_function_row(item.vfname2, "diff")
+
+    return main_asm, diff_asm
+
+  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur):
+    """
+    Diff the lines for the field @field_name and find matches of function names
+    (only function names for now) to find new matches candidates.
+    """
+    main_lines = input_main_row[field_name].splitlines(keepends=False)
+    diff_lines = input_diff_row[field_name].splitlines(keepends=False)
+    df = ndiff(main_lines, diff_lines)
+    first = None
+    second = None
+
+    dones = set()
+    for row in df:
+      c = row[0]
+      if c == "-":
+        first = row
+      elif c == "+":
+        second = row
+      
+      if first is not None and second is not None:
+        matches1 = re.findall(CPP_NAMES_RE, first, re.IGNORECASE)
+        matches2 = re.findall(CPP_NAMES_RE, second, re.IGNORECASE)
+        size = min(len(matches1), len(matches2))
+        for i in range(size):
+          name1 = matches1[i][0]
+          name2 = matches2[i][0]
+          key = "%s-%s" % (name1, name2)
+          if key in dones:
+            continue
+
+          dones.add(key)
+          exists, l = self.functions_exists(name1, name2)
+          if exists:
+            main_row = l[0]
+            diff_row = l[1]
+            ea1 = main_row["address"]
+            ea2 = diff_row["address"]
+            name1 = main_row["name"]
+            name2 = diff_row["name"]
+            bb1 = int(main_row["nodes"])
+            bb2 = int(diff_row["nodes"])
+            pseudo1 = main_row["pseudocode"]
+            pseudo2 = diff_row["pseudocode"]
+            asm1 = main_row["assembly"]
+            asm2 = diff_row["assembly"]
+            ast1 = main_row["pseudocode_primes"]
+            ast2 = diff_row["pseudocode_primes"]
+            md1 = main_row["md_index"]
+            md2 = diff_row["md_index"]
+            r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+            if r == 1.0:
+              chooser = "best"
+            elif r > 0.3:
+              chooser = "partial"
+            else:
+              continue
+
+            if r + CALEES_MATCHES_BONUS_RATIO < 1.0:
+              r += CALEES_MATCHES_BONUS_RATIO
+
+            # Warning: It's counterintuitive!!!
+            new_item = [ea2, name2, ea1, name1, heur, r, bb2, bb1]
+            self.add_match(name1, name2, r, new_item, chooser)
+        first = None
+        second = None
+
+  def find_matches_diffing_internal(self, heur, field_name):
+    log_refresh("Finding with heuristic '%s'" % heur)
+    db = self.db_cursor()
+    try:
+      while 1:
+        old_best_count = len(self.all_matches["best"])
+        old_partial_count = len(self.all_matches["partial"])
+
+        for key in ["best", "partial"]:
+          l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
+          for match in l:
+            item = self.itemize_for_chooser(match)
+            main_row, diff_row = self.get_row_for_items(item)
+            if main_row is not None and diff_row is not None:
+              if main_row[field_name] is None:
+                continue
+              if diff_row[field_name] is None:
+                continue
+              self.find_one_match_diffing(main_row, diff_row, field_name, item, heur)
+
+        self.cleanup_matches()
+        if len(self.all_matches["best"]) <= old_best_count:
+          break
+        if len(self.all_matches["partial"]) <= old_partial_count:
+          break
+
+        log("New iteration with heuristic %s..." % heur)
+    finally:
+      db.close()
+
+  def find_matches_diffing_assembly(self):
+    heur = "Callee found diffing matches assembly"
+    field_name = "assembly"
+    self.find_matches_diffing_internal(heur, field_name)
+
+  def find_matches_diffing_pseudo(self):
+    heur = "Callee found diffing matches pseudo-code"
+    field_name = "pseudocode"
+    self.find_matches_diffing_internal(heur, field_name)
+
+  def find_matches_diffing(self):
+    # First, remove duplicates, etc... just to be sure
+    self.cleanup_matches()
+
+    # If the processor is the same for both databases, diff assembler to find
+    # new matches
+    if self.same_processor_both_databases():
+      self.find_matches_diffing_assembly()
+
+    self.find_matches_diffing_pseudo()
 
   def diff(self, db):
     """
@@ -2899,6 +3087,10 @@ class CBinDiff:
           # Find the modified functions
           log_refresh("Finding partial matches")
           self.find_partial_matches()
+
+          # Find new matches by diffing assembly and pseudo-code of previously
+          # found matches
+          self.find_matches_diffing()
 
           # Call address sequence & Same compilation unit heuristics
           self.find_from_matches(self.all_matches["best"], the_type="Best")
