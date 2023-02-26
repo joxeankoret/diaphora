@@ -92,7 +92,7 @@ CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]*((::){0,1}[a-zA-Z0-9_]+)*)"
 # function to calculate similarity gives out the same ratio, we know for a fact
 # that the match found by diffing matches is *the* match. To prevent such little
 # problems, we just add this value to the calculated ratio and that's about it.
-CALEES_MATCHES_BONUS_RATIO = 0.01
+CALLEES_MATCHES_BONUS_RATIO = 0.01
 
 #-------------------------------------------------------------------------------
 import logging
@@ -2967,8 +2967,8 @@ class CBinDiff:
             else:
               continue
 
-            if r + CALEES_MATCHES_BONUS_RATIO < 1.0:
-              r += CALEES_MATCHES_BONUS_RATIO
+            if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
+              r += CALLEES_MATCHES_BONUS_RATIO
 
             # Warning: It's counterintuitive!!!
             new_item = [ea2, name2, ea1, name1, heur, r, bb2, bb1]
