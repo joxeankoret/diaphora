@@ -413,10 +413,12 @@ class CIDAChooser(CDiaphoraChooser):
 
   def get_diff_functions(self):
     cur = self.bindiff.db_cursor()
-    cur.execute("select cast(id as text), name from diff.functions order by id")
-    rows = list(cur.fetchall())
-    rows = list(map(list, rows))
-    cur.close()
+    try:
+      cur.execute("select cast(id as text), name from diff.functions order by id")
+      rows = list(cur.fetchall())
+      rows = list(map(list, rows))
+    finally:
+      cur.close()
 
     return rows
 
@@ -780,14 +782,16 @@ class CIDABinDiff(diaphora.CBinDiff):
   def get_last_crash_func(self):
     sql = "select address from functions order by id desc limit 1"
     cur = self.db_cursor()
-    cur.execute(sql)
+    try:
+      cur.execute(sql)
 
-    row = cur.fetchone()
-    if not row:
-      return None
+      row = cur.fetchone()
+      if not row:
+        return None
 
-    address = int(row[0])
-    cur.close()
+      address = int(row[0])
+    finally:
+      cur.close()
 
     return address
 
@@ -798,16 +802,18 @@ class CIDABinDiff(diaphora.CBinDiff):
     callgraph_all_primes = {}
 
     cur = self.db_cursor()
-    cur.execute(sql)
-    for row in cur.fetchall():
-      ret = row[0]
-      callgraph_primes *= decimal.Decimal(row[0])
-      try:
-        callgraph_all_primes[ret] += 1
-      except KeyError:
-        callgraph_all_primes[ret] = 1
+    try:
+      cur.execute(sql)
+      for row in cur.fetchall():
+        ret = row[0]
+        callgraph_primes *= decimal.Decimal(row[0])
+        try:
+          callgraph_all_primes[ret] += 1
+        except KeyError:
+          callgraph_all_primes[ret] = 1
+    finally:
+      cur.close()
 
-    cur.close()
     return callgraph_primes, callgraph_all_primes
 
   def do_export(self, crashed_before = False):
@@ -907,6 +913,8 @@ class CIDABinDiff(diaphora.CBinDiff):
       try:
         self.do_export(crashed_before)
       except:
+        log("Error: %s" % str(sys.exc_info()[1]))
+        traceback.print_exc()
         if self.hooks is not None:
           if 'on_export_crash' in dir(self.hooks):
             ret = self.hooks.on_export_crash()
@@ -920,69 +928,76 @@ class CIDABinDiff(diaphora.CBinDiff):
     os.remove("%s-crash" % self.db_name)
 
     cur = self.db_cursor()
-    cur.execute("analyze")
-    cur.close()
+    try:
+      cur.execute("analyze")
+    finally:
+      cur.close()
 
     self.db_close()
 
   def import_til(self):
     log("Importing type libraries...")
     cur = self.db_cursor()
-    sql = "select name from diff.program_data where type = 'til'"
-    cur.execute(sql)
-    for row in cur.fetchall():
-      til = row["name"]
-      if type(til) is bytes:
-        til = til.decode("utf-8")
+    try:
+      sql = "select name from diff.program_data where type = 'til'"
+      cur.execute(sql)
+      for row in cur.fetchall():
+        til = row["name"]
+        if type(til) is bytes:
+          til = til.decode("utf-8")
 
-      try:
-        add_default_til(til)
-      except:
-        log("Error loading til %s: %s" % (row["name"], str(sys.exc_info()[1])))
-    cur.close()
+        try:
+          add_default_til(til)
+        except:
+          log("Error loading til %s: %s" % (row["name"], str(sys.exc_info()[1])))
+    finally:
+      cur.close()
+
     auto_wait()
 
   def import_definitions(self):
     cur = self.db_cursor()
-    sql = "select type, name, value from diff.program_data where type in ('structure', 'struct', 'enum')"
-    cur.execute(sql)
-    rows = diaphora.result_iter(cur)
+    try:
+      sql = "select type, name, value from diff.program_data where type in ('structure', 'struct', 'enum')"
+      cur.execute(sql)
+      rows = diaphora.result_iter(cur)
 
-    new_rows = set()
-    for row in rows:
-      if row["name"] is None:
-        continue
-
-      the_name = row["name"].split(" ")[0]
-      if get_struc_id(the_name) == BADADDR:
-        type_name = "struct"
-        if row["type"] == "enum":
-          type_name = "enum"
-        elif row["type"] == "union":
-          type_name = "union"
-
-        new_rows.add(row)
-        line = "%s %s;" % (type_name, row["name"])
-        try:
-          ret = idc.parse_decls(line)
-          if ret != 0:
-            pass
-        except:
-          log("Error importing type: %s" % str(sys.exc_info()[1]))
-
-    for _ in range(10):
-      for row in new_rows:
+      new_rows = set()
+      for row in rows:
         if row["name"] is None:
           continue
 
         the_name = row["name"].split(" ")[0]
-        if get_struc_id(the_name) == BADADDR and get_struc_id(row["name"]) == BADADDR:
-          definition = self.get_valid_definition(row["value"])
-          ret = idc.parse_decls(definition) # Remove the "idc." to reproduce some strange behaviour
-          if ret != 0:
-            pass
+        if get_struc_id(the_name) == BADADDR:
+          type_name = "struct"
+          if row["type"] == "enum":
+            type_name = "enum"
+          elif row["type"] == "union":
+            type_name = "union"
 
-    cur.close()
+          new_rows.add(row)
+          line = "%s %s;" % (type_name, row["name"])
+          try:
+            ret = idc.parse_decls(line)
+            if ret != 0:
+              pass
+          except:
+            log("Error importing type: %s" % str(sys.exc_info()[1]))
+
+      for _ in range(10):
+        for row in new_rows:
+          if row["name"] is None:
+            continue
+
+          the_name = row["name"].split(" ")[0]
+          if get_struc_id(the_name) == BADADDR and get_struc_id(row["name"]) == BADADDR:
+            definition = self.get_valid_definition(row["value"])
+            ret = idc.parse_decls(definition) # Remove the "idc." to reproduce some strange behaviour
+            if ret != 0:
+              pass
+    finally:
+      cur.close()
+
     auto_wait()
 
   def reinit(self, main_db, diff_db, create_choosers=True):
@@ -1003,44 +1018,46 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def generate_asm_diff(self, ea1, ea2, error_func=log):
     cur = self.db_cursor()
-    sql = """select *
-               from (
-             select prototype, assembly, name, 1
-               from functions
-              where address = ?
-                and assembly is not null
-       union select prototype, assembly, name, 2
-               from diff.functions
-              where address = ?
-                and assembly is not null)
-              order by 4 asc"""
-    ea1 = str(int(ea1, 16))
-    ea2 = str(int(ea2, 16))
-    cur.execute(sql, (ea1, ea2))
-    rows = cur.fetchall()
-    res = None
-    if len(rows) != 2:
-      error_func("Sorry, there is no assembly available for either the first or the second database.")
-    else:
-      row1 = rows[0]
-      row2 = rows[1]
+    try:
+      sql = """select *
+                from (
+              select prototype, assembly, name, 1
+                from functions
+                where address = ?
+                  and assembly is not null
+        union select prototype, assembly, name, 2
+                from diff.functions
+                where address = ?
+                  and assembly is not null)
+                order by 4 asc"""
+      ea1 = str(int(ea1, 16))
+      ea2 = str(int(ea2, 16))
+      cur.execute(sql, (ea1, ea2))
+      rows = cur.fetchall()
+      res = None
+      if len(rows) != 2:
+        error_func("Sorry, there is no assembly available for either the first or the second database.")
+      else:
+        row1 = rows[0]
+        row2 = rows[1]
 
-      html_diff = CHtmlDiff()
-      asm1 = self.prettify_asm(row1["assembly"])
-      asm2 = self.prettify_asm(row2["assembly"])
-      buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
-      buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
+        html_diff = CHtmlDiff()
+        asm1 = self.prettify_asm(row1["assembly"])
+        asm2 = self.prettify_asm(row2["assembly"])
+        buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
+        buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
 
-      fmt = HtmlFormatter()
-      fmt.noclasses = True
-      fmt.linenos = False
-      fmt.nobackground = True
-      src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = False
+        fmt.nobackground = True
+        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
 
-      title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
-      res = (src, title)
+        title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
+        res = (src, title)
+    finally:
+      cur.close()
 
-    cur.close()
     return res
 
   def show_asm_diff(self, item):
@@ -1081,110 +1098,115 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def show_asm(self, item, primary):
     cur = self.db_cursor()
-    if primary:
-      db = "main"
-    else:
-      db = "diff"
-    ea = str(int(item[1], 16))
-    sql = "select prototype, assembly, name from %s.functions where address = ?"
-    sql = sql % db
-    cur.execute(sql, (ea, ))
-    row = cur.fetchone()
-    if row is None:
-      warning("Sorry, there is no assembly available for the selected function.")
-    else:
-      fmt = HtmlFormatter()
-      fmt.noclasses = True
-      fmt.linenos = True
-      asm = self.prettify_asm(row["assembly"])
-      final_asm = "; %s\n%s proc near\n%s\n%s endp\n"
-      final_asm = final_asm % (row["prototype"], row["name"], asm, row["name"])
-      src = highlight(final_asm, NasmLexer(), fmt)
-      title = "Assembly for %s" % row["name"]
-      cdiffer = CHtmlViewer()
-      cdiffer.Show(src, title)
-    cur.close()
+    try:
+      if primary:
+        db = "main"
+      else:
+        db = "diff"
+      ea = str(int(item[1], 16))
+      sql = "select prototype, assembly, name from %s.functions where address = ?"
+      sql = sql % db
+      cur.execute(sql, (ea, ))
+      row = cur.fetchone()
+      if row is None:
+        warning("Sorry, there is no assembly available for the selected function.")
+      else:
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = True
+        asm = self.prettify_asm(row["assembly"])
+        final_asm = "; %s\n%s proc near\n%s\n%s endp\n"
+        final_asm = final_asm % (row["prototype"], row["name"], asm, row["name"])
+        src = highlight(final_asm, NasmLexer(), fmt)
+        title = "Assembly for %s" % row["name"]
+        cdiffer = CHtmlViewer()
+        cdiffer.Show(src, title)
+    finally:
+      cur.close()
 
   def show_pseudo(self, item, primary):
     cur = self.db_cursor()
-    if primary:
-      db = "main"
-    else:
-      db = "diff"
-    ea = str(int(item[1], 16))
-    sql = "select prototype, pseudocode, name from %s.functions where address = ?"
-    sql = sql % db
-    cur.execute(sql, (str(ea), ))
-    row = cur.fetchone()
-    if row is None or row["prototype"] is None or row["pseudocode"] is None:
-      warning("Sorry, there is no pseudo-code available for the selected function.")
-    else:
-      fmt = HtmlFormatter()
-      fmt.noclasses = True
-      fmt.linenos = True
-      func = "%s\n%s" % (row["prototype"], row["pseudocode"])
-      src = highlight(func, CppLexer(), fmt)
-      title = "Pseudo-code for %s" % row["name"]
-      cdiffer = CHtmlViewer()
-      cdiffer.Show(src, title)
-    cur.close()
+    try:
+      if primary:
+        db = "main"
+      else:
+        db = "diff"
+      ea = str(int(item[1], 16))
+      sql = "select prototype, pseudocode, name from %s.functions where address = ?"
+      sql = sql % db
+      cur.execute(sql, (str(ea), ))
+      row = cur.fetchone()
+      if row is None or row["prototype"] is None or row["pseudocode"] is None:
+        warning("Sorry, there is no pseudo-code available for the selected function.")
+      else:
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = True
+        func = "%s\n%s" % (row["prototype"], row["pseudocode"])
+        src = highlight(func, CppLexer(), fmt)
+        title = "Pseudo-code for %s" % row["name"]
+        cdiffer = CHtmlViewer()
+        cdiffer.Show(src, title)
+    finally:
+      cur.close()
 
   def generate_pseudo_diff(self, ea1, ea2, html = True, error_func=log):
     cur = self.db_cursor()
-    sql = """select *
-               from (
-             select prototype, pseudocode, name, 1
-               from functions
-              where address = ?
-                and pseudocode is not null
-       union select prototype, pseudocode, name, 2
-               from diff.functions
-              where address = ?
-                and pseudocode is not null)
-              order by 4 asc"""
-    ea1 = str(int(ea1, 16))
-    ea2 = str(int(ea2, 16))
-    cur.execute(sql, (ea1, ea2))
-    rows = cur.fetchall()
-    res = None
-    if len(rows) != 2:
-      error_func("Sorry, there is no pseudo-code available for either the first or the second database.")
-    else:
-      row1 = rows[0]
-      row2 = rows[1]
-
-      html_diff = CHtmlDiff()
-      proto1 = self.decompile_and_get(int(ea1))
-      if proto1:
-        buf1 = proto1 + "\n" + "\n".join(self.pseudo[int(ea1)])
+    try:
+      sql = """select *
+                from (
+              select prototype, pseudocode, name, 1
+                from functions
+                where address = ?
+                  and pseudocode is not null
+        union select prototype, pseudocode, name, 2
+                from diff.functions
+                where address = ?
+                  and pseudocode is not null)
+                order by 4 asc"""
+      ea1 = str(int(ea1, 16))
+      ea2 = str(int(ea2, 16))
+      cur.execute(sql, (ea1, ea2))
+      rows = cur.fetchall()
+      res = None
+      if len(rows) != 2:
+        error_func("Sorry, there is no pseudo-code available for either the first or the second database.")
       else:
-        log("warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
-        buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
-      buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
+        row1 = rows[0]
+        row2 = rows[1]
 
-      if buf1 == buf2:
-        error_func("Both pseudo-codes are equal.")
+        html_diff = CHtmlDiff()
+        proto1 = self.decompile_and_get(int(ea1))
+        if proto1:
+          buf1 = proto1 + "\n" + "\n".join(self.pseudo[int(ea1)])
+        else:
+          log("warning: cannot retrieve the current pseudo-code for the function, using the previously saved one...")
+          buf1 = row1["prototype"] + "\n" + row1["pseudocode"]
+        buf2 = row2["prototype"] + "\n" + row2["pseudocode"]
 
-      fmt = HtmlFormatter()
-      fmt.noclasses = True
-      fmt.linenos = False
-      fmt.nobackground = True
-      if not html:
-        uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
-        tmp = []
-        for line in uni_diff:
-          tmp.append(line.strip("\n"))
-        tmp = tmp[2:]
-        buf = "\n".join(tmp)
+        if buf1 == buf2:
+          error_func("Both pseudo-codes are equal.")
 
-        src = highlight(buf, DiffLexer(), fmt)
-      else:
-        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, CppLexer())
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = False
+        fmt.nobackground = True
+        if not html:
+          uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
+          tmp = []
+          for line in uni_diff:
+            tmp.append(line.strip("\n"))
+          tmp = tmp[2:]
+          buf = "\n".join(tmp)
 
-      title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
-      res = (src, title)
+          src = highlight(buf, DiffLexer(), fmt)
+        else:
+          src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, CppLexer())
 
-    cur.close()
+        title = "Diff pseudo-code %s - %s" % (row1["name"], row2["name"])
+        res = (src, title)
+    finally:
+      cur.close()
     return res
 
   def show_pseudo_diff(self, item, html = True):
@@ -1229,85 +1251,88 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def diff_external_asm(self, item, cmd_line):
     ret = None
-    cur = self.db_cursor()
-    sql = """select *
-               from (
-             select prototype, assembly, name, 1
-               from functions
-              where address = ?
-                and assembly is not null
-       union select prototype, assembly, name, 2
-               from diff.functions
-              where address = ?
-                and assembly is not null)
-              order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
-    cur.execute(sql, (ea1, ea2))
-    rows = cur.fetchall()
-    if len(rows) != 2:
-      warning("Sorry, there is no assembly available for either the first or the second database.")
-    else:
-      row1 = rows[0]
-      row2 = rows[1]
+    try:
+      cur = self.db_cursor()
+      sql = """select *
+                from (
+              select prototype, assembly, name, 1
+                from functions
+                where address = ?
+                  and assembly is not null
+        union select prototype, assembly, name, 2
+                from diff.functions
+                where address = ?
+                  and assembly is not null)
+                order by 4 asc"""
+      ea1 = str(int(item[1], 16))
+      ea2 = str(int(item[3], 16))
+      cur.execute(sql, (ea1, ea2))
+      rows = cur.fetchall()
+      if len(rows) != 2:
+        warning("Sorry, there is no assembly available for either the first or the second database.")
+      else:
+        row1 = rows[0]
+        row2 = rows[1]
 
-      asm1 = self.prettify_asm(row1["assembly"])
-      asm2 = self.prettify_asm(row2["assembly"])
-      buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
-      buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
+        asm1 = self.prettify_asm(row1["assembly"])
+        asm2 = self.prettify_asm(row2["assembly"])
+        buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
+        buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
 
-      filename1 = "main_%s.asm" % item[1]
-      filename2 = "diff_%s.asm" % item[3]
-      
-      with open(filename1, "w") as f_source:
-        with open(filename2, "w") as f_dest:
-          f_source.writelines(buf1)
-          f_dest.writelines(buf2)
+        filename1 = "main_%s.asm" % item[1]
+        filename2 = "diff_%s.asm" % item[3]
+        
+        with open(filename1, "w") as f_source:
+          with open(filename2, "w") as f_dest:
+            f_source.writelines(buf1)
+            f_dest.writelines(buf2)
 
-      line = cmd_line.replace("$1", filename1)
-      line = line.replace("$2", filename2)
-      ret = os.system(line)
+        line = cmd_line.replace("$1", filename1)
+        line = line.replace("$2", filename2)
+        ret = os.system(line)
+    finally:
+      cur.close()
 
-    cur.close()
     return ret
 
   def diff_external_pseudo(self, item, cmd_line):
     ret = None
     cur = self.db_cursor()
-    sql = """select *
-               from (
-             select prototype, pseudocode, address, 1
-               from functions
-              where address = ?
-                and pseudocode is not null
-       union select prototype, pseudocode, address, 2
-               from diff.functions
-              where address = ?
-                and pseudocode is not null)
-              order by 4 asc"""
-    ea1 = str(int(item[1], 16))
-    ea2 = str(int(item[3], 16))
-    cur.execute(sql, (ea1, ea2))
-    rows = cur.fetchall()
-    if len(rows) != 2:
-      warning("Sorry, there is no pseudo-code available for either the first or the second database.")
-    else:
-      row1 = rows[0]
-      row2 = rows[1]
-      
-      filename1 = "main_%s.cpp" % item[1]
-      filename2 = "diff_%s.cpp" % item[3]
-      
-      with open(filename1, "w") as f_source:
-        with open(filename2, "w") as f_dest:
-          f_source.writelines("%s\n%s" % (row1["prototype"], row1["pseudocode"]))
-          f_dest.writelines("%s\n%s" % (row2["prototype"],   row2["pseudocode"]))
-      
-      line = cmd_line.replace("$1", filename1)
-      line = line.replace("$2", filename2)
-      ret = os.system(line)
-
-    cur.close()
+    try:
+      sql = """select *
+                from (
+              select prototype, pseudocode, address, 1
+                from functions
+                where address = ?
+                  and pseudocode is not null
+        union select prototype, pseudocode, address, 2
+                from diff.functions
+                where address = ?
+                  and pseudocode is not null)
+                order by 4 asc"""
+      ea1 = str(int(item[1], 16))
+      ea2 = str(int(item[3], 16))
+      cur.execute(sql, (ea1, ea2))
+      rows = cur.fetchall()
+      if len(rows) != 2:
+        warning("Sorry, there is no pseudo-code available for either the first or the second database.")
+      else:
+        row1 = rows[0]
+        row2 = rows[1]
+        
+        filename1 = "main_%s.cpp" % item[1]
+        filename2 = "diff_%s.cpp" % item[3]
+        
+        with open(filename1, "w") as f_source:
+          with open(filename2, "w") as f_dest:
+            f_source.writelines("%s\n%s" % (row1["prototype"], row1["pseudocode"]))
+            f_dest.writelines("%s\n%s" % (row2["prototype"],   row2["pseudocode"]))
+        
+        line = cmd_line.replace("$1", filename1)
+        line = line.replace("$2", filename2)
+        ret = os.system(line)
+    finally:
+      cur.close()
     return ret
 
   def graph_diff(self, ea1, name1, ea2, name2):
@@ -1516,36 +1541,37 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def do_import_one(self, ea1, ea2, force = False):
     cur = self.db_cursor()
-    sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
-    cur.execute(sql, (str(ea2),))
-    row = cur.fetchone()
-    if row is not None:
-      proto = row["prototype"]
-      comment = row["comment"]
-      name = row["mangled_function"]
-      flags = row["function_flags"]
+    try:
+      sql = "select prototype, comment, mangled_function, function_flags from diff.functions where address = ?"
+      cur.execute(sql, (str(ea2),))
+      row = cur.fetchone()
+      if row is not None:
+        proto = row["prototype"]
+        comment = row["comment"]
+        name = row["mangled_function"]
+        flags = row["function_flags"]
 
-      ea1 = int(ea1)
-      if not name.startswith("sub_") or force:
-        if not set_name(ea1, name, SN_NOWARN|SN_NOCHECK):
-          for i in range(10):
-            if set_name(ea1, "%s_%d" % (name, i), SN_NOWARN|SN_NOCHECK):
-              break
+        ea1 = int(ea1)
+        if not name.startswith("sub_") or force:
+          if not set_name(ea1, name, SN_NOWARN|SN_NOCHECK):
+            for i in range(10):
+              if set_name(ea1, "%s_%d" % (name, i), SN_NOWARN|SN_NOCHECK):
+                break
 
-      if proto is not None and proto != "int()":
-        SetType(ea1, proto)
+        if proto is not None and proto != "int()":
+          SetType(ea1, proto)
 
-      if comment is not None and comment != "":
-        func = get_func(ea1)
-        if func is not None:
-          set_func_cmt(func, comment, 1)
+        if comment is not None and comment != "":
+          func = get_func(ea1)
+          if func is not None:
+            set_func_cmt(func, comment, 1)
 
-      if flags is not None:
-        set_func_attr(ea1, FUNCATTR_FLAGS, flags)
+        if flags is not None:
+          set_func_attr(ea1, FUNCATTR_FLAGS, flags)
 
-      self.import_instruction_level(ea1, ea2, cur)
-
-    cur.close()
+        self.import_instruction_level(ea1, ea2, cur)
+    finally:
+      cur.close()
 
   def import_selected(self, items, selected, only_auto):
     log_refresh("Importing selected row(s)...")
@@ -1915,8 +1941,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return ins, decoded_size
 
   def extract_function_topological_information(self, bb_relations, bb_topological):
+    loops = 0
+    strongly_connected = None
     strongly_connected_spp = 0
-    
+    bb_topological_sorted = None
     try:
       strongly_connected = strongly_connected_components(bb_relations)
       bb_topological_sorted = robust_topological_sort(bb_topological)
@@ -1926,11 +1954,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         val = len(item)
         if val > 1:
           strongly_connected_spp *= self.primes[val]
-    except:
+    except RecursionError:
       # XXX: FIXME: The original implementation that we're using is recursive
       # and can fail. We really need to create our own non recursive version.
       strongly_connected = []
       bb_topological = None
+    except:
+      traceback.print_exc()
+      raise
     
     loops = 0
     for sc in strongly_connected:
@@ -2195,7 +2226,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
     md_index = self.extract_function_mdindex(bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree)
-
     seg_rva = x - get_segm_start(x)
 
     kgh = CKoretKaramitasHash()
@@ -2469,12 +2499,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   def save_callgraph(self, primes, all_primes, md5sum):
     cur = self.db_cursor()
-    sql = "insert into main.program (callgraph_primes, callgraph_all_primes, processor, md5sum) values (?, ?, ?, ?)"
-    proc = idaapi.get_idp_name()
-    if BADADDR == 0xFFFFFFFFFFFFFFFF:
-      proc += "64"
-    cur.execute(sql, (primes, all_primes, proc, md5sum))
-    cur.close()
+    try:
+      sql = "insert into main.program (callgraph_primes, callgraph_all_primes, processor, md5sum) values (?, ?, ?, ?)"
+      proc = idaapi.get_idp_name()
+      if BADADDR == 0xFFFFFFFFFFFFFFFF:
+        proc += "64"
+      cur.execute(sql, (primes, all_primes, proc, md5sum))
+    finally:
+      cur.close()
 
   def GetLocalType(self, ordinal, flags):
     ret = get_local_tinfo(ordinal)
@@ -2615,6 +2647,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
   def load_results(self, filename):
     results_db = diaphora.sqlite3_connect(filename)
 
+    ret = False
     cur = results_db.cursor()
     try:
       sql = "select main_db, diff_db, version from config"
@@ -2681,12 +2714,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       log("Showing diff results.")
       self.show_choosers()
-      return True
+      ret = True
     finally:
       cur.close()
       results_db.close()
 
-    return False
+    return ret
 
   def re_diff(self):
     self.best_chooser.Close()

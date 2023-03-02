@@ -1242,6 +1242,8 @@ class CBinDiff:
           else:
             percent = diff * 100. / total
             return percent
+      else:
+        raise Exception("Not enough rows in databases! Size is %d" % len(rows))
     finally:
       cur.close()
 
@@ -1420,6 +1422,7 @@ class CBinDiff:
       elif ratio == HEUR_TYPE_RATIO_MAX_TRUSTED:
         t = Thread(target=self.add_matches_from_query_ratio_max_trusted, args=(sql, min_value))
       else:
+        traceback.print_exc()
         raise Exception("Invalid heuristic ratio calculation value!")
 
       t.name = name
@@ -1776,6 +1779,7 @@ class CBinDiff:
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
       traceback.print_exc()
+      raise
     finally:
       cur.close()
 
@@ -1792,6 +1796,7 @@ class CBinDiff:
       self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable="unreliable")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
+      raise
     finally:
       cur.close()
 
@@ -1809,6 +1814,7 @@ class CBinDiff:
       self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable="partial")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
+      raise
     finally:
       cur.close()
 
@@ -2120,7 +2126,7 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       # Create a copy of all the functions
-      cur.execute("create temporary table best_matches (id, id1, ea1, name1, id2, ea2, name2)")
+      cur.execute("create temporary table best_matches (id not null, id1 not null, ea1 not null, name1 not null, id2 not null, ea2 not null, name2 not null)")
 
       # Insert each matched function into the temporary table
       i = 0
@@ -2886,9 +2892,11 @@ class CBinDiff:
     l = []
     cur = self.db_cursor()
     try:
-      sql = """select 'main' db_name, * from main.functions where name = ?
+      sql = """select * from (
+               select 'main' db_name, * from main.functions where name = ?
                 union
                select 'diff' db_name, * from diff.functions where name = ?
+               ) order by db_name desc
             """
       cur.execute(sql, (name1, name2))
       rows = cur.fetchall()
@@ -2924,9 +2932,13 @@ class CBinDiff:
 
     dones = set()
     for row in df:
+      if len(row) == 0:
+        continue
+
       c = row[0]
       if c == "-":
         first = row
+        continue
       elif c == "+":
         second = row
       
@@ -2946,21 +2958,7 @@ class CBinDiff:
           if exists:
             main_row = l[0]
             diff_row = l[1]
-            ea1 = main_row["address"]
-            ea2 = diff_row["address"]
-            name1 = main_row["name"]
-            name2 = diff_row["name"]
-            bb1 = int(main_row["nodes"])
-            bb2 = int(diff_row["nodes"])
-            pseudo1 = main_row["pseudocode"]
-            pseudo2 = diff_row["pseudocode"]
-            asm1 = main_row["assembly"]
-            asm2 = diff_row["assembly"]
-            ast1 = main_row["pseudocode_primes"]
-            ast2 = diff_row["pseudocode_primes"]
-            md1 = main_row["md_index"]
-            md2 = diff_row["md_index"]
-            r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+            r = self.compare_function_rows(main_row, diff_row)
             if r == 1.0:
               chooser = "best"
             elif r > 0.3:
@@ -2971,9 +2969,12 @@ class CBinDiff:
             if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
               r += CALLEES_MATCHES_BONUS_RATIO
 
-            # Warning: It's counterintuitive!!!
             heur_text = "%s (iteration #%d)" % (heur, iteration)
-            new_item = [ea2, name2, ea1, name1, heur_text, r, bb2, bb1]
+            ea1 = main_row["address"]
+            ea2 = diff_row["address"]
+            bb1 = int(main_row["nodes"])
+            bb2 = int(diff_row["nodes"])
+            new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
             self.add_match(name1, name2, r, new_item, chooser)
         first = None
         second = None
@@ -2987,9 +2988,15 @@ class CBinDiff:
         old_best_count = len(self.all_matches["best"])
         old_partial_count = len(self.all_matches["partial"])
 
+        dones = set()
         for key in ["best", "partial"]:
           l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
           for match in l:
+            match_key = "%s-%s" % (match[1], match[3])
+            if match_key in dones:
+              continue
+            dones.add(match_key)
+
             item = self.itemize_for_chooser(match)
             main_row, diff_row = self.get_row_for_items(item)
             if main_row is not None and diff_row is not None:
@@ -2997,6 +3004,7 @@ class CBinDiff:
                 continue
               if diff_row[field_name] is None:
                 continue
+
               self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration)
 
         self.cleanup_matches()
