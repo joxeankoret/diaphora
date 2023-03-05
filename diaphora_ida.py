@@ -2450,6 +2450,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     return new_modules
 
   def save_compilation_units(self):
+    log("Finding compilation units...")
     lfa_modules = self.get_modules_using_lfa()
 
     sql1 = """insert into compilation_units (name, start_ea, end_ea)

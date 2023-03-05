@@ -1008,7 +1008,7 @@ class CBinDiff:
 
   def get_cmp_asm(self, asm):
     """
-    Return a string better to diff assembly text for the given input @asm text
+    Return a better string to diff assembly text for the given input @asm text
     """
     if asm is None:
       return asm
@@ -2984,7 +2984,9 @@ class CBinDiff:
     db = self.db_cursor()
     try:
       iteration = 1
-      while 1:
+      # Should I let it run for some more iterations? There is a small chance of
+      # hitting an infinite loop, so I'm hardcoding an upper limit.
+      while iteration <= 3:
         old_best_count = len(self.all_matches["best"])
         old_partial_count = len(self.all_matches["partial"])
 
@@ -3203,5 +3205,13 @@ if __name__ == "__main__":
       bd.ignore_all_names = False
     
     bd.db = sqlite3_connect(db1)
-    bd.diff(db2)
+    if os.getenv("DIAPHORA_PROFILE") is not None:
+      log("*** Profiling export ***")
+      import cProfile
+      profiler = cProfile.Profile()
+      profiler.runcall(bd.diff, db2)
+      exported = True
+      profiler.print_stats(sort="cumtime")
+    else:
+      bd.diff(db2)
     bd.save_results(diff_out)

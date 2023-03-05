@@ -277,63 +277,98 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-  "name":"Same Named Compilation Unit Function Match",
+  "name":"Same named compilation unit function match",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX_TRUSTED,
   "sql":"""  select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Same Named Compilation Unit Function Match' description,
+                    'Same named compilation unit function match' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2,
                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                from main.compilation_units main_cu,
+               from main.compilation_units main_cu,
+                    main.compilation_unit_functions mcuf,
                     main.functions f,
                     diff.compilation_units diff_cu,
+                    diff.compilation_unit_functions dcuf,
                     diff.functions df
               where main_cu.name != ''
                 and diff_cu.name != ''
                 and main_cu.name = diff_cu.name
-                and f.address >= main_cu.start_ea
-                and f.address <= main_cu.end_ea
-                and df.address >= diff_cu.start_ea
-                and df.address <= diff_cu.end_ea
+                and f.id = mcuf.func_id
+                and df.id = dcuf.func_id
+                and mcuf.cu_id = main_cu.id
+                and dcuf.cu_id = diff_cu.id
                 and df.primes_value = f.primes_value
                 and df.nodes = f.nodes
                 and f.nodes >= 5
                 %POSTFIX% 
-              order by f.source_file = df.source_file""",
+                """,
   "min":0.44,
   "flags":HEUR_FLAG_NONE
 })
 
 HEURISTICS.append({
-  "name":"Same Anonymous Compilation Unit Function Match",
+  "name":"Same anonymous compilation unit function match",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":"""  select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Same Anonymous Compilation Unit Function Match' description,
+                    'Same anonymous compilation unit function match' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                     f.nodes bb1, df.nodes bb2,
                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
-              from main.compilation_units main_cu,
+               from main.compilation_units main_cu,
+                    main.compilation_unit_functions mcuf,
                     main.functions f,
                     diff.compilation_units diff_cu,
+                    diff.compilation_unit_functions dcuf,
                     diff.functions df
-              where main_cu.name = ''
+              where main_cu.name != ''
+                and diff_cu.name != ''
                 and main_cu.name = diff_cu.name
-                and f.address >= main_cu.start_ea
-                and f.address <= main_cu.end_ea
-                and df.address >= diff_cu.start_ea
-                and df.address <= diff_cu.end_ea
+                and f.id = mcuf.func_id
+                and df.id = dcuf.func_id
+                and mcuf.cu_id = main_cu.id
+                and dcuf.cu_id = diff_cu.id
                 and df.pseudocode_primes = f.pseudocode_primes
                 and df.nodes = f.nodes
                 and f.nodes >= 5
                 %POSTFIX% 
               order by f.source_file = df.source_file""",
   "min":0.449,
+  "flags":HEUR_FLAG_NONE
+})
+
+HEURISTICS.append({
+  "name":"Same compilation unit",
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2,
+                  'Same compilation unit' description,
+                  f.pseudocode pseudo1, df.pseudocode pseudo2,
+                  f.assembly asm1, df.assembly asm2,
+                  f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                  f.nodes bb1, df.nodes bb2,
+                  cast(f.md_index as real) md1, cast(df.md_index as real) md2
+                from main.compilation_units mcu,
+                  main.compilation_unit_functions mcuf,
+                  main.functions f,
+                    diff.compilation_units dcu,
+                  diff.compilation_unit_functions dcuf,
+                  diff.functions df
+              where dcu.pseudocode_primes = mcu.pseudocode_primes
+                and mcuf.cu_id = mcu.id
+                and dcuf.cu_id = dcu.id
+                and f.id = mcuf.func_id
+                and df.id = dcuf.func_id
+                and f.nodes > 4
+                and df.nodes > 4
+                %POSTFIX%
+          order by f.source_file desc,
+                   md1 desc, md2 desc """,
   "flags":HEUR_FLAG_NONE
 })
 
@@ -1376,7 +1411,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 22, 2: 21, 0: 5, 3: 1}))
+  assert(ratios == Counter({1: 23, 2: 21, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
