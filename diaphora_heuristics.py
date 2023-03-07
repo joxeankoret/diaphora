@@ -342,6 +342,9 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_NONE
 })
 
+# An ORDER BY clause would be good to have here, but SQLite may generate huge
+# B-TREEs that might even cause errors after a long time running when dealing
+# with huge databases, therefore, I'm removing it.
 HEURISTICS.append({
   "name":"Same compilation unit",
   "category":"Partial",
@@ -366,17 +369,18 @@ HEURISTICS.append({
                 and df.id = dcuf.func_id
                 and f.nodes > 4
                 and df.nodes > 4
-                %POSTFIX%
-          order by f.source_file desc,
-                   md1 desc, md2 desc """,
+                %POSTFIX% """,
   "flags":HEUR_FLAG_NONE
 })
 
+# Adding a DISTINCT and an ORDER BY clause in this query causes SQLite to create
+# huge temporary B-TREEs that, depending on the size of the databases, might end
+# up triggering an error after a long time running.
 HEURISTICS.append({
   "name":"Same KOKA hash and constants",
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select distinct f.address ea, f.name name1, df.address ea2, df.name name2, 'Same KOKA hash and constants' description,
+  "sql":"""select f.address ea, f.name name1, df.address ea2, df.name name2, 'Same KOKA hash and constants' description,
             f.pseudocode pseudo1, df.pseudocode pseudo2,
             f.assembly asm1, df.assembly asm2,
             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -391,11 +395,12 @@ HEURISTICS.append({
         and df.id = dc.func_id
         and f.kgh_hash = df.kgh_hash
         and f.nodes >= 3
-        %POSTFIX%
-      order by f.source_file = df.source_file""",
+        %POSTFIX% """,
   "flags":HEUR_FLAG_NONE
 })
 
+# The same explained in the previous query happens here: for huge databases the
+# SQLite engine can generate huge B-TREEs for the ORDER BY clause. Removed it.
 HEURISTICS.append({
   "name":"Same KOKA hash and MD-Index",
   "category":"Partial",
@@ -417,7 +422,6 @@ HEURISTICS.append({
         and f.outdegree = df.outdegree
         and f.indegree  = df.indegree
         %POSTFIX%
-      order by f.source_file = df.source_file
         """,
   "flags":0
 })
@@ -934,8 +938,7 @@ HEURISTICS.append({
         and f.cyclomatic_complexity = df.cyclomatic_complexity
         and f.cyclomatic_complexity < 15
         and df.names != '[]'
-        %POSTFIX%
-      order by f.source_file = df.source_file""",
+        %POSTFIX% """,
   "min":0.5,
   "flags":HEUR_FLAG_NONE
 })

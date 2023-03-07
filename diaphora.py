@@ -1880,7 +1880,7 @@ class CBinDiff:
     cur = self.db_cursor()
     
     # Same basic blocks, edges, mnemonics, etc... but different names
-    sql = """ select distinct f.address ea, f.name name1, df.name name2,
+    sql = """ select f.address ea, f.name name1, df.name name2,
                      'Nodes, edges, complexity and mnemonics with small differences' description,
                      f.names f_names, df.names df_names, df.address ea2,
                      f.nodes bb1, df.nodes bb2,
@@ -1894,8 +1894,7 @@ class CBinDiff:
                  and f.edges = df.edges
                  and f.mnemonics = df.mnemonics
                  and f.cyclomatic_complexity = df.cyclomatic_complexity
-                 and f.names != '[]'
-               order by f.source_file = df.source_file"""
+                 and f.names != '[]' """
     
     try:
       cur.execute(sql)
@@ -2984,13 +2983,13 @@ class CBinDiff:
     db = self.db_cursor()
     try:
       iteration = 1
+      dones = set()
       # Should I let it run for some more iterations? There is a small chance of
       # hitting an infinite loop, so I'm hardcoding an upper limit.
       while iteration <= 3:
         old_best_count = len(self.all_matches["best"])
         old_partial_count = len(self.all_matches["partial"])
 
-        dones = set()
         for key in ["best", "partial"]:
           l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
           for match in l:
@@ -3010,9 +3009,9 @@ class CBinDiff:
               self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration)
 
         self.cleanup_matches()
-        if len(self.all_matches["best"]) <= old_best_count:
-          break
-        if len(self.all_matches["partial"]) <= old_partial_count:
+        self.show_summary()
+        if len(self.all_matches["best"]) <= old_best_count and \
+           len(self.all_matches["partial"]) <= old_partial_count:
           break
 
         log("New iteration with heuristic '%s'..." % heur)
