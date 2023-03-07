@@ -39,6 +39,13 @@ import diaphora_heuristics
 importlib.reload(diaphora_heuristics)
 from diaphora_heuristics import *
 
+import database
+importlib.reload(database)
+from database import SQL_MAX_PROCESSED_ROWS, SQL_TIMEOUT_LIMIT
+
+from database import schema
+importlib.reload(schema)
+
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
 from pygments.formatters import HtmlFormatter
 
@@ -219,11 +226,6 @@ class CChooser():
     elif self.title.startswith("Unreliable"):
       return 0x9999ff
 
-
-#-------------------------------------------------------------------------------
-MAX_PROCESSED_ROWS = 1000000
-TIMEOUT_LIMIT = 60 * 5
-
 #-------------------------------------------------------------------------------
 class bytes_encoder(json.JSONEncoder):
   def default(self, obj):
@@ -306,11 +308,11 @@ class CBinDiff:
     # LIMITS
     #
     # Do not run heuristics for more than X seconds (by default, 3 minutes).
-    self.timeout = self.get_value_for("TIMEOUT_LIMIT", TIMEOUT_LIMIT)
+    self.timeout = self.get_value_for("SQL_TIMEOUT_LIMIT", SQL_TIMEOUT_LIMIT)
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
     # value per each 20k functions.
-    self.max_processed_rows = self.get_value_for("MAX_PROCESSED_ROWS", MAX_PROCESSED_ROWS)
+    self.SQL_MAX_PROCESSED_ROWS = self.get_value_for("SQL_MAX_PROCESSED_ROWS", SQL_MAX_PROCESSED_ROWS)
     # Limits to filter the functions to export
     self.min_ea = 0
     self.max_ea = 0
@@ -411,147 +413,13 @@ class CBinDiff:
   def create_schema(self):
     """
     Create the database schema.
-
-    XXX: FIXME: It should probably be better to put somewhere else insteaf.
     """
     cur = self.db_cursor()
     try:
       cur.execute("PRAGMA foreign_keys = ON")
 
-      sql = """ create table if not exists functions (
-                          id integer primary key,
-                          name varchar(255),
-                          address text unique,
-                          nodes integer,
-                          edges integer,
-                          indegree integer,
-                          outdegree integer,
-                          size integer,
-                          instructions integer,
-                          mnemonics text,
-                          names text,
-                          prototype text,
-                          cyclomatic_complexity integer,
-                          primes_value text,
-                          comment text,
-                          mangled_function text,
-                          bytes_hash text,
-                          pseudocode text,
-                          pseudocode_lines integer,
-                          pseudocode_hash1 text,
-                          pseudocode_primes text,
-                          function_flags integer,
-                          assembly text,
-                          prototype2 text,
-                          pseudocode_hash2 text,
-                          pseudocode_hash3 text,
-                          strongly_connected integer,
-                          loops integer,
-                          rva text unique,
-                          tarjan_topological_sort text,
-                          strongly_connected_spp text,
-                          clean_assembly text,
-                          clean_pseudo text,
-                          mnemonics_spp text,
-                          switches text,
-                          function_hash text,
-                          bytes_sum integer,
-                          md_index text,
-                          constants text,
-                          constants_count integer,
-                          segment_rva text,
-                          assembly_addrs text,
-                          kgh_hash text,
-                          source_file text,
-                          userdata text) """
-      cur.execute(sql)
-
-      sql = """ create table if not exists program (
-                  id integer primary key,
-                  callgraph_primes text,
-                  callgraph_all_primes text,
-                  processor text,
-                  md5sum text
-                ) """
-      cur.execute(sql)
-
-      sql = """ create table if not exists program_data (
-                  id integer primary key,
-                  name varchar(255),
-                  type varchar(255),
-                  value text
-                )"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists version (value text) """
-      cur.execute(sql)
-
-      sql = """ create table if not exists instructions (
-                  id integer primary key,
-                  address text unique,
-                  disasm text,
-                  mnemonic text,
-                  comment1 text,
-                  comment2 text,
-                  operand_names text,
-                  name text,
-                  type text,
-                  pseudocomment text,
-                  pseudoitp integer) """
-      cur.execute(sql)
-
-      sql = """ create table if not exists basic_blocks (
-                  id integer primary key,
-                  num integer,
-                  address text unique)"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists bb_relations (
-                  id integer primary key,
-                  parent_id integer not null references basic_blocks(id) ON DELETE CASCADE,
-                  child_id integer not null references basic_blocks(id) ON DELETE CASCADE)"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists bb_instructions (
-                  id integer primary key,
-                  basic_block_id integer references basic_blocks(id) on delete cascade,
-                  instruction_id integer references instructions(id) on delete cascade)"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists function_bblocks (
-                  id integer primary key,
-                  function_id integer not null references functions(id) on delete cascade,
-                  basic_block_id integer not null references basic_blocks(id) on delete cascade)"""
-      cur.execute(sql)
-      
-      sql = """create table if not exists callgraph (
-                  id integer primary key,
-                  func_id integer not null references functions(id) on delete cascade,
-                  address text not null,
-                  type text not null)"""
-      cur.execute(sql)
-
-      sql = """create table if not exists constants (
-                  id integer primary key,
-                  func_id integer not null references functions(id) on delete cascade,
-                  constant text not null)"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists compilation_units (
-                  id integer primary key,
-                  name text,
-                  functions int,
-                  primes_value text,
-                  pseudocode_primes text,
-                  start_ea text unique,
-                  end_ea text)"""
-      cur.execute(sql)
-
-      sql = """ create table if not exists compilation_unit_functions (
-                  id integer primary key,
-                  cu_id integer not null references compilation_units(id) on delete cascade,
-                  func_id integer not null references functions(id) on delete cascade)"""
-      cur.execute(sql)
+      for sql in schema.TABLES:
+        cur.execute(sql)
 
       cur.execute("select 1 from version")
       row = cur.fetchone()
@@ -564,125 +432,14 @@ class CBinDiff:
   def create_indices(self):
     """
     Create the required indices for the exported database.
-
-    XXX: FIXME: Indices must be re-reviewed, as some of them aren't required.
-    XXX: FIXME: It also, probably, makes sense to move them to somewhere else.
     """
     cur = self.db_cursor()
+    template = "create index if not exists idx_{index} on {table}({fields})"
     try:
-      sql = "create index if not exists idx_assembly on functions(assembly)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_bytes_hash on functions(bytes_hash)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_pseudocode on functions(pseudocode)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_name on functions(name)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_mangled_name on functions(mangled_function)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_names on functions(names)"
-      cur.execute(sql)
-      
-      sql = "create index if not exists idx_asm_pseudo on functions(assembly, pseudocode)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_nodes_edges_instructions on functions(nodes, edges, instructions)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_composite1 on functions(nodes, edges, mnemonics, names, cyclomatic_complexity, prototype2, indegree, outdegree)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_composite2 on functions(instructions, mnemonics, names)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_composite3 on functions(nodes, edges, cyclomatic_complexity)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_composite4 on functions(pseudocode_lines, pseudocode)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_composite5 on functions(pseudocode_lines, pseudocode_primes)"
-      cur.execute(sql)
-      
-      sql = "create index if not exists idx_composite6 on functions(names, mnemonics)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_pseudocode_hash1 on functions(pseudocode_hash1)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_pseudocode_hash2 on functions(pseudocode_hash2)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_pseudocode_hash3 on functions(pseudocode_hash3)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_pseudocode_hash on functions(pseudocode_hash1, pseudocode_hash2, pseudocode_hash3)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_strongly_connected on functions(strongly_connected)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_strongly_connected_spp on functions(strongly_connected_spp)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_loops on functions(loops)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_rva on functions(rva)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_tarjan_topological_sort on functions(tarjan_topological_sort)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_mnemonics_spp on functions(mnemonics_spp)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_clean_asm on functions(clean_assembly)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_clean_pseudo on functions(clean_pseudo)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_switches on functions(switches)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_function_hash on functions(function_hash)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_bytes_sum on functions(bytes_sum)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_md_index on functions(md_index)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_kgh_hash on functions(kgh_hash)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_constants on functions(constants_count, constants)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_mdindex_constants on functions(md_index, constants_count, constants)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_instructions_address on instructions (address)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_bb_relations on bb_relations(parent_id, child_id)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_bb_instructions on bb_instructions (basic_block_id, instruction_id)"
-      cur.execute(sql)
-
-      sql = "create index if not exists id_function_blocks on function_bblocks (function_id, basic_block_id)"
-      cur.execute(sql)
-
-      sql = "create index if not exists idx_constants_func on constants (constant, func_id)"
-      cur.execute(sql)
+      for i, index in enumerate(schema.INDICES):
+        table, fields = index
+        sql = template.format(index=i, table=table, fields=fields)
+        cur.execute(sql)
 
       sql = "analyze"
       cur.execute(sql)
@@ -1464,7 +1221,7 @@ class CBinDiff:
             break
 
           t.join(0.1)
-          if time.monotonic() - t.time > TIMEOUT_LIMIT:
+          if time.monotonic() - t.time > SQL_TIMEOUT_LIMIT:
             do_cancel = True
             try:
               log_refresh("Timeout, cancelling queries...")
@@ -1708,7 +1465,7 @@ class CBinDiff:
     i = 0
     matches = []
     t = time.monotonic()
-    while self.max_processed_rows == 0 or (self.max_processed_rows != 0 and i < self.max_processed_rows):
+    while self.SQL_MAX_PROCESSED_ROWS == 0 or (self.SQL_MAX_PROCESSED_ROWS != 0 and i < self.SQL_MAX_PROCESSED_ROWS):
       if time.monotonic() - t > self.timeout:
         log("Timeout")
         break

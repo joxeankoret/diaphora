@@ -33,8 +33,9 @@ from idaapi import *
 from idautils import *
 
 import idaapi
-
 idaapi.require("diaphora")
+
+from database import SQL_MAX_PROCESSED_ROWS, SQL_TIMEOUT_LIMIT
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "codecut"))
 from codecut import lfa
@@ -2823,8 +2824,8 @@ def _diff_or_export(use_ui, **options):
     bd.ignore_all_names = opts.ignore_all_names
     bd.ignore_small_functions = opts.ignore_small_functions
     bd.function_summaries_only = opts.func_summaries_only
-    bd.max_processed_rows = diaphora.MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
-    bd.timeout = diaphora.TIMEOUT_LIMIT * max(total_functions / 20000, 1)
+    bd.max_processed_rows = SQL_MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
+    bd.timeout = SQL_TIMEOUT_LIMIT * max(total_functions / 20000, 1)
     bd.project_script = opts.project_script
 
     if export:
