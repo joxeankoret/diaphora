@@ -888,7 +888,10 @@ class CIDABinDiff(diaphora.CBinDiff):
     md5sum = GetInputFileMD5()
     self.save_callgraph(str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum)
     self.export_structures()
-    self.export_til()
+    try:
+      self.export_til()
+    except:
+      log("Error reading type libraries: %s" % str(sys.exc_info()[1]))
     self.save_compilation_units()
 
     log_refresh("Creating indices...")
@@ -1828,15 +1831,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         if self.is_constant(operand, x) and self.constant_filter(operand.value):
           constants.append(operand.value)
     
-      drefs = list(DataRefsFrom(x))
-      if len(drefs) > 0:
-        for dref in drefs:
-          if get_func(dref) is None:
-            str_constant = get_strlit_contents(dref, -1, -1)
-            if str_constant is not None:
-              str_constant = str_constant.decode("utf-8", "backslashreplace")
-              if str_constant not in constants:
-                constants.append(str_constant)
+      drefs = DataRefsFrom(x)
+      for dref in drefs:
+        if get_func(dref) is None:
+          str_constant = get_strlit_contents(dref, -1, -1)
+          if str_constant is not None:
+            str_constant = str_constant.decode("utf-8", "backslashreplace")
+            if str_constant not in constants:
+              constants.append(str_constant)
     return constants
 
   def extract_function_switches(self, x, switches):

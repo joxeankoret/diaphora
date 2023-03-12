@@ -32,7 +32,7 @@ import traceback
 
 from threading import Thread
 from io import StringIO
-from difflib import SequenceMatcher, ndiff
+from difflib import SequenceMatcher, unified_diff
 from multiprocessing import cpu_count, Lock
 
 import diaphora_heuristics
@@ -90,7 +90,7 @@ ITEM_DIFF_BBLOCKS = 7
 # just want to extract potentital function names from matching lines of assembly
 # and pseudo-code that, also, can be partial or non C/C++ compliant but, for a
 # reason, in a format supported by IDA.
-CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]*((::){0,1}[a-zA-Z0-9_]+)*)"
+CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
 
 # This is a value that we add when we found a match by diffing previous known
 # good matches assembly and pseudocode. The problem is that 2 functions can have
@@ -372,7 +372,6 @@ class CBinDiff:
     Open the database @self.db_name.
     """
     db = sqlite3_connect(self.db_name)
-    db.create_function("check_ratio", 8, self.check_ratio)
 
     tid = threading.current_thread().ident
     self.dbs_dict[tid] = db
@@ -985,7 +984,7 @@ class CBinDiff:
 
         if cg1 == cg2:
           self.equal_callgraph = True
-          msg = "Callgraph signature for both databases is equal, the programs seem to be 100% equal structurally"
+          msg = "Call graph signature for both databases is equal, the programs seem to be 100% equal structurally"
           log(msg)
           Warning(msg)
           return 0
@@ -1010,11 +1009,11 @@ class CBinDiff:
     """
     percent = self.get_callgraph_difference()
     if percent == 0:
-      log("Callgraphs are 100% equal")
+      log("Call graphs are 100% equal")
     elif percent >= 100:
-      log("Callgraphs are absolutely different")
+      log("Call graphs are absolutely different")
     else:
-      log("Callgraphs from both programs differ in %f%%" % percent)
+      log("Call graphs from both programs differ in %f%%" % percent)
 
   def add_match(self, name1, name2, ratio, item, chooser):
     """
@@ -1183,6 +1182,7 @@ class CBinDiff:
         raise Exception("Invalid heuristic ratio calculation value!")
 
       t.name = name
+      t.timeout = False
       t.time = time.monotonic()
       t.start()
       threads_list.append(t)
@@ -1225,6 +1225,7 @@ class CBinDiff:
             do_cancel = True
             try:
               log_refresh("Timeout, cancelling queries...")
+              t.timeout = True
               self.get_db().interrupt()
             except:
               log(("database.interrupt(): %s" % str(sys.exc_info()[1])))
@@ -1233,7 +1234,7 @@ class CBinDiff:
           names = []
           for x in threads_list:
             names.append(x.name)
-          log_refresh("[Parallel] %d thread(s) still running:\n\n%s" % (len(threads_list), ", ".join(names)))
+          log_refresh("[Parallel] %d thread(s) still running:\n%s" % (len(threads_list), ", ".join(names)))
           self.show_summary()
 
     self.cleanup_matches()
@@ -1322,7 +1323,8 @@ class CBinDiff:
       return 0
     return ast_ratio(ast1, ast2)
 
-  def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2):
+  def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
+                  clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2):
     """
     Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
     1.0 would be the best possible match and 0.0 would be the worst one.
@@ -1346,31 +1348,27 @@ class CBinDiff:
 
     v1 = 0
     if pseudo1 is not None and pseudo2 is not None and pseudo1 != "" and pseudo2 != "":
-      tmp1 = self.get_cmp_pseudo_lines(pseudo1)
-      tmp2 = self.get_cmp_pseudo_lines(pseudo2)
-      if tmp1 == "" or tmp2 == "":
+      if clean_pseudo1 == "" or clean_pseudo2 == "":
         log("Error cleaning pseudo-code!")
       else:
-        v1 = fratio(tmp1, tmp2)
+        v1 = fratio(clean_pseudo1, clean_pseudo2)
         v1 = float(decimal_values.format(v1))
         if v1 == 1.0:
           # If real_quick_ratio returns 1 try again with quick_ratio
           # because it can result in false positives. If real_quick_ratio
           # says 'different', there is no point in continuing.
           if fratio == real_quick_ratio:
-            v1 = quick_ratio(tmp1, tmp2)
+            v1 = quick_ratio(clean_pseudo1, clean_pseudo2)
             if v1 == 1.0:
               return 1.0
-    
-    tmp_asm1 = self.get_cmp_asm_lines(asm1)
-    tmp_asm2 = self.get_cmp_asm_lines(asm2)
-    v2 = fratio(tmp_asm1, tmp_asm2)
+
+    v2 = fratio(clean_asm1, clean_asm2)
     v2 = float(decimal_values.format(v2))
     if v2 == 1:
       # Actually, same as the quick_ratio/real_quick_ratio check done
       # with the pseudo-code
       if fratio == real_quick_ratio:
-        v2 = quick_ratio(tmp_asm1, tmp_asm2)
+        v2 = quick_ratio(clean_asm1, clean_asm2)
         if v2 == 1.0:
           return 1.0
 
@@ -1428,6 +1426,10 @@ class CBinDiff:
     bb2 = int(row["bb2"])
     md1 = row["md1"]
     md2 = row["md2"]
+    clean_asm1 = row["clean_asm1"]
+    clean_asm2 = row["clean_asm2"]
+    clean_pseudo1 = row["clean_pseudo1"]
+    clean_pseudo2 = row["clean_pseudo2"]
 
     nullsub = "nullsub_"
     if name1.startswith(nullsub) or name2.startswith(nullsub):
@@ -1438,7 +1440,10 @@ class CBinDiff:
       return False, 0.0
 
     if ratio is None:
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+      # XXX: FIXME: JOXEAN, replace this with a call to compare_function_rows()!
+      #d = self.get_dict_for_query_row(row)
+      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2, \
+                           clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2)
       if debug:
         logging.debug("0x%x 0x%x %d" % (int(ea), int(ea2), r))
     else:
@@ -1464,9 +1469,10 @@ class CBinDiff:
     """
     i = 0
     matches = []
+    cur_thread = threading.current_thread()
     t = time.monotonic()
     while self.SQL_MAX_PROCESSED_ROWS == 0 or (self.SQL_MAX_PROCESSED_ROWS != 0 and i < self.SQL_MAX_PROCESSED_ROWS):
-      if time.monotonic() - t > self.timeout:
+      if time.monotonic() - t > self.timeout or cur_thread.timeout:
         log("Timeout")
         break
 
@@ -1595,12 +1601,13 @@ class CBinDiff:
     if self.all_functions_matched():
       return
 
+    cur_thread = threading.current_thread()
     cur = self.db_cursor()
     try:
       cur.execute(sql)
 
       i = 0
-      while 1:
+      while not cur_thread.timeout:
         i += 1
         if i % 1000 == 0:
           log("Processed %d rows..." % i)
@@ -1637,14 +1644,10 @@ class CBinDiff:
     cur = self.db_cursor()
     
     # Same basic blocks, edges, mnemonics, etc... but different names
-    sql = """ select f.address ea, f.name name1, df.name name2,
-                     'Nodes, edges, complexity and mnemonics with small differences' description,
-                     f.names f_names, df.names df_names, df.address ea2,
-                     f.nodes bb1, df.nodes bb2,
-                     f.pseudocode pseudo1, df.pseudocode pseudo2,
-                     f.assembly asm1, df.assembly asm2,
-                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                     cast(f.md_index as real) md1, cast(df.md_index as real) md2
+    name = 'Nodes, edges, complexity and mnemonics with small differences'
+    sql = """ select """ + get_query_fields(name) + """ ,
+                     f.names  f_names,
+                     df.names df_names
                 from functions f,
                      diff.functions df
                where f.nodes = df.nodes
@@ -1702,21 +1705,12 @@ class CBinDiff:
     """
     cur = self.db_cursor()
     desc = "Perfect match, same name"
-    sql = """select distinct f.address ea, f.mangled_function mangled1,
-                    d.address ea2, f.name name1, d.name name2,
-                    d.mangled_function mangled2,
-                    f.pseudocode pseudo1, d.pseudocode pseudo2,
-                    f.assembly asm1, d.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1,
-                    d.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, d.nodes bb2,
-                    cast(f.md_index as real) md1, cast(d.md_index as real) md2,
-                    '%s' description
+    sql = """select distinct """ + get_query_fields(desc) + """
                from functions f,
-                    diff.functions d
-              where (d.mangled_function = f.mangled_function
-                 or d.name = f.name)
-                and f.name not like 'nullsub_%'""".replace("%s", desc)
+                    diff.functions df
+              where (df.mangled_function = f.mangled_function
+                 or df.name = f.name)
+                and f.name not like 'nullsub_%'"""
 
     log_refresh("Finding with heuristic '%s'" % desc)
     try:
@@ -1823,14 +1817,20 @@ class CBinDiff:
             md2 = rows[1]["md_index"]
             source_file1 = rows[0]["source_file"]
             source_file2 = rows[1]["source_file"]
+            clean_asm1 = rows[0]["clean_assembly"]
+            clean_asm2 = rows[1]["clean_assembly"]
+            clean_pseudo1 = rows[0]["clean_pseudo"]
+            clean_pseudo2 = rows[1]["clean_pseudo"]
 
             # If we have compilation unit names use them to verify the match
             if source_file1 != '' and source_file2 != '' and source_file1 is not None and source_file2 is not None:
               if source_file1 != source_file2:
                 continue
 
+            # XXX: FIXME: JOXEAN, replace this with a call to compare_function_rows()!
             r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, \
-                                 float(md1), float(md2))
+                                 float(md1), float(md2), clean_asm1, clean_asm2,
+                                 clean_pseudo1, clean_pseudo2)
             if r < 0.5:
               if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
                 r = 0.5001
@@ -1946,13 +1946,8 @@ class CBinDiff:
       cur.execute(sql)
       rows = list(cur.fetchall())
 
-      sql2 = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                       'Compilation Unit Match' description,
-                       f.pseudocode pseudo1, df.pseudocode pseudo2,
-                       f.assembly asm1, df.assembly asm2,
-                       f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                       f.nodes bb1, df.nodes bb2,
-                       cast(f.md_index as real) md1, cast(df.md_index as real) md2
+      heur = "Compilation unit match"
+      sql2 = """select distinct """ + get_query_fields(heur) + """
                   from functions f,
                        diff.functions df,
                        main.compilation_unit_functions cuf,
@@ -1980,94 +1975,17 @@ class CBinDiff:
     partial_items = list(self.all_matches["partial"])
     self.find_callgraph_matches_from(partial_items, 0.80)
 
-  def find_callgraph_matches_from(self, the_items, min_value):
-    # XXX: FIXME: Joxean, triple check this function as the 'raise' never does!!!!
-    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Callgraph match (%s)' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-                    df.tarjan_topological_sort, df.strongly_connected_spp
-               from functions f,
-                    diff.functions df
-              where  f.address in (%s)
-                and df.address in (%s)
-                and  f.name not like 'nullsub_%%'
-                and df.name not like 'nullsub_%%'
-                and abs(f.md_index - df.md_index) < 1
-                and ((f.nodes > 5 and df.nodes > 5) 
-                  or (f.instructions > 10 and df.instructions > 10))
-              order by f.source_file = df.source_file"""
-
-    main_callers_sql = """select address from main.callgraph where func_id = ? and type = ?"""
-    diff_callers_sql = """select address from diff.callgraph where func_id = ? and type = ?"""
-
-    cur = self.db_cursor()
-    try:
-      dones = set()
-
-      prev_best_matches = self.get_total_matches_for("best")
-      prev_part_matches = self.get_total_matches_for("partial")
-
-      total_dones = 0
-      while len(the_items) > 0:
-        total_dones += 1
-        if total_dones % 1000 == 0:
-          log("Processed %d callgraph matches..." % total_dones)
-
-          curr_best_matches = self.get_total_matches_for("best")
-          curr_part_matches = self.get_total_matches_for("partial")
-          fmt = "Queued item(s) %d, Best matches %d, Partial Matches %d (Previously %d and %d)"
-          log(fmt % (len(the_items), curr_best_matches, curr_part_matches, prev_best_matches, prev_part_matches))
-
-        match = the_items.pop()
-        ea1 = match[1]
-        name1 = match[2]
-        name2 = match[4]
-
-        if ea1 in dones:
-          continue
-        dones.add(ea1)
-
-        id1 = self.get_function_id(name1)
-        id2 = self.get_function_id(name2, False)
-
-        for call_type in ['caller', 'callee']:
-          cur.execute(main_callers_sql, (id1, call_type))
-          main_address_set = set()
-          for row in cur.fetchall():
-            main_address_set.add("'%s'" % row[0])
-
-          cur.execute(diff_callers_sql, (id2, call_type))
-          diff_address_set = set()
-          for row in cur.fetchall():
-            diff_address_set.add("'%s'" % row[0])
-
-          if len(main_address_set) > 0 and len(diff_address_set) > 0:
-            print("FUCK "*8)
-            print("FUCK "*8)
-            raise
-            tname1 = name1.replace("'", "''")
-            tname2 = name2.replace("'", "''")
-            cur.execute(sql % (("%s of %s/%s" % (call_type, tname1, tname2)), ",".join(main_address_set), ",".join(diff_address_set)))
-            matches = self.add_matches_from_cursor_ratio_max(cur, self.partial_chooser, None, min_value)
-            if matches is not None and len(matches) > 0 and self.unreliable:
-              the_items.extend(matches)
-    finally:
-      cur.close()
-
   def find_partial_matches(self):
     """
     Find matches using all heuristics assigned to the 'partial' category.
     """
     self.run_heuristics_for_category("Partial")
 
-    # Search using some of the previous criterias but calculating the
-    # edit distance
-    log_refresh("Finding with heuristic 'Small names difference'")
-    self.search_small_differences("partial")
+    if self.slow_heuristics:
+      # Search using some of the previous criterias but calculating the
+      # edit distance
+      log_refresh("Finding with heuristic 'Small names difference'")
+      self.search_small_differences("partial")
 
   def find_brute_force(self):
     # XXX: FIXME: Joxean, double check this!
@@ -2100,14 +2018,8 @@ class CBinDiff:
           cur.execute(sql, (ea, 0))
 
     if self.slow_heuristics:
-      sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                      'Brute forcing (MD-Index and KOKA hash)' description,
-                      f.pseudocode pseudo1, df.pseudocode pseudo2,
-                      f.assembly asm1, df.assembly asm2,
-                      f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                      f.nodes bb1, df.nodes bb2,
-                      cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-                      df.tarjan_topological_sort, df.strongly_connected_spp
+      heur = 'Brute forcing (MD-Index and KOKA hash)'
+      sql = """select """ + get_query_fields(heur) + """
                 from functions f,
                       diff.functions df,
                       unmatched um
@@ -2117,19 +2029,13 @@ class CBinDiff:
                   and f.md_index > 1 and df.md_index > 1)
                   or (f.kgh_hash = df.kgh_hash
                   and f.kgh_hash > 7 and df.kgh_hash > 7))
-                order by f.source_file = df.source_file"""
+                  """
       cur.execute(sql)
       log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
       self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
 
-    sql = """select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                    'Brute forcing (Compilation Unit)' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-                    df.tarjan_topological_sort, df.strongly_connected_spp
+    heur = 'Brute forcing (Compilation Unit)'
+    sql = """select """ + get_query_fields(heur) + """
                from functions f,
                     diff.functions df,
                     unmatched um
@@ -2138,8 +2044,7 @@ class CBinDiff:
                 and f.source_file = df.source_file
                 and f.source_file != ''
                 and df.source_file is not null
-                and f.kgh_hash > 7 and df.kgh_hash > 7
-              order by f.source_file = df.source_file"""
+                and f.kgh_hash > 7 and df.kgh_hash > 7 """
     cur.execute(sql)
     log_refresh("Finding via brute-forcing (Compilation Unit)...")
     self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
@@ -2152,7 +2057,7 @@ class CBinDiff:
     self.find_from_matches(self.all_matches["unreliable"], "Partial, Experimental")
     self.run_heuristics_for_category("Experimental")
 
-    if self.slow_heuristics:
+    if self.slow_heuristics and self.unreliable:
       # Find using brute-force
       log_refresh("Brute-forcing...")
       self.find_brute_force()
@@ -2307,9 +2212,9 @@ class CBinDiff:
   def compare_function_rows(self, main_row, diff_row):
     """
     Compare the functions of one SQL match.
-
-    XXX: FIXME: Joxean, this function is not used.
     """
+    name1 = main_row["name"]
+    name2 = main_row["name"]
     pseudo1 = main_row["pseudocode"]
     pseudo2 = diff_row["pseudocode"]
     asm1 = main_row["assembly"]
@@ -2322,7 +2227,13 @@ class CBinDiff:
     md2 = diff_row["md_index"]
     source1 = main_row["source_file"]
     source2 = diff_row["source_file"]
-    ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
+    clean_asm1 = main_row["clean_assembly"]
+    clean_asm2 = diff_row["clean_assembly"]
+    clean_pseudo1 = main_row["clean_pseudo"]
+    clean_pseudo2 = diff_row["clean_pseudo"]
+
+    ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
+                             clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2)
     return ratio
 
   def search_just_stripped_binaries(self):
@@ -2355,17 +2266,10 @@ class CBinDiff:
 
         heur = "Same binary with symbols stripped"
         sql = """
-        select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-               '%s' description,
-               f.pseudocode pseudo1, df.pseudocode pseudo2,
-               f.assembly asm1, df.assembly asm2,
-               f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-               f.nodes bb1, df.nodes bb2,
-               cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-               df.tarjan_topological_sort, df.strongly_connected_spp
+        select distinct """ + get_query_fields(heur) + """
           from functions f,
                diff.functions df
-         where f.address = df.address""" % heur
+         where f.address = df.address"""
         log_refresh("Finding via %s..." % repr(heur))
 
         self.add_matches_from_query(sql, "best")
@@ -2457,14 +2361,7 @@ class CBinDiff:
     """
     Search potentially renamed functions in a usual patch diffing session.
     """
-    sql = """select distinct f.address ea, f.name name1, df.name name2,
-                    ? description,
-                    f.names f_names, df.names df_names, df.address ea2,
-                    f.nodes bb1, df.nodes bb2,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2
+    sql = """select """ + get_query_fields("?", quote=False) + """
                from main.functions f,
                     diff.functions df
               where f.address = ?
@@ -2645,6 +2542,7 @@ class CBinDiff:
     return ret
 
   def functions_exists(self, name1, name2):
+    # XXX: FIXME: Joxean, add a cache here?
     l = []
     cur = self.db_cursor()
     try:
@@ -2675,67 +2573,74 @@ class CBinDiff:
 
     return main_asm, diff_asm
 
-  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur, iteration):
+  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur, iteration, dones):
     """
     Diff the lines for the field @field_name and find matches of function names
     (only function names for now) to find new matches candidates.
     """
     main_lines = input_main_row[field_name].splitlines(keepends=False)
     diff_lines = input_diff_row[field_name].splitlines(keepends=False)
-    df = ndiff(main_lines, diff_lines)
-    first = None
-    second = None
+    df = unified_diff(main_lines, diff_lines, lineterm="")
 
-    dones = set()
+    minus = []
+    plus  = []
+
     for row in df:
       if len(row) == 0:
         continue
 
       c = row[0]
       if c == "-":
-        first = row
-        continue
+        minus.append(row)
       elif c == "+":
-        second = row
-      
-      if first is not None and second is not None:
-        matches1 = re.findall(CPP_NAMES_RE, first, re.IGNORECASE)
-        matches2 = re.findall(CPP_NAMES_RE, second, re.IGNORECASE)
-        size = min(len(matches1), len(matches2))
-        for i in range(size):
-          name1 = matches1[i][0]
-          name2 = matches2[i][0]
-          key = "%s-%s" % (name1, name2)
-          if key in dones:
-            continue
+        plus.append(row)
+      elif c == " ":
+        if len(minus) > 0 and len(plus) > 0:
+          matches1 = re.findall(CPP_NAMES_RE, "\n".join(minus), re.IGNORECASE)
+          matches2 = re.findall(CPP_NAMES_RE, "\n".join(plus), re.IGNORECASE)
+          minus = []
+          plus = []
 
-          dones.add(key)
-          exists, l = self.functions_exists(name1, name2)
-          if exists:
-            main_row = l[0]
-            diff_row = l[1]
-            r = self.compare_function_rows(main_row, diff_row)
-            if r == 1.0:
-              chooser = "best"
-            elif r > 0.3:
-              chooser = "partial"
-            else:
+          size = min(len(matches1), len(matches2))
+          for i in range(size):
+            name1 = matches1[i][0]
+            name2 = matches2[i][0]
+            key = "%s-%s" % (name1, name2)
+            if key in dones:
               continue
 
-            if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
-              r += CALLEES_MATCHES_BONUS_RATIO
+            dones.add(key)
+            size = len(dones)
+            if size > 0 and size % 10000 == 0:
+              log("%d callee matches processed so far..." % size)
 
-            heur_text = "%s (iteration #%d)" % (heur, iteration)
-            ea1 = main_row["address"]
-            ea2 = diff_row["address"]
-            bb1 = int(main_row["nodes"])
-            bb2 = int(diff_row["nodes"])
-            new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
-            self.add_match(name1, name2, r, new_item, chooser)
-        first = None
-        second = None
+            exists, l = self.functions_exists(name1, name2)
+            if exists:
+              main_row = l[0]
+              diff_row = l[1]
+              r = self.compare_function_rows(main_row, diff_row)
+              if r == 1.0:
+                chooser = "best"
+              elif r > 0.3:
+                chooser = "partial"
+              else:
+                continue
+
+              if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
+                r += CALLEES_MATCHES_BONUS_RATIO
+
+              heur_text = "%s (iteration #%d)" % (heur, iteration)
+              ea1 = main_row["address"]
+              ea2 = diff_row["address"]
+              bb1 = int(main_row["nodes"])
+              bb2 = int(diff_row["nodes"])
+              new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+              self.add_match(name1, name2, r, new_item, chooser)
+    return dones
 
   def find_matches_diffing_internal(self, heur, field_name):
+    # XXX: FIXME: Joxean, paralellize this algorithm!!!
+    # XXX: FIXME: Joxean, difflib is horribly slow, replace it with diff-match-patch!
     log_refresh("Finding with heuristic '%s'" % heur)
     db = self.db_cursor()
     try:
@@ -2763,7 +2668,7 @@ class CBinDiff:
               if diff_row[field_name] is None:
                 continue
 
-              self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration)
+              dones = self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration, dones)
 
         self.cleanup_matches()
         self.show_summary()
@@ -2794,7 +2699,6 @@ class CBinDiff:
     # new matches
     if self.same_processor_both_databases():
       self.find_matches_diffing_assembly()
-
     self.find_matches_diffing_pseudo()
 
   def diff(self, db):
@@ -2823,6 +2727,8 @@ class CBinDiff:
 
     try:
       t0 = time.monotonic()
+      cur_thread = threading.current_thread()
+      cur_thread.timeout = False
       log_refresh("Diffing...", True)
 
       self.do_continue = True
@@ -2858,33 +2764,29 @@ class CBinDiff:
           log_refresh("Finding partial matches")
           self.find_partial_matches()
 
-          # Find new matches by diffing assembly and pseudo-code of previously
-          # found matches
-          self.find_matches_diffing()
-
           # Call address sequence & Same compilation unit heuristics
-          self.find_from_matches(self.all_matches["best"], the_type="Best")
-          self.find_from_matches(self.all_matches["partial"], the_type="Partial", same_name = True)
-
-          if self.slow_heuristics:
-            # Find the functions from the callgraph
-            log_refresh("Finding with heuristic 'Callgraph matches'")
-            self.find_callgraph_matches()
+          target = self.find_from_matches
+          target(self.all_matches["best"], "Best")
+          target(self.all_matches["partial"], "Partial", True)
 
           if self.unreliable:
             # Find using likely unreliable methods modified functions
             log_refresh("Finding probably unreliable matches")
             self.find_unreliable_matches()
 
-          #
-          # Find using experimental methods modified functions.
-          #
-          # NOTES: While these are still called experimental, they aren't really
-          # that experimental, as most of the code but the brute forcing using
-          # compilation units has been tested since years ago.
-          #
-          log_refresh("Finding experimental matches")
-          self.find_experimental_matches()
+            #
+            # Find using experimental methods modified functions.
+            #
+            # NOTES: While these are still called experimental, they aren't really
+            # that experimental, as most of the code but the brute forcing using
+            # compilation units has been tested since years ago.
+            #
+            log_refresh("Finding experimental matches")
+            self.find_experimental_matches()
+
+          # Find new matches by diffing assembly and pseudo-code of previously
+          # found matches
+          self.find_matches_diffing()
 
         self.final_pass()
 
@@ -2967,7 +2869,7 @@ if __name__ == "__main__":
       profiler = cProfile.Profile()
       profiler.runcall(bd.diff, db2)
       exported = True
-      profiler.print_stats(sort="cumtime")
+      profiler.print_stats(sort="tottime")
     else:
       bd.diff(db2)
     bd.save_results(diff_out)
