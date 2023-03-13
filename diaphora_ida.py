@@ -1614,6 +1614,13 @@ class CIDABinDiff(diaphora.CBinDiff):
     if not self.decompiler_available or is_spec_ea(ea):
       return False
 
+    # Workaround for a bug in IDA that might trigger the following error:
+    #
+    # max non-trivial tinfo_t count has been reached
+    #
+    if os.getenv("DIAPHORA_WORKAROUND_MAX_TINFO_T") is not None:
+      idaapi.clear_cached_cfuncs()
+
     decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
     if decompiler_plugin is None:
       decompiler_plugin = "hexrays"
