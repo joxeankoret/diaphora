@@ -26,14 +26,15 @@ import json
 import logging
 import decimal
 import sqlite3
+import datetime
 import importlib
 import threading
 import traceback
 
-from threading import Thread
 from io import StringIO
+from threading import Thread, Lock
+from multiprocessing import cpu_count
 from difflib import SequenceMatcher, unified_diff
-from multiprocessing import cpu_count, Lock
 
 import diaphora_heuristics
 importlib.reload(diaphora_heuristics)
@@ -874,8 +875,6 @@ class CBinDiff:
   def get_graph(self, ea1, primary=False):
     """
     Get the graph representation of the function at address @ea1
-
-    XXX: FIXME: This code is horrible and screaming for refactorizations.
     """
     db = "diff"
     if primary:
@@ -889,17 +888,17 @@ class CBinDiff:
     try:
       sql = """ select bb.address bb_address, ins.address ins_address,
                       ins.mnemonic ins_mnem, ins.disasm ins_disasm
-                  from %s.function_bblocks fb,
-                      %s.bb_instructions bbins,
-                      %s.instructions ins,
-                      %s.basic_blocks bb,
-                      %s.functions f
+                 from {db}.function_bblocks fb,
+                      {db}.bb_instructions bbins,
+                      {db}.instructions ins,
+                      {db}.basic_blocks bb,
+                      {db}.functions f
                 where ins.id = bbins.instruction_id
                   and bbins.basic_block_id = bb.id
                   and bb.id = fb.basic_block_id
                   and f.id = fb.function_id
                   and f.address = ?
-                order by bb.address asc""".replace("%s", db)
+                order by bb.address asc""".format(db=db)
       cur.execute(sql, (str(ea1),))
       for row in result_iter(cur):
         bb_ea = str(int(row["bb_address"]))
@@ -917,20 +916,20 @@ class CBinDiff:
           bb_blocks[bb_ea] = [ [ins_ea, mnem, dis] ]
 
       sql = """ select (select address
-                        from %s.basic_blocks
-                where id = bbr.parent_id) ea1,
-                    (select address
-                        from %s.basic_blocks
-                where id = bbr.child_id) ea2
-                from %s.bb_relations bbr,
-                    %s.function_bblocks fbs,
-                    %s.basic_blocks bbs,
-                    %s.functions f
-              where f.id = fbs.function_id
-                and bbs.id = fbs.basic_block_id
-                and fbs.basic_block_id = bbr.child_id
-                and f.address = ?
-              order by 1 asc, 2 asc""".replace("%s", db)
+                          from {db}.basic_blocks
+                         where id = bbr.parent_id) ea1,
+                       (select address
+                          from {db}.basic_blocks
+                         where id = bbr.child_id) ea2
+                  from {db}.bb_relations bbr,
+                       {db}.function_bblocks fbs,
+                       {db}.basic_blocks bbs,
+                       {db}.functions f
+                 where f.id = fbs.function_id
+                   and bbs.id = fbs.basic_block_id
+                   and fbs.basic_block_id = bbr.child_id
+                   and f.address = ?
+                 order by 1 asc, 2 asc""".format(db=db)
       cur.execute(sql, (str(ea1), ))
       rows = result_iter(cur)
 
@@ -1263,7 +1262,12 @@ class CBinDiff:
         if match in dones:
           continue
 
+        if name1 == name2:
+          debug_refresh("Using a fake 1.0 ratio for match %s - %s" % (name1, name2))
+          ratio = 1.0
+
         dones[match] = ratio
+
         # If the previous ratio for a match with function @ea is worst, ignore
         # this match
         if ea in ea_ratios and ea_ratios[ea] > ratio:
@@ -1440,8 +1444,6 @@ class CBinDiff:
       return False, 0.0
 
     if ratio is None:
-      # XXX: FIXME: JOXEAN, replace this with a call to compare_function_rows()!
-      #d = self.get_dict_for_query_row(row)
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2, \
                            clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2)
       if debug:
@@ -1744,6 +1746,9 @@ class CBinDiff:
             item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
           else:
             the_chooser = choose
+            if ratio + CALLEES_MATCHES_BONUS_RATIO < 1.0:
+              ratio += CALLEES_MATCHES_BONUS_RATIO
+
             item = [ea, name1, ea2, name2, desc, ratio, bb1, bb2]
 
           self.add_match(name1, name2, ratio, item, the_chooser)
@@ -1772,157 +1777,27 @@ class CBinDiff:
     
     return rid
 
-  def find_matches_in_hole(self, last, item, row, the_type):
+  def get_function_id_by_address(self, ea, primary=True):
     """
-    Find matches between two matched functions.
-
-    XXX: FIXME: Joxean, double (or triple) check this heuristic!!!
+    Get the function id for the function with address @ea at either the main or
+    diff function.
     """
     cur = self.db_cursor()
+    rid = None
+    db_name = "main"
+    if not primary:
+      db_name = "diff"
+
     try:
-
-      postfix = ""
-      if self.ignore_small_functions:
-        postfix = " and instructions > 5"
-
-      desc = "Call address sequence (%s)" % the_type
-      id1 = row["id1"]
-      id2 = row["id2"]
-      sql = """ select * from functions where id = ? """ + postfix + """ 
-                union all 
-                select * from diff.functions where id = ? """ + postfix
-
-      thresold = min(0.6, float(item[ITEM_RATIO]))
-      for j in range(0, min(10, id1 - last)):
-        for i in range(0, min(10, id1 - last)):
-          cur.execute(sql, (id1+j, id2+i))
-          rows = cur.fetchall()
-          if len(rows) == 2:
-            name1 = rows[0]["name"]
-            name2 = rows[1]["name"]
-            if self.has_best_match(name1, name2):
-              continue
-
-            ea = rows[0]["address"]
-            ea2 = rows[1]["address"]
-            bb1 = rows[0]["nodes"]
-            bb2 = rows[1]["nodes"]
-            ast1 = rows[0]["pseudocode_primes"]
-            ast2 = rows[1]["pseudocode_primes"]
-            pseudo1 = rows[0]["pseudocode"]
-            pseudo2 = rows[1]["pseudocode"]
-            asm1 = rows[0]["assembly"]
-            asm2 = rows[1]["assembly"]
-            md1 = rows[0]["md_index"]
-            md2 = rows[1]["md_index"]
-            source_file1 = rows[0]["source_file"]
-            source_file2 = rows[1]["source_file"]
-            clean_asm1 = rows[0]["clean_assembly"]
-            clean_asm2 = rows[1]["clean_assembly"]
-            clean_pseudo1 = rows[0]["clean_pseudo"]
-            clean_pseudo2 = rows[1]["clean_pseudo"]
-
-            # If we have compilation unit names use them to verify the match
-            if source_file1 != '' and source_file2 != '' and source_file1 is not None and source_file2 is not None:
-              if source_file1 != source_file2:
-                continue
-
-            # XXX: FIXME: JOXEAN, replace this with a call to compare_function_rows()!
-            r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, \
-                                 float(md1), float(md2), clean_asm1, clean_asm2,
-                                 clean_pseudo1, clean_pseudo2)
-            if r < 0.5:
-              if rows[0]["names"] != "[]" and rows[0]["names"] == rows[1]["names"]:
-                r = 0.5001
-
-            if r > thresold:
-              # Pretty much every single heuristic fails with small functions,
-              # ignore them...
-              if bb1 <= 3 or bb2 <= 3:
-                continue
-
-              should_add = True
-              if self.hooks is not None:
-                if 'on_match' in dir(self.hooks):
-                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-                  d2 = {"ea": ea, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
-              if self.has_better_match(name1, name2, r):
-                continue
-
-              chooser = None
-              item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
-              if r == 1:
-                chooser = "best"
-              elif r >= 0.4:
-                chooser = "partial"
-              else:
-                chooser = "unreliable"
-
-              self.add_match(name1, name2, r, item, chooser)
+      sql = "select id from %s.functions where address = ?" % db_name
+      cur.execute(sql, (ea,))
+      row = cur.fetchone()
+      if row:
+        rid = row["id"]
     finally:
       cur.close()
-
-  def find_from_matches(self, the_items, the_type, same_name = False):
-    """
-    Find new matches using previously found matches callers and callees.
-    """
-    #
-    # XXX: FIXME: This is wrong in many ways, but still works... FIX IT!
-    # Rule 1: if a function A in program P has id X, and function B in
-    # the same program has id + 1, then, in program P2, function B maybe
-    # the next function to A in P2.
-    #
-    # Also, it tries to search for matches with the given previous results using
-    # the compilation units information.
-    #
-
-    log_refresh("Finding with heuristic 'Call address sequence (%s)'" % the_type)
-    cur = self.db_cursor()
-    try:
-      # Create a copy of all the functions
-      cur.execute("create temporary table best_matches (id not null, id1 not null, ea1 not null, name1 not null, id2 not null, ea2 not null, name2 not null)")
-
-      # Insert each matched function into the temporary table
-      i = 0
-      for match in the_items:
-        ea1 = match[ITEM_MAIN_EA]
-        name1 = match[ITEM_MAIN_NAME]
-        ea2 = match[ITEM_DIFF_EA]
-        name2 = match[ITEM_DIFF_NAME]
-        ratio = float(match[ITEM_RATIO])
-        if not same_name:
-          if ratio < 0.5:
-            continue
-        elif name1 != name2:
-          continue
-
-        id1 = self.get_function_id(name1)
-        id2 = self.get_function_id(name2, False)
-        sql = """insert into best_matches (id, id1, ea1, name1, id2, ea2, name2)
-                                   values (?, ?, ?, ?, ?, ?, ?)"""
-        cur.execute(sql, (i, id1, str(ea1), name1, id2, str(ea2), name2))
-        i += 1
-
-      last = None
-      cur.execute("select * from best_matches order by id1 asc")
-      for row in cur:
-        row_id = row["id1"]
-        if last is None or last+1 == row_id:
-          last = row_id
-          continue
-
-        item = the_items[row["id"]]
-        self.find_matches_in_hole(last, item, row, the_type)
-        last = row_id
-
-      self.find_in_compilation_units()
-      cur.execute("drop table best_matches")
-      if cur.connection.in_transaction:
-        cur.execute("commit")
-    finally:
-      cur.close()
+    
+    return rid
 
   def find_in_compilation_units(self):
     """
@@ -1975,6 +1850,13 @@ class CBinDiff:
     partial_items = list(self.all_matches["partial"])
     self.find_callgraph_matches_from(partial_items, 0.80)
 
+  def run_thread(self, target, args, name):
+    t = Thread(target=target, args=args)
+    t.timeout = False
+    t.name = name
+    t.start()
+    t.join()
+
   def find_partial_matches(self):
     """
     Find matches using all heuristics assigned to the 'partial' category.
@@ -1982,8 +1864,7 @@ class CBinDiff:
     self.run_heuristics_for_category("Partial")
 
     if self.slow_heuristics:
-      # Search using some of the previous criterias but calculating the
-      # edit distance
+      # Search using some of the previous criterias but calculating the edit distance
       log_refresh("Finding with heuristic 'Small names difference'")
       self.search_small_differences("partial")
 
@@ -2054,7 +1935,6 @@ class CBinDiff:
     cur.close()
 
   def find_experimental_matches(self):
-    self.find_from_matches(self.all_matches["unreliable"], "Partial, Experimental")
     self.run_heuristics_for_category("Experimental")
 
     if self.slow_heuristics and self.unreliable:
@@ -2459,7 +2339,7 @@ class CBinDiff:
         # If the previous ratio we got is less than this one, ignore
         if max_diff[ea2] > ratio:
           continue
-        max_diff[ea1] = ratio
+        max_diff[ea2] = ratio
     
         item = [ea1, ratio, match]
         try:
@@ -2486,6 +2366,7 @@ class CBinDiff:
     ignore_main = set()
     ignore_diff = set()
     dones = set()
+
     ignore_main, dones = self.add_multimatches_to_chooser(multi_main, ignore_main, dones)
     ignore_diff, dones = self.add_multimatches_to_chooser(multi_diff, ignore_diff, dones)
 
@@ -2519,6 +2400,7 @@ class CBinDiff:
     3. Fill the choosers with the final cleaned up results.
     """
     self.cleanup_matches()
+
     max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
     self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
 
@@ -2699,7 +2581,104 @@ class CBinDiff:
     # new matches
     if self.same_processor_both_databases():
       self.find_matches_diffing_assembly()
+
     self.find_matches_diffing_pseudo()
+
+  def find_functions_between(self, range1, range2):
+    """
+    Find the 'bester' matches in the functions gap specified by the given ranges
+    """
+    cur = self.db_cursor()
+    sql = "select * from {db}.functions where address > ? and address < ?"
+    try:
+      heur_text = "Local affinity"
+
+      # First, retrieve the main database functions in that area...
+      cur.execute(sql.format(db="main"), range1)
+      main_rows = list(cur.fetchall())
+      size = len(main_rows)
+      # If the number of functions in that gap is less than a hardcoded size, do
+      # continue...
+      if size > 0 and size <= 100:
+        # Then retrieve the diff database functions in that area...
+        cur.execute(sql.format(db="diff"), range2)
+        diff_rows = list(cur.fetchall())
+        size = len(diff_rows)
+        # Check again the same number of maximum hardcoded functions that we'll
+        # consider for this heuristic...
+        if size > 0 and size <= 100:
+          # And then, brute force all of these functions to find good matches
+          # regardless of the position.
+          for main_row in main_rows:
+            for diff_row in diff_rows:
+              name1 = main_row["name"]
+              name2 = diff_row["name"]
+              if name1.startswith("nullsub_") or name2.startswith("nullsub_"):
+                continue
+
+              pseudocode_lines1 = main_row["pseudocode_lines"]
+              pseudocode_lines2 = diff_row["pseudocode_lines"]
+              if pseudocode_lines1 + pseudocode_lines2 != 0:
+                if pseudocode_lines1 == 3 or pseudocode_lines2 == 3:
+                  continue
+
+              r = self.compare_function_rows(main_row, diff_row)
+              if r == 1.0:
+                chooser = "best"
+              elif r >= 0.5:
+                chooser = "partial"
+              else:
+                continue
+
+              ea1 = main_row["address"]
+              ea2 = diff_row["address"]
+              name1 = main_row["name"]
+              name2 = diff_row["name"]
+              bb1 = int(main_row["nodes"])
+              bb2 = int(diff_row["nodes"])
+              new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+              self.add_match(name1, name2, r, new_item, chooser)
+    finally:
+      cur.close()
+
+  def find_matches_in_gaps(self):
+    """
+    Try to find functions between the unmatched functions space inside two
+    previously matched functions.
+
+    So, let's suppose the following example:
+
+      Bin1    Bin2    Matched?
+      ---     ---     ---
+      F1      F1'     Yes
+      F2      F2'     No
+      F3      F3'     No
+      F4      F4'     Yes
+    
+    Considering how compilers & linkers (in general) work, chances are very high
+    that functions F2 and F3 correspond to F2' and F3', so we try to find those
+    functions that should correspond to the gap between unmatched functions and
+    then brute force these subsets when they have a maximum hardcoded number of
+    100 functions. We don't consider bigger gaps. For now.
+    """
+    tmp_matches = list(self.all_matches["best"])
+    tmp_matches.extend(list(self.all_matches["partial"]))
+    tmp_matches = sorted(tmp_matches, key=lambda x: [int(x[0]), int(x[2])])
+
+    size = len(tmp_matches)
+    for i, match in enumerate(tmp_matches):
+      if i == 0 or i == size:
+        continue
+
+      prev = tmp_matches[i-1]
+      prev_ea1 = prev[0]
+      prev_ea2 = prev[2]
+      curr_ea1 = match[0]
+      curr_ea2 = match[2]
+
+      area1 = [prev_ea1, curr_ea1]
+      area2 = [prev_ea2, curr_ea2]
+      self.find_functions_between(area1, area2)
 
   def diff(self, db):
     """
@@ -2764,11 +2743,6 @@ class CBinDiff:
           log_refresh("Finding partial matches")
           self.find_partial_matches()
 
-          # Call address sequence & Same compilation unit heuristics
-          target = self.find_from_matches
-          target(self.all_matches["best"], "Best")
-          target(self.all_matches["partial"], "Partial", True)
-
           if self.unreliable:
             # Find using likely unreliable methods modified functions
             log_refresh("Finding probably unreliable matches")
@@ -2784,9 +2758,21 @@ class CBinDiff:
             log_refresh("Finding experimental matches")
             self.find_experimental_matches()
 
+          self.cleanup_matches()
+          old_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
+
           # Find new matches by diffing assembly and pseudo-code of previously
           # found matches
           self.find_matches_diffing()
+
+          # Find new matches in the functions between matches
+          log_refresh("Finding locally affine functions")
+          self.find_matches_in_gaps()
+
+          self.cleanup_matches()
+          total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
+          if total != old_total:
+            self.find_matches_diffing()
 
         self.final_pass()
 
@@ -2806,7 +2792,9 @@ class CBinDiff:
         percent = ((best + partial + unreliable) * 100) / self.total_functions1
         log("Final results: Best %d, Partial %d, Unreliable %d, Multimatches %d" % (best, partial, unreliable, multi))
         log("Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1))
-        log("Done. Took {} seconds.".format(time.monotonic() - t0))
+
+        final_t = time.monotonic() - t0
+        log("Done, time taken: {}.".format(datetime.timedelta(seconds=final_t)))
 
     finally:
       cur.close()

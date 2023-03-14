@@ -1676,6 +1676,13 @@ class CIDABinDiff(diaphora.CBinDiff):
     if not self.decompiler_available or is_spec_ea(ea):
       return False
 
+    # Workaround for a bug in IDA that might trigger the following error:
+    #
+    # max non-trivial tinfo_t count has been reached
+    #
+    if os.getenv("DIAPHORA_WORKAROUND_MAX_TINFO_T") is not None:
+      idaapi.clear_cached_cfuncs()
+
     decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
     if decompiler_plugin is None:
       decompiler_plugin = "hexrays"
@@ -2848,7 +2855,8 @@ def _diff_or_export(use_ui, **options):
           os.remove("%s-crash" % opts.file_out)
 
       if exported:
-        log("Database exported. Took {} seconds.".format(time.monotonic() - t0))
+        final_t = time.monotonic() - t0
+        log("Database exported, time taken: {}.".format(datetime.timedelta(seconds=final_t)))
         hide_wait_box()
 
     if opts.file_in != "":
