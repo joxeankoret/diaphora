@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 """
-Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2022, Joxean Koret
+Diaphora, a binary diffing tool
+Copyright (c) 2015-2023, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -88,7 +88,7 @@ ITEM_DIFF_BBLOCKS = 7
 
 # Yes, yes, I know, parsing C/C++ with regular expressions is wrong and cannot
 # be done, but we don't need to parse neither real nor complete C/C++, and we
-# just want to extract potentital function names from matching lines of assembly
+# just want to extract potential function names from matching lines of assembly
 # and pseudo-code that, also, can be partial or non C/C++ compliant but, for a
 # reason, in a format supported by IDA.
 CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
@@ -1641,7 +1641,7 @@ class CBinDiff:
 
   def search_small_differences(self, choose):
     """
-    XXX: FIXME: Double check this heuristic because I don't understand what it really does.
+    Find matches where most used names are the same.
     """
     cur = self.db_cursor()
     
@@ -1799,50 +1799,6 @@ class CBinDiff:
     
     return rid
 
-  def find_in_compilation_units(self):
-    """
-    Find possible matches for each compilation unit.
-
-    XXX: FIXME: Double check this heuristic because I'm not sure how it works.
-    """
-    cur = self.db_cursor()
-    try:
-
-      sql = """
-        select cuf.cu_id, dcuf.cu_id, cuf.func_id, dcuf.func_id,
-               bm.name1, bm.name2, bm.ea1, bm.ea2
-          from main.compilation_unit_functions cuf,
-               diff.compilation_unit_functions dcuf,
-               best_matches bm
-         where cuf.func_id = bm.id1
-           and dcuf.func_id = bm.id2
-         order by cuf.cu_id, dcuf.cu_id
-      """
-      cur.execute(sql)
-      rows = list(cur.fetchall())
-
-      heur = "Compilation unit match"
-      sql2 = """select distinct """ + get_query_fields(heur) + """
-                  from functions f,
-                       diff.functions df,
-                       main.compilation_unit_functions cuf,
-                       diff.compilation_unit_functions dcuf
-                 where f.id = cuf.id
-                   and df.id = dcuf.id
-                   and cuf.id = ?
-                   and dcuf.id = ?
-                   and f.nodes > 3
-                   and df.nodes > 3
-      """
-      for row in rows:
-        cur.execute(sql2, (row[0], row[1]))
-        self.add_matches_internal(cur, best="best", \
-                                  partial="partial",\
-                                  unreliable="unreliable",\
-                                  val=0.79)
-    finally:
-      cur.close()
-
   def find_callgraph_matches(self):
     best_items = list(self.all_matches["best"])
     self.find_callgraph_matches_from(best_items, 0.60)
@@ -1870,6 +1826,7 @@ class CBinDiff:
 
   def find_brute_force(self):
     # XXX: FIXME: Joxean, double check this!
+    # XXX: FIXME: It looks so wrong. It might never even end!
     cur = self.db_cursor()
     sql = "create temporary table unmatched(id integer null primary key, address, main)"
     cur.execute(sql)
@@ -1937,13 +1894,12 @@ class CBinDiff:
   def find_experimental_matches(self):
     self.run_heuristics_for_category("Experimental")
 
+  def find_unreliable_matches(self):
+    self.run_heuristics_for_category("Unreliable")
     if self.slow_heuristics and self.unreliable:
       # Find using brute-force
       log_refresh("Brute-forcing...")
       self.find_brute_force()
-
-  def find_unreliable_matches(self):
-    self.run_heuristics_for_category("Unreliable")
 
   def find_unmatched(self):
     # XXX: FIXME: Joxean, this function is doing what another function does!!!
@@ -2074,8 +2030,6 @@ class CBinDiff:
     """
     Get the full table row for the given function with name @name in the database
     @db_name.
-
-    XXX: FIXME: Joxean, this function is not used.
     """
     row = None
     cur = self.db_cursor()
@@ -2522,7 +2476,6 @@ class CBinDiff:
 
   def find_matches_diffing_internal(self, heur, field_name):
     # XXX: FIXME: Joxean, paralellize this algorithm!!!
-    # XXX: FIXME: Joxean, difflib is horribly slow, replace it with diff-match-patch!
     log_refresh("Finding with heuristic '%s'" % heur)
     db = self.db_cursor()
     try:

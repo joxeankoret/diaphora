@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2022, Joxean Koret
+Copyright (c) 2015-2023, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -451,7 +451,7 @@ class CIDAChooser(CDiaphoraChooser):
                            diff.functions df
                      where f.name = %s
                        and df.name = %s""" % (repr(name1), repr(name2))
-          # Joxean, matches aren't added just like this any more, fix this!!!
+          # XXX: FIXME: Joxean, matches aren't added just like this any more, fix this!!!
           self.bindiff.add_matches_from_query_ratio(sql, "best", "partial")
           for chooser in [self.bindiff.best_chooser, self.bindiff.partial_chooser, self.bindiff.unreliable_chooser]:
             chooser.Refresh()
