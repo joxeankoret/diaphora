@@ -331,6 +331,7 @@ HEURISTICS.append({
                 and df.id = dcuf.func_id
                 and f.nodes > 4
                 and df.nodes > 4
+                and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
                 %POSTFIX% """,
   "flags":HEUR_FLAG_NONE
 })
@@ -374,6 +375,7 @@ HEURISTICS.append({
         and f.nodes >= 4
         and f.outdegree = df.outdegree
         and f.indegree  = df.indegree
+        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
         %POSTFIX%
         """,
   "flags":0
@@ -627,6 +629,7 @@ HEURISTICS.append({
         and f.loops = df.loops
         and f.nodes > 5 and df.nodes > 5
         and f.loops > 0
+        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
         %POSTFIX% """,
   "min":0.549,
   "flags":HEUR_FLAG_NONE
@@ -665,6 +668,7 @@ HEURISTICS.append({
         and f.cyclomatic_complexity = df.cyclomatic_complexity
         and f.cyclomatic_complexity < 15
         and df.names != '[]'
+        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
         %POSTFIX% """,
   "min":0.5,
   "flags":HEUR_FLAG_NONE
