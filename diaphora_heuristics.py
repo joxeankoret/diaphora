@@ -74,7 +74,7 @@ HEURISTICS.append({
                and df.bytes_hash = f.bytes_hash
                and df.instructions = f.instructions
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))""",
+                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))""",
   "flags":HEUR_FLAG_NONE
 })
 
@@ -90,7 +90,7 @@ HEURISTICS.append({
                and df.bytes_hash = f.bytes_hash
                and df.instructions = f.instructions
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
                and ((f.nodes > 1 and df.nodes > 1
                  and f.instructions > 5 and df.instructions > 5)
                   or f.instructions > 10 and df.instructions > 10)""",
@@ -138,7 +138,7 @@ HEURISTICS.append({
                and df.instructions = f.instructions
                and df.instructions > 5
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
              order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_NONE
 })
@@ -204,7 +204,7 @@ HEURISTICS.append({
                    diff.functions df
              where df.rva = f.rva
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
                %POSTFIX%
              order by f.source_file = df.source_file""",
   "min":0.7,
@@ -238,7 +238,7 @@ HEURISTICS.append({
         and f.name not like 'nullsub%'
         and df.name not like 'nullsub%'
         %POSTFIX% """,
-  "flags":HEUR_FLAG_NONE|HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 # It seems that SQLite is slowly executing this query due to the following:
@@ -375,7 +375,7 @@ HEURISTICS.append({
         and f.nodes >= 4
         and f.outdegree = df.outdegree
         and f.indegree  = df.indegree
-        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
+        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_')
         %POSTFIX%
         """,
   "flags":0
@@ -423,6 +423,7 @@ HEURISTICS.append({
       where f.kgh_hash = df.kgh_hash
         and df.kgh_hash = shared_hashes.kgh_hash
         and f.nodes > 5
+        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_')
         %POSTFIX%
         """,
   "min":0.45,
@@ -688,7 +689,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.5,
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 name = "Pseudo-code fuzzy (normal)"
@@ -704,7 +705,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.5,
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 name = "Pseudo-code fuzzy (mixed)"
@@ -719,7 +720,7 @@ HEURISTICS.append({
         and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 name = "Pseudo-code fuzzy (reverse)"
@@ -734,7 +735,7 @@ HEURISTICS.append({
         and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 name = "Pseudo-code fuzzy AST hash"
@@ -751,7 +752,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.35,
-  "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
+  "flags":HEUR_FLAG_UNRELIABLE
 })
 
 name = "Partial pseudo-code fuzzy hash (normal)"
@@ -822,7 +823,7 @@ HEURISTICS.append({
 name = "Same graph"
 HEURISTICS.append({
   "name":name,
-  "category":"Partial",
+  "category":"Unreliable",
   "ratio":HEUR_TYPE_RATIO_MAX,
   "sql":""" select """ + get_query_fields(name) + """
         from functions f,
@@ -851,7 +852,7 @@ HEURISTICS.append({
              case when f.pseudocode_hash2 = df.pseudocode_hash2 then 1 else 0 end +
              case when f.pseudocode_hash3 = df.pseudocode_hash3 then 1 else 0 end DESC""",
   "min":0.5,
-  "flags":HEUR_FLAG_SLOW
+  "flags":HEUR_FLAG_NONE
 })
 
 #

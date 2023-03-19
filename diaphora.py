@@ -781,7 +781,7 @@ class CBinDiff:
     for rep in CMP_REMS:
       tmp = self.re_sub(rep + "[a-f0-9A-F]+", "", tmp)
 
-    reps = ["\+[a-f0-9A-F]+h\+"]
+    reps = [r"\+[a-f0-9A-F]+h\+"]
     for rep in reps:
       tmp = self.re_sub(rep, "+XXXX+", tmp)
     tmp = self.re_sub(r"\.\.[a-f0-9A-F]{8}", "XXX", tmp)
@@ -2444,8 +2444,12 @@ class CBinDiff:
             key = "%s-%s" % (name1, name2)
             if key in dones:
               continue
-
             dones.add(key)
+
+            if name1.startswith("nullsub") or name2.startswith("nullsub"):
+              # Ignore such functions
+              continue
+
             size = len(dones)
             if size > 0 and size % 10000 == 0:
               log("%d callee matches processed so far..." % size)
@@ -2484,8 +2488,7 @@ class CBinDiff:
       # Should I let it run for some more iterations? There is a small chance of
       # hitting an infinite loop, so I'm hardcoding an upper limit.
       while iteration <= 3:
-        old_best_count = len(self.all_matches["best"])
-        old_partial_count = len(self.all_matches["partial"])
+        old_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
 
         for key in ["best", "partial"]:
           l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
@@ -2507,8 +2510,9 @@ class CBinDiff:
 
         self.cleanup_matches()
         self.show_summary()
-        if len(self.all_matches["best"]) <= old_best_count and \
-           len(self.all_matches["partial"]) <= old_partial_count:
+
+        new_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
+        if new_total == old_total:
           break
 
         log("New iteration with heuristic '%s'..." % heur)
@@ -2542,7 +2546,11 @@ class CBinDiff:
     Find the 'bester' matches in the functions gap specified by the given ranges
     """
     cur = self.db_cursor()
-    sql = "select * from {db}.functions where address > ? and address < ?"
+    sql = """select *
+               from {db}.functions
+              where address > ?
+                and address < ?
+              order by address desc"""
     try:
       heur_text = "Local affinity"
 
@@ -2567,6 +2575,8 @@ class CBinDiff:
               name1 = main_row["name"]
               name2 = diff_row["name"]
               if name1.startswith("nullsub_") or name2.startswith("nullsub_"):
+                continue
+              if not name1.startswith("sub_") and not name2.startswith("sub_"):
                 continue
 
               pseudocode_lines1 = main_row["pseudocode_lines"]
@@ -2594,7 +2604,7 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_matches_in_gaps(self):
+  def find_locally_affine_functions(self):
     """
     Try to find functions between the unmatched functions space inside two
     previously matched functions.
@@ -2614,6 +2624,8 @@ class CBinDiff:
     then brute force these subsets when they have a maximum hardcoded number of
     100 functions. We don't consider bigger gaps. For now.
     """
+    self.cleanup_matches()
+
     tmp_matches = list(self.all_matches["best"])
     tmp_matches.extend(list(self.all_matches["partial"]))
     tmp_matches = sorted(tmp_matches, key=lambda x: [int(x[0]), int(x[2])])
@@ -2711,21 +2723,13 @@ class CBinDiff:
             log_refresh("Finding experimental matches")
             self.find_experimental_matches()
 
-          self.cleanup_matches()
-          old_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
-
           # Find new matches by diffing assembly and pseudo-code of previously
           # found matches
           self.find_matches_diffing()
 
           # Find new matches in the functions between matches
           log_refresh("Finding locally affine functions")
-          self.find_matches_in_gaps()
-
-          self.cleanup_matches()
-          total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
-          if total != old_total:
-            self.find_matches_diffing()
+          self.find_locally_affine_functions()
 
         self.final_pass()
 

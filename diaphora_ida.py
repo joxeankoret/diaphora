@@ -1455,6 +1455,36 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return False
 
+  def do_import_instruction_level_item(self, diff_rows, import_syms, matched_syms):
+    lines1 = diff_rows[0]["assembly"]
+    lines2 = diff_rows[1]["assembly"]
+    
+    address1 = json.loads(diff_rows[0]["assembly_addrs"])
+    address2 = json.loads(diff_rows[1]["assembly_addrs"])
+    
+    diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
+    for x in diff_list:
+      left, right, ignore = x
+      left_line  = left[0]
+      right_line = right[0]
+    
+      if right_line == "" or left_line == "":
+        continue
+    
+      # At this point, we know which line number matches with
+      # which another line number in both databases.
+      ea1 = address1[int(left_line)-1]
+      ea2 = address2[int(right_line)-1]
+      changed = left[1].startswith('\x00-') and right[1].startswith('\x00+')
+      is_importable = self.row_is_importable(ea2, import_syms)
+      if changed or is_importable:
+        ea1 = str(ea1)
+        ea2 = str(ea2)
+        if ea1 in matched_syms and ea2 in import_syms:
+          self.import_instruction(matched_syms[ea1], import_syms[ea2])
+        if ea2 in matched_syms and ea1 in import_syms:
+          self.import_instruction(matched_syms[ea2], import_syms[ea1])
+
   def import_instruction_level(self, ea1, ea2, cur):
     cur = self.db_cursor()
     try:
@@ -1512,34 +1542,10 @@ class CIDABinDiff(diaphora.CBinDiff):
           cur.execute(sql, (str(ea1), str(ea2)))
           diff_rows = cur.fetchall()
           if len(diff_rows) > 0:
-            lines1 = diff_rows[0]["assembly"]
-            lines2 = diff_rows[1]["assembly"]
-
-            address1 = json.loads(diff_rows[0]["assembly_addrs"])
-            address2 = json.loads(diff_rows[1]["assembly_addrs"])
-
-            diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
-            for x in diff_list:
-              left, right, ignore = x
-              left_line  = left[0]
-              right_line = right[0]
-
-              if right_line == "" or left_line == "":
-                continue
-
-              # At this point, we know which line number matches with
-              # which another line number in both databases.
-              ea1 = address1[int(left_line)-1]
-              ea2 = address2[int(right_line)-1]
-              changed = left[1].startswith('\x00-') and right[1].startswith('\x00+')
-              is_importable = self.row_is_importable(ea2, import_syms)
-              if changed or is_importable:
-                ea1 = str(ea1)
-                ea2 = str(ea2)
-                if ea1 in matched_syms and ea2 in import_syms:
-                  self.import_instruction(matched_syms[ea1], import_syms[ea2])
-                if ea2 in matched_syms and ea1 in import_syms:
-                  self.import_instruction(matched_syms[ea2], import_syms[ea1])
+            try:
+              self.do_import_instruction_level_item(diff_rows, import_syms, matched_syms)
+            except:
+              log("Error importing item: %s" % str(sys.exc_info()[1]))
     finally:
       cur.close()
 
@@ -1930,8 +1936,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     # After sorting our the addresses of basic blocks, be sure that the
     # very first address is always the entry point, no matter at what
     # address it is.
-    keys.remove(f - image_base)
-    keys.insert(0, f - image_base)
+    base = f - image_base
+    keys.remove(base)
+    keys.insert(0, base)
     for key in keys:
       for line in assembly[key]:
         assembly_addrs.append(line[0])
@@ -2036,6 +2043,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       flags = get_func_attr(f, FUNCATTR_FLAGS)
       if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
         debug_refresh("Skipping thunk function %s" % repr(name))
+        return False
+      
+      if name.startswith("nullsub_"):
+        debug_refresh("Skipping nullsub function %s" % repr(name))
         return False
 
     image_base = self.get_base_address()
