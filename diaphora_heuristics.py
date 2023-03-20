@@ -189,6 +189,8 @@ HEURISTICS.append({
         and f.nodes = df.nodes
         and f.edges = df.edges
         and f.mnemonics = df.mnemonics
+        and f.instructions > 3
+        and df.instructions > 3
         and f.nodes > 1
       order by f.source_file = df.source_file""",
   "flags":HEUR_FLAG_NONE
@@ -803,6 +805,52 @@ HEURISTICS.append({
   "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
 })
 
+name = "Same rare assembly instruction"
+HEURISTICS.append({
+  "name":name,
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":"""
+with main_asm as (
+  select f.id, f.name, inst.disasm
+    from main.instructions inst,
+         main.functions f
+   where f.id = inst.func_id
+     and f.name not like 'nullsub%'
+     and inst.disasm is not null
+     and inst.disasm != ''
+   group by inst.disasm
+  having count(0) = 1
+),
+diff_asm as (
+  select f.id, f.name, inst.disasm
+    from diff.instructions inst,
+         diff.functions f
+   where f.id = inst.func_id
+     and f.name not like 'nullsub%'
+     and inst.disasm is not null
+     and inst.disasm != ''
+   group by inst.disasm
+  having count(0) = 1
+),
+query1 as (
+  select distinct main_asm.id main_func_id, diff_asm.id diff_func_id
+    from main_asm,
+         diff_asm
+   where main_asm.disasm = diff_asm.disasm
+)
+select """ + get_query_fields(name) + """
+  from main.functions f,
+       diff.functions df,
+       query1
+ where f.id  = query1.main_func_id
+   and df.id = query1.diff_func_id
+   and f.name != df.name
+""",
+  "min":0.5,
+  "flags":HEUR_FLAG_NONE
+})
+
 name = "Loop count"
 HEURISTICS.append({
   "name":name,
@@ -1074,7 +1122,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 20, 2: 20, 0: 5, 3: 1}))
+  assert(ratios == Counter({1: 20, 2: 21, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():

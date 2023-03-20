@@ -526,15 +526,15 @@ class CBinDiff:
 
     return rowid
 
-  def save_instructions_to_database(self, cur, bb_data, prop):
+  def save_instructions_to_database(self, cur, bb_data, prop, func_id):
     """
     Save all the instructions in the basic block @bb_data to the database.
     """
     instructions_ids = {}
     sql = """insert into main.instructions (address, mnemonic, disasm,
                                             comment1, comment2, operand_names, name,
-                                            type, pseudocomment, pseudoitp)
-                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                            type, pseudocomment, pseudoitp, func_id)
+                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
     self_get_instruction_id = self.get_instruction_id
     cur_execute = cur.execute
     for key in bb_data:
@@ -561,6 +561,7 @@ class CBinDiff:
     
           instruction_properties.append(pseudocomment)
           instruction_properties.append(pseudoitp)
+          instruction_properties.append(func_id)
           cur.execute(sql, instruction_properties)
           db_id = cur.lastrowid
         instructions_ids[addr] = db_id
@@ -618,7 +619,7 @@ class CBinDiff:
     """
     # The last 2 fields are basic_blocks_data & bb_relations
     bb_data, bb_relations = props[len(props)-2:]
-    cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop)
+    cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop, func_id)
     bb_id = self.insert_basic_blocks_to_database(bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id)
     return bb_id
 
@@ -1330,6 +1331,8 @@ class CBinDiff:
   def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
                   clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2):
     """
+    XXX: FIXME: Joxean, this function needs some serious improvements.
+
     Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
     1.0 would be the best possible match and 0.0 would be the worst one.
     """
@@ -1825,8 +1828,7 @@ class CBinDiff:
       self.search_small_differences("partial")
 
   def find_brute_force(self):
-    # XXX: FIXME: Joxean, double check this!
-    # XXX: FIXME: It looks so wrong. It might never even end!
+    # XXX: FIXME: Joxean, this is unreliable at best
     cur = self.db_cursor()
     sql = "create temporary table unmatched(id integer null primary key, address, main)"
     cur.execute(sql)
@@ -1950,7 +1952,7 @@ class CBinDiff:
     Save all the results (best, partial, unreliable, multimatches and unmatched)
     to the file @filename.
 
-    XXX: FIXME: Joxean, it must be refactored.
+    XXX: FIXME: Joxean, this must be refactored.
     """
     if os.path.exists(filename):
       os.remove(filename)
@@ -2019,7 +2021,7 @@ class CBinDiff:
     """
     Try attaching the diff database and ignore any error???
 
-    XXX: FIXME: Joxean, this looks odd, double check.
+    NOTE: I know, this looks odd. Is yet another workaround for an old IDA bug.
     """
     try:
       cur.execute('attach "%s" as diff' % db)
@@ -2568,6 +2570,12 @@ class CBinDiff:
         # Check again the same number of maximum hardcoded functions that we'll
         # consider for this heuristic...
         if size > 0 and size <= 100:
+
+          local_main_matched = set()
+          main_score = {}
+          local_diff_matched = set()
+          diff_score = {}
+
           # And then, brute force all of these functions to find good matches
           # regardless of the position.
           for main_row in main_rows:
@@ -2593,6 +2601,15 @@ class CBinDiff:
               else:
                 continue
 
+              # If we have a previous match with the same score we discard this
+              # second one, as this heuristics orders functions by address in
+              # both functions and due to how compilers/linkers work, the first
+              # matches are the best ones in this case.
+              if name1 in local_main_matched and main_score[name1] >= r:
+                continue
+              if name2 in local_diff_matched and diff_score[name2] >= r:
+                continue
+
               ea1 = main_row["address"]
               ea2 = diff_row["address"]
               name1 = main_row["name"]
@@ -2601,6 +2618,11 @@ class CBinDiff:
               bb2 = int(diff_row["nodes"])
               new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
               self.add_match(name1, name2, r, new_item, chooser)
+
+              local_main_matched.add(name1)
+              main_score[name1] = r
+              local_diff_matched.add(name2)
+              diff_score[name2] = r
     finally:
       cur.close()
 

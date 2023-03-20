@@ -125,6 +125,7 @@ TABLES = [
   """ create table if not exists version (value text) """,
   """ create table if not exists instructions (
                   id integer primary key,
+                  func_id integer not null,
                   address text unique,
                   disasm text,
                   mnemonic text,
