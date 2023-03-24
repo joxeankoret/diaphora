@@ -39,6 +39,8 @@ HEUR_TYPE_RATIO_MAX_TRUSTED = 3
 HEUR_FLAG_NONE        = 0
 HEUR_FLAG_UNRELIABLE  = 1
 HEUR_FLAG_SLOW        = 2
+# The heuristic should only be launched when diffing the same architecture
+HEUR_FLAG_SAME_CPU    = 3
 
 #-------------------------------------------------------------------------------
 SELECT_FIELDS = """ f.address ea, f.name name1, df.address ea2, df.name name2,
@@ -407,26 +409,30 @@ HEURISTICS.append({
   "name":name,
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select """ + get_query_fields(name) + """
-       from functions f,
-            diff.functions df,
-            (select kgh_hash
-               from diff.functions
-              where kgh_hash != 0
-              group by kgh_hash
-             having count(*) <= 2
-              union 
-             select kgh_hash
-               from main.functions
-              where kgh_hash != 0
-              group by kgh_hash
-             having count(*) <= 2
-            ) shared_hashes
-      where f.kgh_hash = df.kgh_hash
-        and df.kgh_hash = shared_hashes.kgh_hash
-        and f.nodes > 5
-        and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_')
-        %POSTFIX%
+  "sql":"""
+with shared_hashes as (
+ select kgh_hash
+   from diff.functions
+  where kgh_hash != 0
+  group by kgh_hash
+ having count(*) <= 2
+  union 
+ select kgh_hash
+   from main.functions
+  where kgh_hash != 0
+  group by kgh_hash
+ having count(*) <= 2
+)
+select """ + get_query_fields(name) + """
+  from functions f,
+   	   diff.functions df,
+	   shared_hashes
+ where f.kgh_hash = df.kgh_hash
+   and df.kgh_hash = shared_hashes.kgh_hash
+   and f.nodes > 5
+   and (substr(f.name, 1, 4) = 'sub_'
+     or substr(df.name, 1, 4) = 'sub_')
+   %POSTFIX%
         """,
   "min":0.45,
   "flags":HEUR_FLAG_NONE
@@ -437,21 +443,24 @@ HEURISTICS.append({
   "name":name,
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO,
-  "sql":"""select """ + get_query_fields(name) + """
+  "sql":"""
+     with shared_mds as (
+      select md_index
+        from diff.functions
+       where md_index != 0
+       group by md_index
+      having count(*) <= 2
+      union 
+      select md_index
+        from main.functions
+       where md_index != 0
+       group by md_index
+      having count(*) <= 2
+     )
+     select """ + get_query_fields(name) + """
        from functions f,
             diff.functions df,
-            (select md_index
-               from diff.functions
-              where md_index != 0
-              group by md_index
-             having count(*) <= 2
-              union 
-             select md_index
-               from main.functions
-              where md_index != 0
-              group by md_index
-             having count(*) <= 2
-            ) shared_mds
+            shared_mds
       where f.md_index = df.md_index
         and df.md_index = shared_mds.md_index
         and f.nodes > 10
@@ -846,6 +855,51 @@ select """ + get_query_fields(name) + """
  where f.id  = query1.main_func_id
    and df.id = query1.diff_func_id
    and f.name != df.name
+   and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
+""",
+  "min":0.5,
+  "flags":HEUR_FLAG_NONE
+})
+
+name = "Same rare basic block mnemonics list"
+HEURISTICS.append({
+  "name":name,
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":"""
+with main_bblocks as (
+select inst.func_id, bb.basic_block_id bb_id, GROUP_CONCAT(inst.mnemonic) as mnemonics_list, count(0) inst_total
+  from main.bb_instructions bb,
+       main.instructions inst
+ where bb.instruction_id = inst.id
+ group by bb_id
+),
+diff_bblocks as (
+select inst.func_id, bb.basic_block_id bb_id, GROUP_CONCAT(inst.mnemonic) as mnemonics_list, count(0) inst_total
+  from diff.bb_instructions bb,
+       diff.instructions inst
+ where bb.instruction_id = inst.id
+ group by bb_id
+),
+unique_main_bblocks as (
+select func_id, mnemonics_list, count(0) total
+  from main_bblocks
+ group by mnemonics_list
+having count(0) = 1
+ order by total asc
+)
+select """ + get_query_fields(name) + """
+  from unique_main_bblocks main_query,
+       diff_bblocks diff_query,
+	   main.functions f,
+	   diff.functions df
+ where main_query.mnemonics_list = diff_query.mnemonics_list
+   and f.id = main_query.func_id
+   and df.id = diff_query.func_id
+   and f.nodes > 3
+   and df.nodes > 3
+   and diff_query.inst_total >= 6
+   and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
 """,
   "min":0.5,
   "flags":HEUR_FLAG_NONE

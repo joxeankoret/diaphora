@@ -1062,6 +1062,11 @@ class CBinDiff:
       return True
     elif name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio:
       return True
+
+    # If we have a match by name, that's the best match    
+    if not name1.startswith("sub_") and not name2.startswith("sub_"):
+      if name1 in self.matched_primary and self.matched_primary[name1]["name"] == name1:
+        return True
     return False
 
   def find_equal_matches(self):
@@ -1564,6 +1569,10 @@ class CBinDiff:
       self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable="unreliable")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
+      print("*"*80)
+      print(sql)
+      print("*"*80)
+      traceback.print_exc()
       raise
     finally:
       cur.close()
@@ -2460,6 +2469,13 @@ class CBinDiff:
             if exists:
               main_row = l[0]
               diff_row = l[1]
+              min_nodes = min(main_row["nodes"], diff_row["nodes"])
+              max_nodes = max(main_row["nodes"], diff_row["nodes"])
+
+              # If the number of basic blocks differ in more than 75% ignore...
+              if ((min_nodes * 100) / max_nodes) < 25:
+                continue
+
               r = self.compare_function_rows(main_row, diff_row)
               if r == 1.0:
                 chooser = "best"
