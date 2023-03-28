@@ -304,6 +304,7 @@ class CBinDiff:
 
     self.is_symbols_stripped = False
     self.is_patch_diff = False
+    self.is_same_processor = False
 
     ####################################################################
     # LIMITS
@@ -1152,12 +1153,16 @@ class CBinDiff:
         min_value = heur["min"]
 
       flags = heur["flags"]
-      if flags & HEUR_FLAG_UNRELIABLE == HEUR_FLAG_UNRELIABLE and not self.unreliable:
+      if HEUR_FLAG_UNRELIABLE in flags and not self.unreliable:
         log_refresh("Skipping unreliable heuristic '%s'" % name)
         continue
 
-      if flags & HEUR_FLAG_SLOW == HEUR_FLAG_SLOW and not self.slow_heuristics:
+      if HEUR_FLAG_SLOW in flags and not self.slow_heuristics:
         log_refresh("Skipping slow heuristic '%s'" % name)
+        continue
+
+      if HEUR_FLAG_SAME_CPU in flags and not self.is_same_processor:
+        log_refresh("Skipping processor specific heuristic '%s'" % name)
         continue
 
       if arg_category.lower() == "unreliable":
@@ -2475,6 +2480,12 @@ class CBinDiff:
               # If the number of basic blocks differ in more than 75% ignore...
               if ((min_nodes * 100) / max_nodes) < 25:
                 continue
+              
+              # There is a high risk of false positives with small functions,
+              # therefore, it's preferred to miss functions than having false
+              # positives
+              if main_row["nodes"] < 3 or diff_row["nodes"] < 3:
+                continue
 
               r = self.compare_function_rows(main_row, diff_row)
               if r == 1.0:
@@ -2497,7 +2508,11 @@ class CBinDiff:
     return dones
 
   def find_matches_diffing_internal(self, heur, field_name):
-    # XXX: FIXME: Joxean, paralellize this algorithm!!!
+    """
+    Find funtions by diffing matches assembly or pseudo-codes.
+
+    NOTE: Should this algorithm be parallelized?
+    """
     log_refresh("Finding with heuristic '%s'" % heur)
     db = self.db_cursor()
     try:
@@ -2554,7 +2569,7 @@ class CBinDiff:
 
     # If the processor is the same for both databases, diff assembler to find
     # new matches
-    if self.same_processor_both_databases():
+    if self.is_same_processor:
       self.find_matches_diffing_assembly()
 
     self.find_matches_diffing_pseudo()
@@ -2731,6 +2746,7 @@ class CBinDiff:
         self.find_equal_matches()
 
         skip_others = False
+        self.is_same_processor = self.same_processor_both_databases()
         if self.experimental:
           # Dirty magic. Might or might not work...
           log_refresh("Checking 'dirty' heuristics...")

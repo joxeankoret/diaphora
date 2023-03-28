@@ -76,8 +76,10 @@ HEURISTICS.append({
                and df.bytes_hash = f.bytes_hash
                and df.instructions = f.instructions
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))""",
-  "flags":HEUR_FLAG_NONE
+                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
+               and f.nodes >= 3
+               and df.nodes >= 3""",
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Same order and hash"
@@ -96,7 +98,7 @@ HEURISTICS.append({
                and ((f.nodes > 1 and df.nodes > 1
                  and f.instructions > 5 and df.instructions > 5)
                   or f.instructions > 10 and df.instructions > 10)""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Function Hash"
@@ -111,7 +113,7 @@ HEURISTICS.append({
                and ((f.nodes > 1 and df.nodes > 1
                  and f.instructions > 5 and df.instructions > 5)
                   or f.instructions > 10 and df.instructions > 10)""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Bytes hash"
@@ -124,7 +126,7 @@ HEURISTICS.append({
                    diff.functions df
              where f.bytes_hash = df.bytes_hash
                and f.instructions > 5 and df.instructions > 5""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Same address and mnemonics"
@@ -142,7 +144,7 @@ HEURISTICS.append({
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
                  or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
              order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same cleaned assembly"
@@ -158,7 +160,7 @@ HEURISTICS.append({
          and f.name not like 'nullsub%'
          and df.name not like 'nullsub%'
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Same cleaned pseudo-code"
@@ -175,7 +177,7 @@ HEURISTICS.append({
          and df.name not like 'nullsub%'
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same address, nodes, edges and mnemonics"
@@ -195,7 +197,7 @@ HEURISTICS.append({
         and df.instructions > 3
         and f.nodes > 1
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same RVA"
@@ -209,10 +211,12 @@ HEURISTICS.append({
              where df.rva = f.rva
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
                 or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
+               and  f.nodes >= 3
+               and df.nodes >= 3
                %POSTFIX%
              order by f.source_file = df.source_file""",
   "min":0.7,
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 #
@@ -242,7 +246,7 @@ HEURISTICS.append({
         and f.name not like 'nullsub%'
         and df.name not like 'nullsub%'
         %POSTFIX% """,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # It seems that SQLite is slowly executing this query due to the following:
@@ -276,7 +280,7 @@ HEURISTICS.append({
                 %POSTFIX% 
                 """,
   "min":0.44,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same anonymous compilation unit function match"
@@ -304,7 +308,7 @@ HEURISTICS.append({
                 %POSTFIX% 
               order by f.source_file = df.source_file""",
   "min":0.449,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # An ORDER BY clause would be good to have here, but SQLite may generate huge
@@ -337,7 +341,7 @@ HEURISTICS.append({
                 and df.nodes > 4
                 and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
                 %POSTFIX% """,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # Adding a DISTINCT and an ORDER BY clause in this query causes SQLite to create
@@ -359,7 +363,7 @@ HEURISTICS.append({
         and f.kgh_hash = df.kgh_hash
         and f.nodes >= 3
         %POSTFIX% """,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # The same explained in the previous query happens here: for huge databases the
@@ -382,7 +386,7 @@ HEURISTICS.append({
         and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_')
         %POSTFIX%
         """,
-  "flags":0
+  "flags":[]
 })
 
 name = "Same constants"
@@ -399,7 +403,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # The ORDER BY clause is removed because it was causing serious slowness problems
@@ -435,7 +439,7 @@ select """ + get_query_fields(name) + """
    %POSTFIX%
         """,
   "min":0.45,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same rare MD Index"
@@ -466,7 +470,7 @@ HEURISTICS.append({
         and f.nodes > 10
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 #
@@ -489,7 +493,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # The DISTINCT and ORDER BY clause have been removed due to slowness problems
@@ -510,7 +514,7 @@ HEURISTICS.append({
         and f.constants_count > 0
         %POSTFIX% """,
   "min":0.2,
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 name = "Same MD Index and constants"
@@ -528,7 +532,7 @@ HEURISTICS.append({
          and f.constants_count > 0))
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Import names hash"
@@ -546,7 +550,7 @@ HEURISTICS.append({
               and f.nodes > 5 and df.nodes > 5
               %POSTFIX%
             order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Mnemonics and names"
@@ -564,7 +568,7 @@ HEURISTICS.append({
          and f.instructions > 5 and df.instructions > 5
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Pseudo-code fuzzy hash"
@@ -585,7 +589,7 @@ HEURISTICS.append({
         and df.instructions > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Similar pseudo-code and names"
@@ -605,7 +609,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.579,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Mnemonics small-primes-product"
@@ -622,7 +626,7 @@ HEURISTICS.append({
          and df.instructions > 5
          %POSTFIX% """,
   "min":0.6,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # The ORDER BY clause is removed because it was causing serious slowness problems
@@ -644,7 +648,7 @@ HEURISTICS.append({
         and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
         %POSTFIX% """,
   "min":0.549,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 # The ORDER BY clause is removed because it was causing serious slowness problems
@@ -665,7 +669,7 @@ HEURISTICS.append({
           and df.names != '[]'
           %POSTFIX% """,
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Same low complexity and names"
@@ -683,7 +687,7 @@ HEURISTICS.append({
         and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
         %POSTFIX% """,
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Switch structures"
@@ -700,7 +704,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Pseudo-code fuzzy (normal)"
@@ -716,7 +720,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Pseudo-code fuzzy (mixed)"
@@ -731,7 +735,7 @@ HEURISTICS.append({
         and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Pseudo-code fuzzy (reverse)"
@@ -746,7 +750,7 @@ HEURISTICS.append({
         and f.pseudocode_lines > 5 and df.pseudocode_lines > 5
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Pseudo-code fuzzy AST hash"
@@ -763,7 +767,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.35,
-  "flags":HEUR_FLAG_UNRELIABLE
+  "flags":[HEUR_FLAG_UNRELIABLE]
 })
 
 name = "Partial pseudo-code fuzzy hash (normal)"
@@ -779,7 +783,7 @@ HEURISTICS.append({
           %POSTFIX%
         order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
+  "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
 })
 
 name = "Partial pseudo-code fuzzy hash (reverse)"
@@ -795,7 +799,7 @@ HEURISTICS.append({
           %POSTFIX%
         order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
+  "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
 })
 
 name = "Partial pseudo-code fuzzy hash (mixed)"
@@ -811,7 +815,7 @@ HEURISTICS.append({
           %POSTFIX%
         order by f.source_file = df.source_file""",
   "min":0.5,
-  "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
+  "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
 })
 
 name = "Same rare assembly instruction"
@@ -858,7 +862,7 @@ select """ + get_query_fields(name) + """
    and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
 """,
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[HEUR_FLAG_SAME_CPU]
 })
 
 name = "Same rare basic block mnemonics list"
@@ -902,7 +906,7 @@ select """ + get_query_fields(name) + """
    and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
 """,
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 name = "Loop count"
@@ -919,7 +923,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.49,
-  "flags":HEUR_FLAG_SLOW|HEUR_FLAG_UNRELIABLE
+  "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
 })
 
 name = "Same graph"
@@ -954,7 +958,7 @@ HEURISTICS.append({
              case when f.pseudocode_hash2 = df.pseudocode_hash2 then 1 else 0 end +
              case when f.pseudocode_hash3 = df.pseudocode_hash3 then 1 else 0 end DESC""",
   "min":0.5,
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 #
@@ -977,7 +981,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.8,
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -998,7 +1002,7 @@ HEURISTICS.append({
          and f.nodes > 1 and f.edges > 0
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -1020,7 +1024,7 @@ HEURISTICS.append({
          and f.prototype2 != 'int()'
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -1042,7 +1046,7 @@ HEURISTICS.append({
          and f.outdegree = df.outdegree
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -1062,7 +1066,7 @@ HEURISTICS.append({
          and f.nodes > 1 and f.edges > 0
          %POSTFIX%
        order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -1080,7 +1084,7 @@ HEURISTICS.append({
         and f.cyclomatic_complexity >= 50
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_SLOW
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 #
@@ -1100,7 +1104,7 @@ HEURISTICS.append({
         and f.nodes > 10
         %POSTFIX%
       order by f.source_file = df.source_file""",
-  "flags":HEUR_FLAG_NONE
+  "flags":[]
 })
 
 #-------------------------------------------------------------------------------
@@ -1176,7 +1180,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 20, 2: 21, 0: 5, 3: 1}))
+  assert(ratios == Counter({1: 20, 2: 22, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
