@@ -2498,13 +2498,38 @@ class CBinDiff:
               if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
                 r += CALLEES_MATCHES_BONUS_RATIO
 
-              heur_text = "%s (iteration #%d)" % (heur, iteration)
-              ea1 = main_row["address"]
-              ea2 = diff_row["address"]
-              bb1 = int(main_row["nodes"])
-              bb2 = int(diff_row["nodes"])
-              new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
-              self.add_match(name1, name2, r, new_item, chooser)
+              should_add = True
+              if self.hooks is not None:
+                if 'on_match' in dir(self.hooks):
+                  desc = heur
+                  ea = main_row["address"]
+                  ea2 = diff_row["address"]
+                  name1 = main_row["name"]
+                  name2 = main_row["name"]
+                  pseudo1 = main_row["pseudocode"]
+                  pseudo2 = diff_row["pseudocode"]
+                  asm1 = main_row["assembly"]
+                  asm2 = diff_row["assembly"]
+                  ast1 = main_row["pseudocode_primes"]
+                  ast2 = diff_row["pseudocode_primes"]
+                  bb1 = int(main_row["nodes"])
+                  bb2 = int(diff_row["nodes"])
+                  md1 = main_row["md_index"]
+                  md2 = diff_row["md_index"]
+
+                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+                  d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+              if should_add:
+                heur_text = "%s (iteration #%d)" % (heur, iteration)
+                ea1 = main_row["address"]
+                ea2 = diff_row["address"]
+                bb1 = int(main_row["nodes"])
+                bb2 = int(diff_row["nodes"])
+                new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+                self.add_match(name1, name2, r, new_item, chooser)
+
     return dones
 
   def find_matches_diffing_internal(self, heur, field_name):
@@ -2641,19 +2666,43 @@ class CBinDiff:
               if name2 in local_diff_matched and diff_score[name2] >= r:
                 continue
 
-              ea1 = main_row["address"]
-              ea2 = diff_row["address"]
-              name1 = main_row["name"]
-              name2 = diff_row["name"]
-              bb1 = int(main_row["nodes"])
-              bb2 = int(diff_row["nodes"])
-              new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
-              self.add_match(name1, name2, r, new_item, chooser)
+              should_add = True
+              if self.hooks is not None:
+                if 'on_match' in dir(self.hooks):
+                  desc = heur_text
+                  ea = main_row["address"]
+                  ea2 = diff_row["address"]
+                  name1 = main_row["name"]
+                  name2 = main_row["name"]
+                  pseudo1 = main_row["pseudocode"]
+                  pseudo2 = diff_row["pseudocode"]
+                  asm1 = main_row["assembly"]
+                  asm2 = diff_row["assembly"]
+                  ast1 = main_row["pseudocode_primes"]
+                  ast2 = diff_row["pseudocode_primes"]
+                  bb1 = int(main_row["nodes"])
+                  bb2 = int(diff_row["nodes"])
+                  md1 = main_row["md_index"]
+                  md2 = diff_row["md_index"]
 
-              local_main_matched.add(name1)
-              main_score[name1] = r
-              local_diff_matched.add(name2)
-              diff_score[name2] = r
+                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
+                  d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
+
+              if should_add:
+                ea1 = main_row["address"]
+                ea2 = diff_row["address"]
+                name1 = main_row["name"]
+                name2 = diff_row["name"]
+                bb1 = int(main_row["nodes"])
+                bb2 = int(diff_row["nodes"])
+                new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+                self.add_match(name1, name2, r, new_item, chooser)
+
+                local_main_matched.add(name1)
+                main_score[name1] = r
+                local_diff_matched.add(name2)
+                diff_score[name2] = r
     finally:
       cur.close()
 
