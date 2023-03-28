@@ -280,6 +280,8 @@ class CBinDiff:
     self.pseudo_hash = {}
     self.pseudo_comments = {}
 
+    self.microcode = {}
+
     self.unreliable = self.get_value_for("unreliable", False)
     self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
     self.experimental = self.get_value_for("experimental", True)
@@ -660,10 +662,11 @@ class CBinDiff:
                                       clean_assembly, clean_pseudo, mnemonics_spp, switches,
                                       function_hash, bytes_sum, md_index, constants,
                                       constants_count, segment_rva, assembly_addrs, kgh_hash,
-                                      source_file, userdata)
+                                      source_file, userdata, microcode, clean_microcode,
+                                      microcode_spp)
                                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
       try:
         cur.execute(sql, new_props)

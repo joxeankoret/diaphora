@@ -35,6 +35,12 @@ from idautils import *
 import idaapi
 idaapi.require("diaphora")
 
+try:
+  import ida_hexrays as hr
+  has_hexrays = True
+except ImportError:
+  has_hexrays = False
+
 from database import SQL_MAX_PROCESSED_ROWS, SQL_TIMEOUT_LIMIT
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "codecut"))
@@ -334,6 +340,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_add_manual_match = self.AddCommand("Add manual match")
       self.AddCommand(None)
       self.cmd_diff_asm = self.AddCommand("Diff assembly")
+      self.cmd_diff_microcode = self.AddCommand("Diff microcode")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_diff_external = self.AddCommand("Diff using an external tool")
@@ -376,6 +383,8 @@ class CIDAChooser(CDiaphoraChooser):
       self.bindiff.show_pseudo_diff(self.items[n], html=False)
     elif cmd_id == self.cmd_diff_asm:
       self.bindiff.show_asm_diff(self.items[n])
+    elif cmd_id == self.cmd_diff_microcode:
+      self.bindiff.show_microcode_diff(self.items[n])
     elif cmd_id == self.cmd_highlight_functions:
       if ask_yn(1, "HIDECANCEL\nDo you want to change the background color of each matched function?") == 1:
         color = self.get_color()
@@ -714,6 +723,20 @@ External Diffing Tool
     })
 
 #-------------------------------------------------------------------------------
+class printer_t(hr.vd_printer_t):
+  """Converts microcode output to an array of strings."""
+  def __init__(self, *args):
+    hr.vd_printer_t.__init__(self)
+    self.mc = []
+
+  def get_mc(self):
+    return self.mc
+
+  def _print(self, indent, line):
+    self.mc.append(line)
+    return 1
+
+#-------------------------------------------------------------------------------
 class CIDABinDiff(diaphora.CBinDiff):
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
@@ -721,6 +744,8 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.names = dict(Names())
     self.min_ea = get_inf_attr(INF_MIN_EA)
     self.max_ea = get_inf_attr(INF_MAX_EA)
+
+    self.microcode_ins_list = self.get_microcode_instructions()
 
     self.project_script = None
     self.hooks = None
@@ -1064,8 +1089,59 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return res
 
+  def generate_microcode_diff(self, ea1, ea2, error_func=log):
+    cur = self.db_cursor()
+    try:
+      sql = """select *
+                from (
+              select prototype, microcode, name, 1
+                from functions
+                where address = ?
+                  and microcode is not null
+        union select prototype, microcode, name, 2
+                from diff.functions
+                where address = ?
+                  and microcode is not null)
+                order by 4 asc"""
+      ea1 = str(int(ea1, 16))
+      ea2 = str(int(ea2, 16))
+      cur.execute(sql, (ea1, ea2))
+      rows = cur.fetchall()
+      res = None
+      if len(rows) != 2:
+        error_func("Sorry, there is no assembly available for either the first or the second database.")
+      else:
+        row1 = rows[0]
+        row2 = rows[1]
+
+        html_diff = CHtmlDiff()
+        asm1 = self.prettify_asm(row1["microcode"])
+        asm2 = self.prettify_asm(row2["microcode"])
+        buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
+        buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
+
+        fmt = HtmlFormatter()
+        fmt.noclasses = True
+        fmt.linenos = False
+        fmt.nobackground = True
+        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
+
+        title = "Diff microcode %s - %s" % (row1["name"], row2["name"])
+        res = (src, title)
+    finally:
+      cur.close()
+
+    return res
+
   def show_asm_diff(self, item):
     res = self.generate_asm_diff(item[1], item[3], error_func=warning)
+    if res:
+      (src, title) = res
+      cdiffer = CHtmlViewer()
+      cdiffer.Show(src, title)
+
+  def show_microcode_diff(self, item):
+    res = self.generate_microcode_diff(item[1], item[3], error_func=warning)
     if res:
       (src, title) = res
       cdiffer = CHtmlViewer()
@@ -1678,6 +1754,25 @@ class CIDABinDiff(diaphora.CBinDiff):
       return decompile(f, flags=DECOMP_NO_WAIT)
     return decompile(f)
 
+  def get_microcode(self, f):
+    mbr = hr.mba_ranges_t(f)
+    hf = hr.hexrays_failure_t()
+    ml = hr.mlist_t()
+    vp = printer_t()
+    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
+    mba._print(vp)
+    for line in vp.mc:
+      line = ida_lines.tag_remove(line).strip("\n")
+      pos = line.find(";")
+      if pos > -1:
+        line = line[:pos]
+
+      tokens = re.split(r"\W+", line)
+      tokens = list(filter(None, tokens))
+      if len(tokens) > 2:
+        print(len(tokens), tokens)
+        print(line)
+
   def decompile_and_get(self, ea):
     if not self.decompiler_available or is_spec_ea(ea):
       return False
@@ -1726,6 +1821,25 @@ class CIDABinDiff(diaphora.CBinDiff):
         first_line = line
       else:
         self.pseudo[ea].append(line)
+
+    self.microcode[ea] = []
+    mbr = hr.mba_ranges_t(f)
+    hf = hr.hexrays_failure_t()
+    ml = hr.mlist_t()
+    vp = printer_t()
+    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
+    mba._print(vp)
+    for line in vp.mc:
+      line = ida_lines.tag_remove(line).strip("\n")
+      pos = line.find(";")
+      if pos > -1:
+        line = line[:pos]
+
+      tokens = re.split(r"\W+", line)
+      tokens = list(filter(None, tokens))
+      if len(tokens) > 2:
+        self.microcode[ea].append(line.strip(" "))
+
     return first_line
 
   def guess_type(self, ea):
@@ -2001,6 +2115,42 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     
     return mnem, disasm
 
+  def extract_microcode(self, f):
+    micro = None
+    micro_spp = 1
+    clean_micro = None
+    mnemonics = set()
+    if f in self.microcode:
+      micro = "\n".join(self.microcode[f])
+      ret = []
+      for line in self.microcode[f]:
+        print("RAW", repr(line))
+        tokens = line.split(" ")
+        for x in tokens[1:]:
+          if not x.isdigit():
+            mnem = x
+            mnemonics.add(mnem)
+            pos = mnem.find(".")
+            if pos > -1:
+              mnem = mnem[:pos]
+            break
+        line = line[line.find(mnem):]
+        ret.append(line)
+        micro_spp *= self.primes[self.microcode_ins_list.index(mnem)]
+      clean_micro = self.get_cmp_asm_lines("\n".join(ret))
+    return micro, clean_micro, micro_spp
+
+  def get_microcode_instructions(self):
+    if has_hexrays:
+      instructions = []
+      for x in dir(hr):
+        if x.startswith("m_"):
+          instructions.append(x[2:])
+
+      instructions.sort()
+      return instructions
+    return []
+
   def read_function(self, ea):
     """
     Extract anything and everything we (might) need from a function.
@@ -2078,6 +2228,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
+
+    self.microcode_ins_list = self.get_microcode_instructions()
 
     for block in flow:
       if block.end_ea == 0 or block.end_ea == BADADDR:
@@ -2244,6 +2396,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
     function_flags = get_func_attr(f, FUNCATTR_FLAGS)
     pseudo, pseudo_lines, pseudo_hash1, pseudocode_primes, pseudo_hash2, pseudo_hash3 = self.extract_function_pseudocode_features(f)
+    microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
     md_index = self.extract_function_mdindex(bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree)
@@ -2264,7 +2417,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              pseudo_hash2, pseudo_hash3, len(strongly_connected), loops, rva, bb_topological,
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
-             assembly_addrs, kgh_hash, None, None,
+             assembly_addrs, kgh_hash, None, None, microcode, clean_microcode, microcode_spp,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -2322,6 +2475,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["kgh_hash"],
       d["source_file"],
       d["userdata"],
+      d["microcode"],
+      d["clean_microcode"],
+      d["microcode_spp"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
@@ -2335,7 +2491,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     pseudo_hash2, pseudo_hash3, strongly_connected_size, loops, rva, bb_topological,
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
-    assembly_addrs, kgh_hash, source_file, userdata, callers, callees,
+    assembly_addrs, kgh_hash, source_file, userdata, microcode, clean_microcode,
+    microcode_spp,
+    callers, callees,
     basic_blocks_data, bb_relations) = l
     d = dict(
           name = name,
@@ -2385,6 +2543,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           callees = callees,
           basic_blocks_data = basic_blocks_data,
           bb_relations = bb_relations,
+          microcode = microcode,
+          clean_microcode = clean_microcode,
+          microcode_spp = microcode_spp,
           userdata = userdata)
     return d
 

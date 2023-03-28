@@ -78,7 +78,8 @@ HEURISTICS.append({
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
                  or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
                and f.nodes >= 3
-               and df.nodes >= 3""",
+               and df.nodes >= 3
+               %POSTFIX%""",
   "flags":[HEUR_FLAG_SAME_CPU]
 })
 
@@ -97,7 +98,8 @@ HEURISTICS.append({
                  or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
                and ((f.nodes > 1 and df.nodes > 1
                  and f.instructions > 5 and df.instructions > 5)
-                  or f.instructions > 10 and df.instructions > 10)""",
+                  or f.instructions > 10 and df.instructions > 10)
+               %POSTFIX%""",
   "flags":[HEUR_FLAG_SAME_CPU]
 })
 
@@ -112,7 +114,8 @@ HEURISTICS.append({
              where f.function_hash = df.function_hash 
                and ((f.nodes > 1 and df.nodes > 1
                  and f.instructions > 5 and df.instructions > 5)
-                  or f.instructions > 10 and df.instructions > 10)""",
+                  or f.instructions > 10 and df.instructions > 10)
+               %POSTFIX%""",
   "flags":[HEUR_FLAG_SAME_CPU]
 })
 
@@ -125,7 +128,8 @@ HEURISTICS.append({
               from functions f,
                    diff.functions df
              where f.bytes_hash = df.bytes_hash
-               and f.instructions > 5 and df.instructions > 5""",
+               and f.instructions > 5 and df.instructions > 5
+               %POSTFIX%""",
   "flags":[HEUR_FLAG_SAME_CPU]
 })
 
@@ -143,6 +147,7 @@ HEURISTICS.append({
                and df.instructions > 5
                and ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
                  or (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) = 'sub_'))
+               %POSTFIX%
              order by f.source_file = df.source_file""",
   "flags":[]
 })
@@ -159,6 +164,24 @@ HEURISTICS.append({
          and f.nodes >= 3 and df.nodes >= 3
          and f.name not like 'nullsub%'
          and df.name not like 'nullsub%'
+         %POSTFIX%
+       order by f.source_file = df.source_file""",
+  "flags":[HEUR_FLAG_SAME_CPU]
+})
+
+name = "Same cleaned microcode"
+HEURISTICS.append({
+  "name":name,
+  "category":"Best",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":""" select """ + get_query_fields(name) + """
+        from functions f,
+             diff.functions df
+       where f.clean_microcode = df.clean_microcode
+         and f.instructions > 3 and df.instructions > 3
+         and f.name not like 'nullsub%'
+         and df.name not like 'nullsub%'
+         %POSTFIX%
        order by f.source_file = df.source_file""",
   "flags":[HEUR_FLAG_SAME_CPU]
 })
@@ -196,6 +219,7 @@ HEURISTICS.append({
         and f.instructions > 3
         and df.instructions > 3
         and f.nodes > 1
+        %POSTFIX%
       order by f.source_file = df.source_file""",
   "flags":[]
 })
@@ -246,6 +270,25 @@ HEURISTICS.append({
         and f.name not like 'nullsub%'
         and df.name not like 'nullsub%'
         %POSTFIX% """,
+  "flags":[]
+})
+
+name = "Microcode mnemonics small primes product"
+HEURISTICS.append({
+  "name":name,
+  "category":"Best",
+  "ratio":HEUR_TYPE_RATIO,
+  "sql":""" select """ + get_query_fields(name) + """
+        from functions f,
+             diff.functions df
+       where f.microcode_spp = df.microcode_spp
+         and f.microcode_spp != 0
+         and df.microcode_spp != 0
+         and f.instructions > 5 and df.instructions > 5
+         and f.name not like 'nullsub%'
+         and df.name not like 'nullsub%'
+         %POSTFIX%
+       order by f.source_file = df.source_file""",
   "flags":[]
 })
 
@@ -860,6 +903,7 @@ select """ + get_query_fields(name) + """
    and df.id = query1.diff_func_id
    and f.name != df.name
    and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
+   %POSTFIX%
 """,
   "min":0.5,
   "flags":[HEUR_FLAG_SAME_CPU]
@@ -904,6 +948,7 @@ select """ + get_query_fields(name) + """
    and df.nodes > 3
    and diff_query.inst_total >= 6
    and ((min(f.nodes, df.nodes) * 100) / max(f.nodes, df.nodes)) < 50
+   %POSTFIX%
 """,
   "min":0.5,
   "flags":[]
@@ -1156,6 +1201,11 @@ def check_heuristic_in_sql():
       print(("SQL command not correctly associated to %s" % repr(name)))
       print(sql)
       assert(sql.find(name) != -1)
+    
+    if sql.find("%POSTFIX%") == -1:
+      print("SQL command does not contain the %POSTFIX%")
+      print(sql)
+      sql.find("%POSTFIX%") == -1
 
     heurs.add(name)
 
@@ -1180,7 +1230,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 20, 2: 22, 0: 5, 3: 1}))
+  assert(ratios == Counter({1: 21, 2: 22, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
