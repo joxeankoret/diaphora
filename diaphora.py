@@ -1342,7 +1342,8 @@ class CBinDiff:
     return ast_ratio(ast1, ast2)
 
   def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
-                  clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2):
+                  clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2,
+                  clean_micro1, clean_micro2):
     """
     XXX: FIXME: Joxean, this function needs some serious improvements.
 
@@ -1405,12 +1406,19 @@ class CBinDiff:
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
 
-    r = max(v1, v2, v3, v4)
+    v5 = 0.0
+    if clean_micro1 is not None and clean_micro2 is not None:
+      v5 = fratio(clean_micro1, clean_micro2)
+      v5 = float(decimal_values.format(v5))
+      if v5 == 1:
+        return 1.0
+
+    r = max(v1, v2, v3, v4, v5)
     if r == 1.0 and md1 != md2:
       # We cannot assign a 1.0 ratio if both MD indices are different, that's an
       # error
       r = 0
-      for v in [v1, v2, v3, v4]:
+      for v in [v1, v2, v3, v4, v5]:
         if v != 1.0 and v > r:
           r = v
 
@@ -1450,6 +1458,8 @@ class CBinDiff:
     clean_asm2 = row["clean_asm2"]
     clean_pseudo1 = row["clean_pseudo1"]
     clean_pseudo2 = row["clean_pseudo2"]
+    clean_micro1 = row["clean_micro1"]
+    clean_micro2 = row["clean_micro2"]
 
     nullsub = "nullsub_"
     if name1.startswith(nullsub) or name2.startswith(nullsub):
@@ -1461,7 +1471,8 @@ class CBinDiff:
 
     if ratio is None:
       r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2, \
-                           clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2)
+                           clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2, \
+                           clean_micro1, clean_micro2)
       if debug:
         logging.debug("0x%x 0x%x %d" % (int(ea), int(ea2), r))
     else:
@@ -2084,9 +2095,12 @@ class CBinDiff:
     clean_asm2 = diff_row["clean_assembly"]
     clean_pseudo1 = main_row["clean_pseudo"]
     clean_pseudo2 = diff_row["clean_pseudo"]
+    clean_micro1 = main_row["clean_microcode"]
+    clean_micro2 = diff_row["clean_microcode"]
 
     ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
-                             clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2)
+                             clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2, \
+                             clean_micro1, clean_micro2)
     return ratio
 
   def search_just_stripped_binaries(self):

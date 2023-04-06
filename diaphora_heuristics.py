@@ -52,7 +52,8 @@ SELECT_FIELDS = """ f.address ea, f.name name1, df.address ea2, df.name name2,
                   cast(f.md_index as real) md1, cast(df.md_index as real) md2,
                   f.clean_assembly clean_asm1, df.clean_assembly clean_asm2,
                   f.clean_pseudo clean_pseudo1, df.clean_pseudo clean_pseudo2,
-                  f.mangled_function mangled1, df.mangled_function mangled2"""
+                  f.mangled_function mangled1, df.mangled_function mangled2,
+                  f.clean_microcode clean_micro1, df.clean_microcode clean_micro2"""
 def get_query_fields(heur, quote=True):
   val = heur
   if quote:
@@ -285,6 +286,7 @@ HEURISTICS.append({
          and f.microcode_spp != 0
          and df.microcode_spp != 0
          and f.instructions > 5 and df.instructions > 5
+         and f.nodes > 2 and df.nodes > 2
          and f.name not like 'nullsub%'
          and df.name not like 'nullsub%'
          %POSTFIX%

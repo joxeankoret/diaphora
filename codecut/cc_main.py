@@ -19,11 +19,15 @@
 import maxcut
 import lfa
 import module
-import modnaming
 import cc_base
 import basicutils_7x as basicutils
 import snap_cg
 import imp
+
+try:
+  import modnaming
+except ImportError:
+  pass
 
 def go():
 	
@@ -61,3 +65,4 @@ if __name__ == "__main__":
 	imp.reload(snap_cg)
 	imp.reload(basicutils)
 	go()
+

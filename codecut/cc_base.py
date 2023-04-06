@@ -19,7 +19,10 @@
 import basicutils_7x as basicutils
 import json
 import os
-import modnaming
+try:
+  import modnaming
+except ImportError:
+  pass
 
 ## Utilities
 

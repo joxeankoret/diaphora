@@ -272,9 +272,9 @@ class CIDAChooser(CDiaphoraChooser):
   def __init__(self, title, bindiff, show_commands=True):
     CDiaphoraChooser  .__init__(self, title, bindiff, show_commands)
     if title.startswith("Unmatched in"):
-      Choose.__init__(self, title, [ ["Line", 8], ["Address", 8], ["Name", 20] ], Choose.CH_MULTI)
+      Choose.__init__(self, title, [ ["Line", 8], ["Address", 10], ["Name", 20] ], Choose.CH_MULTI)
     else:
-      columns = [ ["Line", 8], ["Address", 8], ["Name", 20], ["Address 2", 8],
+      columns = [ ["Line", 8], ["Address", 10], ["Name", 20], ["Address 2", 10],
                   ["Name 2", 20], ["Ratio", 8], ["BBlocks 1", 5], ["BBlocks 2", 5],
                   ["Description", 30]
                 ]
@@ -345,6 +345,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_diff_external = self.AddCommand("Diff using an external tool")
       self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
+      self.cmd_view_callgraph_context = self.AddCommand("Show callers and callees graph")
       self.AddCommand(None)
       self.cmd_import_selected = self.AddCommand("Import selected", "Ctrl+Alt+i")
       self.cmd_import_selected_auto = self.AddCommand("Import selected sub_*")
@@ -407,6 +408,14 @@ class CIDAChooser(CDiaphoraChooser):
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
+    elif cmd_id == self.cmd_view_callgraph_context:
+      item = self.items[n]
+      ea1 = int(item[CHOOSER_ITEM_MAIN_EA], 16)
+      name1 = item[CHOOSER_ITEM_MAIN_NAME]
+      ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
+      name2 = item[CHOOSER_ITEM_DIFF_NAME]
+      log("Showing call graph context for 0x%x - 0x%x" % (ea1, ea2))
+      self.bindiff.show_callgraph_context(name1, name2)
     elif cmd_id == self.cmd_save_results:
       filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
       if filename is not None:
@@ -674,6 +683,50 @@ class CDiffGraphViewer(GraphViewer):
     return GraphViewer.Show(self)
 
 #-------------------------------------------------------------------------------
+class CCallGraphViewer(GraphViewer):
+  def __init__(self, title, callers, callees, target):
+    GraphViewer.__init__(self, title, False)
+    self.target  = target
+    self.callers = callers
+    self.callees = callees
+
+    self.nodes = {}
+    self.node_types = {"target":0x00ff00, "callee":0xFFFFFF, "caller":0xFFFFFF}
+
+  def OnRefresh(self):
+    self.Clear()
+    self.root = self.AddNode(self.target)
+    self.nodes[self.root] = [self.target, 'target']
+
+    for caller in self.callers:
+      name = caller["name1"]
+      node = self.AddNode(name)
+      self.AddEdge(node, self.root)
+      self.nodes[node] = [name, 'caller']
+
+    for callee in self.callees:
+      name = callee["name1"]
+      node = self.AddNode(name)
+      self.AddEdge(self.root, node)
+      self.nodes[node] = [name, 'callee']
+
+    return True
+
+  def OnGetText(self, node_id):
+    node = self.nodes[node_id]
+    name, node_type = node
+    colour = self.node_types[node_type]
+    return name, colour
+
+  def OnHint(self, node_id):
+    node = self.nodes[node_id]
+    _, node_type = node
+    return node_type
+
+  def Show(self):
+    return GraphViewer.Show(self)
+
+#-------------------------------------------------------------------------------
 class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
   def __init__(self):
     idaapi.action_handler_t.__init__(self)
@@ -723,7 +776,7 @@ External Diffing Tool
     })
 
 #-------------------------------------------------------------------------------
-class printer_t(hr.vd_printer_t):
+class CPrinter_t(hr.vd_printer_t):
   """Converts microcode output to an array of strings."""
   def __init__(self, *args):
     hr.vd_printer_t.__init__(self)
@@ -1045,34 +1098,35 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_til()
     self.import_definitions()
 
-  def generate_asm_diff(self, ea1, ea2, error_func=log):
+  def generate_asm_diff_internal(self, ea1, ea2, field, title_fmt, error_func=log):
     cur = self.db_cursor()
     try:
       sql = """select *
                 from (
-              select prototype, assembly, name, 1
+              select prototype, {field}, name, 1
                 from functions
                 where address = ?
-                  and assembly is not null
-        union select prototype, assembly, name, 2
+                  and {field} is not null
+        union select prototype, {field}, name, 2
                 from diff.functions
                 where address = ?
-                  and assembly is not null)
-                order by 4 asc"""
+                  and {field} is not null)
+                order by 4 asc""".format(field=field)
       ea1 = str(int(ea1, 16))
       ea2 = str(int(ea2, 16))
       cur.execute(sql, (ea1, ea2))
       rows = cur.fetchall()
       res = None
       if len(rows) != 2:
-        error_func("Sorry, there is no assembly available for either the first or the second database.")
+        msg = "Sorry, there is no {field} available for either the first or the second database."
+        error_func(msg.format(field=field))
       else:
         row1 = rows[0]
         row2 = rows[1]
 
         html_diff = CHtmlDiff()
-        asm1 = self.prettify_asm(row1["assembly"])
-        asm2 = self.prettify_asm(row2["assembly"])
+        asm1 = self.prettify_asm(row1[field])
+        asm2 = self.prettify_asm(row2[field])
         buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
         buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
 
@@ -1082,56 +1136,20 @@ class CIDABinDiff(diaphora.CBinDiff):
         fmt.nobackground = True
         src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
 
-        title = "Diff assembler %s - %s" % (row1["name"], row2["name"])
+        title = title_fmt % (row1["name"], row2["name"])
         res = (src, title)
     finally:
       cur.close()
 
     return res
+
+  def generate_asm_diff(self, ea1, ea2, error_func=log):
+    return self.generate_asm_diff_internal(ea1, ea2, "assembly", \
+                                           "Diff assembly %s - %s", error_func)
 
   def generate_microcode_diff(self, ea1, ea2, error_func=log):
-    cur = self.db_cursor()
-    try:
-      sql = """select *
-                from (
-              select prototype, microcode, name, 1
-                from functions
-                where address = ?
-                  and microcode is not null
-        union select prototype, microcode, name, 2
-                from diff.functions
-                where address = ?
-                  and microcode is not null)
-                order by 4 asc"""
-      ea1 = str(int(ea1, 16))
-      ea2 = str(int(ea2, 16))
-      cur.execute(sql, (ea1, ea2))
-      rows = cur.fetchall()
-      res = None
-      if len(rows) != 2:
-        error_func("Sorry, there is no assembly available for either the first or the second database.")
-      else:
-        row1 = rows[0]
-        row2 = rows[1]
-
-        html_diff = CHtmlDiff()
-        asm1 = self.prettify_asm(row1["microcode"])
-        asm2 = self.prettify_asm(row2["microcode"])
-        buf1 = "%s proc near\n%s\n%s endp" % (row1["name"], asm1, row1["name"])
-        buf2 = "%s proc near\n%s\n%s endp" % (row2["name"], asm2, row2["name"])
-
-        fmt = HtmlFormatter()
-        fmt.noclasses = True
-        fmt.linenos = False
-        fmt.nobackground = True
-        src = html_diff.make_file(buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer())
-
-        title = "Diff microcode %s - %s" % (row1["name"], row2["name"])
-        res = (src, title)
-    finally:
-      cur.close()
-
-    return res
+    return self.generate_asm_diff_internal(ea1, ea2, "microcode", \
+                                           "Diff microcode %s - %s", error_func)
 
   def show_asm_diff(self, item):
     res = self.generate_asm_diff(item[1], item[3], error_func=warning)
@@ -1435,6 +1453,48 @@ class CIDABinDiff(diaphora.CBinDiff):
     set_dock_pos(title2, title1, DP_RIGHT)
     uitimercallback_t(graph1, 100)
     uitimercallback_t(graph2, 100)
+
+  def get_calls_graph(self, name, type, db):
+    cur = self.db_cursor()
+    rows = []
+    try:
+      sql = """ select cg.type type, f2.address ea1, f2.name name1,
+                       f1.address ea2, f1.name name2
+                  from {db}.callgraph cg,
+                       {db}.functions f1,
+                       {db}.functions f2
+                 where f1.name = ?
+                   and cg.func_id = f1.id
+                   and cg.type = ?
+                   and f2.address = cg.address """.format(db=db)
+      cur.execute(sql, (name, type))
+      rows = cur.fetchall()
+    finally:
+      cur.close()
+
+    return rows
+
+  def build_calls_graph(self, title, callers, callees, name):
+    g = CCallGraphViewer(title, callers, callees, name)
+    return g
+
+  def show_callgraph_context(self, name1, name2):
+    main_callers = self.get_calls_graph(name1, 'caller', 'main')
+    main_callees = self.get_calls_graph(name1, 'callee', 'main')
+    diff_callers = self.get_calls_graph(name2, 'caller', 'diff')
+    diff_callees = self.get_calls_graph(name2, 'callee', 'diff')
+    
+    base_title = "Call graph context for {name}"
+    title1 = base_title.format(name=name1)
+    title2 = base_title.format(name=name2)
+    g1 = self.build_calls_graph(title1, main_callers, main_callees, name1)
+    g2 = self.build_calls_graph(title2, diff_callers, diff_callees, name2)
+    g1.Show()
+    g2.Show()
+
+    set_dock_pos(title2, title1, DP_RIGHT)
+    uitimercallback_t(g1, 100)
+    uitimercallback_t(g2, 100)
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
@@ -1754,24 +1814,85 @@ class CIDABinDiff(diaphora.CBinDiff):
       return decompile(f, flags=DECOMP_NO_WAIT)
     return decompile(f)
 
-  def get_microcode(self, f):
-    mbr = hr.mba_ranges_t(f)
-    hf = hr.hexrays_failure_t()
-    ml = hr.mlist_t()
-    vp = printer_t()
-    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
-    mba._print(vp)
-    for line in vp.mc:
-      line = ida_lines.tag_remove(line).strip("\n")
-      pos = line.find(";")
-      if pos > -1:
-        line = line[:pos]
+  def get_plain_microcode_line(self, color_line):
+    """
+    Remove colors, trailing spaces and the basic block numbers from a microcode
+    line.
+    """
+    plain_line = ida_lines.tag_remove(color_line)
+    plain_line = plain_line.strip(" ")
 
-      tokens = re.split(r"\W+", line)
-      tokens = list(filter(None, tokens))
-      if len(tokens) > 2:
-        print(len(tokens), tokens)
-        print(line)
+    tokens = plain_line.split(" ")
+    for i, x in enumerate(tokens[1:]):
+      if not x.isdigit():
+        pos = plain_line.find(x)
+        plain_line = plain_line[pos:]
+        break
+    return plain_line
+
+  def get_microcode_bblocks(self, mba):
+    mba.build_graph()
+    total = mba.qty
+    bblocks = {}
+    for i in range(total):
+      if i == 0:
+        continue
+
+      block = mba.get_mblock(i)
+      print("BLOCK", i, "TYPE", block.type)
+      if block.type == hr.BLT_STOP:
+        continue
+
+      vp = hr.qstring_printer_t(None, True)
+      block._print(vp)
+      src = vp.s
+      lines = src.splitlines()
+
+      new_lines = []
+      for line in lines:
+        color_line = line.strip("\n").strip(" ")
+        pos = color_line.find(";")
+        if pos > -1:
+          color_line = color_line[:pos]
+        plain_line = self.get_plain_microcode_line(color_line)
+        new_lines.append([plain_line, color_line])
+      
+      bblocks[i] = {"start":block.start, "end":block.end, "lines":new_lines}
+
+    bb_relations = {}
+    for i in range(total):
+      if i == 0 or i not in bblocks:
+        continue
+
+      block = mba.get_mblock(i)
+      for succ in block.succset:
+        try:
+          bb_relations[i].append(succ)
+        except KeyError:
+          bb_relations[i] = [succ]
+
+    return bblocks, bb_relations
+
+  def get_microcode(self, f, ea):
+      mbr = hr.mba_ranges_t(f)
+      hf = hr.hexrays_failure_t()
+      ml = hr.mlist_t()
+      vp = CPrinter_t()
+      mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
+      mba._print(vp)
+      bblocks, bb_relations = self.get_microcode_bblocks(mba)
+      for line in vp.mc:
+        line = ida_lines.tag_remove(line).strip("\n")
+        pos = line.find(";")
+        if pos > -1:
+          line = line[:pos]
+      
+        tokens = re.split(r"\W+", line)
+        tokens = list(filter(None, tokens))
+        if len(tokens) > 2:
+          self.microcode[ea].append(line.strip(" "))
+      
+      return tokens
 
   def decompile_and_get(self, ea):
     if not self.decompiler_available or is_spec_ea(ea):
@@ -1823,23 +1944,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         self.pseudo[ea].append(line)
 
     self.microcode[ea] = []
-    mbr = hr.mba_ranges_t(f)
-    hf = hr.hexrays_failure_t()
-    ml = hr.mlist_t()
-    vp = printer_t()
-    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
-    mba._print(vp)
-    for line in vp.mc:
-      line = ida_lines.tag_remove(line).strip("\n")
-      pos = line.find(";")
-      if pos > -1:
-        line = line[:pos]
-
-      tokens = re.split(r"\W+", line)
-      tokens = list(filter(None, tokens))
-      if len(tokens) > 2:
-        self.microcode[ea].append(line.strip(" "))
-
+    self.get_microcode(f, ea)
     return first_line
 
   def guess_type(self, ea):
@@ -1954,10 +2059,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   def extract_function_constants(self, ins, x, constants):
     for operand in ins.ops:
+      the_const = None
       if operand.type == o_imm:
         if self.is_constant(operand, x) and self.constant_filter(operand.value):
           constants.append(operand.value)
-    
+      elif operand.type == o_displ:
+        if self.constant_filter(operand.addr):
+          constants.append(operand.addr)
+
       drefs = DataRefsFrom(x)
       for dref in drefs:
         if get_func(dref) is None:
@@ -2124,7 +2233,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       micro = "\n".join(self.microcode[f])
       ret = []
       for line in self.microcode[f]:
-        print("RAW", repr(line))
         tokens = line.split(" ")
         for x in tokens[1:]:
           if not x.isdigit():
@@ -2758,7 +2866,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       for til in til_names:
         self.add_program_data("til", til, None)
 
-
   def load_and_import_all_results(self, filename, main_db, diff_db):
     results_db = diaphora.sqlite3_connect(filename)
 
@@ -2953,7 +3060,7 @@ def _diff_or_export(use_ui, **options):
     warning("No output database selected or invalid filename. Please select a database file.")
     return None
   elif is_ida_file(opts.file_in) or is_ida_file(opts.file_out):
-    warning("One of the selected databases is an IDA file. Please select only database files")
+    warning("One of the selected databases is an IDA file. Please select only database files.")
     return None
 
   export = True
@@ -3070,7 +3177,7 @@ class BinDiffOptions:
       warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get('unreliable', False)
-    self.slow = kwargs.get('slow', total_functions <= 1000)
+    self.slow = kwargs.get('slow', total_functions <= 2000)
     self.experimental = kwargs.get('experimental', True)
     self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
     self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))

@@ -57,6 +57,7 @@ INDICES = [
   ["bb_instructions", "basic_block_id, instruction_id"],
   ["function_bblocks", "function_id, basic_block_id"],
   ["constants", "constant, func_id"],
+  ["callgraph", "func_id"],
   ["compilation_units", "pseudocode_primes"],
   ["compilation_units", "name"],
   ["compilation_unit_functions", "func_id"],
