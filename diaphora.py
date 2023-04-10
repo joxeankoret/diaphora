@@ -529,46 +529,48 @@ class CBinDiff:
 
     return rowid
 
+  def get_valid_prop(self, prop):
+    # This is a hack for 64 bit architectures kernels
+    if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+      prop = str(prop)
+    elif type(prop) is bytes:
+      prop = prop.encode("utf-8")
+    return prop
+
   def save_instructions_to_database(self, cur, bb_data, prop, func_id):
     """
-    Save all the instructions in the basic block @bb_data to the database.
+    Save all the native assembly instructions in the basic block @bb_data to the
+    database.
     """
     instructions_ids = {}
     sql = """insert into main.instructions (address, mnemonic, disasm,
                                             comment1, comment2, operand_names, name,
-                                            type, pseudocomment, pseudoitp, func_id)
-                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-    self_get_instruction_id = self.get_instruction_id
+                                            type, pseudocomment, pseudoitp, func_id,
+                                            asm_type)
+                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'native')"""
     cur_execute = cur.execute
     for key in bb_data:
       for instruction in bb_data[key]:
         instruction_properties = []
         for instruction_property in instruction:
-          # This is a hack for 64 bit architectures kernels
-          if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
-            prop = str(prop)
-          elif type(prop) is bytes:
-            prop = prop.encode("utf-8")
+          prop = self.get_valid_prop(prop)
           if type(instruction_property) is list or type(instruction_property) is set:
             instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
           else:
             instruction_properties.append(instruction_property)
     
         addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
-        db_id = self_get_instruction_id(str(addr))
-        if db_id is None:
-          pseudocomment = None
-          pseudoitp = None
-          if addr in self.pseudo_comments:
-            pseudocomment, pseudoitp = self.pseudo_comments[addr]
-    
-          instruction_properties.append(pseudocomment)
-          instruction_properties.append(pseudoitp)
-          instruction_properties.append(func_id)
-          cur.execute(sql, instruction_properties)
-          db_id = cur.lastrowid
+        pseudocomment = None
+        pseudoitp = None
+        if addr in self.pseudo_comments:
+          pseudocomment, pseudoitp = self.pseudo_comments[addr]
+  
+        instruction_properties.append(pseudocomment)
+        instruction_properties.append(pseudoitp)
+        instruction_properties.append(func_id)
+        cur.execute(sql, instruction_properties)
+        db_id = cur.lastrowid
         instructions_ids[addr] = db_id
-    
     return cur_execute, instructions_ids
 
   def insert_basic_blocks_to_database(self, bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id):
@@ -578,7 +580,7 @@ class CBinDiff:
     """
     num = 0
     bb_ids = {}
-    sql1 = "insert into main.basic_blocks (num, address) values (?, ?)"
+    sql1 = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'native')"
     sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
     
     self_get_bb_id = self.get_bb_id
@@ -610,21 +612,78 @@ class CBinDiff:
           log("Error: %s" % str(sys.exc_info()[1]))
     
     # And finally insert the functions to basic blocks relations
-    sql = "insert into main.function_bblocks (function_id, basic_block_id) values (?, ?)"
+    sql = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'native')"
     for key in bb_ids:
       bb_id = bb_ids[key]
       cur_execute(sql, (func_id, bb_id))
-    return bb_id
+
+  def save_microcode_instructions(self, func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations):
+    """
+    Save all the microcode instructions in the basic block @bb_data to the database.
+    """
+    instructions_ids = {}
+    sql_inst = """insert into main.instructions (address, mnemonic, disasm, comment1,
+                                                 pseudocomment, func_id, asm_type)
+                              values (?, ?, ?, ?, ?, ?, 'microcode')"""
+    sql_bblock = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'microcode')"
+    sql_bbinst = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
+    sql_bbrelations = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+    sql_func_blocks = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'microcode')"
+    num = 0
+    for key in microcode_bblocks:
+      # Create a new microcode basic block
+      start_ea = microcode_bblocks[key]["start"]
+      cur_execute(sql_bblock, [num, start_ea])
+      bblock_id = cur.lastrowid
+      microcode_bblocks[key]["bblock_id"] = bblock_id
+
+      # Add the function -> basic block relation
+      cur_execute(sql_func_blocks, (func_id, bblock_id))
+
+      for line in microcode_bblocks[key]["lines"]:
+        if line["mnemonic"] is not None:
+          address = self.get_valid_prop(line["address"])
+          mnemonic = line["mnemonic"]
+          disasm = line["line"]
+          comment1 = line["color_line"]
+          pseudocomment = line["comments"]
+
+          # Insert the microcode instruction
+          args = [address, mnemonic, disasm, comment1, pseudocomment, func_id]
+          cur_execute(sql_inst, args)
+
+          inst_id = cur.lastrowid
+          line["instruction_id"] = inst_id
+
+          # Add the microcode instrution to the current basic block
+          cur_execute(sql_bbinst, (bblock_id, inst_id))
+
+      # Incrase the current basic block number
+      num += 1
+
+    # And, finally, insert the relationships between basic blocks
+    for node in microcode_bbrelations:
+      parent_id = microcode_bblocks[node]["bblock_id"]
+      for children in microcode_bbrelations[node]:
+        # Microcode generates empty basic blocks, we don't want to do anything
+        # with them, just ignore...
+        if children in microcode_bblocks:
+          child_id = microcode_bblocks[children]["bblock_id"]
+          cur_execute(sql_bbrelations, [parent_id, child_id])
 
   def save_function_to_database(self, props, cur, prop, func_id):
     """
     Save a single function to the database.
     """
-    # The last 2 fields are basic_blocks_data & bb_relations
-    bb_data, bb_relations = props[len(props)-2:]
+    total_props = len(props)
+    # The last 2 fields are basic_blocks_data & bb_relations for native assembly
+    bb_data, bb_relations = props[total_props-2:]
     cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop, func_id)
-    bb_id = self.insert_basic_blocks_to_database(bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id)
-    return bb_id
+    self.insert_basic_blocks_to_database(bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id)
+
+    microcode_bblocks, microcode_bbrelations = props[total_props-6:total_props-4]
+    if len(microcode_bblocks) > 0 and len(microcode_bbrelations) > 0:
+      self.save_microcode_instructions(func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations)
 
   def save_function(self, props):
     """
@@ -638,8 +697,8 @@ class CBinDiff:
     cur = self.db_cursor()
     new_props = []
     try:
-      # The last 4 fields are callers, callees, basic_blocks_data & bb_relations
-      for prop in props[:len(props)-4]:
+      # The last 6 fields are callers, callees, basic_blocks_data & bb_relations
+      for prop in props[:len(props)-6]:
         # This is a hack for 64 bit architectures kernels
         if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
           prop = str(prop)
@@ -704,7 +763,7 @@ class CBinDiff:
 
       # Phase 4: Save the basic blocks relationships
       if not self.function_summaries_only:
-        bb_id = self.save_function_to_database(props, cur, prop, func_id)
+        self.save_function_to_database(props, cur, prop, func_id)
     finally:
       cur.close()
 
@@ -877,7 +936,7 @@ class CBinDiff:
     colours1, colours2 = self.compare_graphs_pass(bblocks1, bblocks2, colours1, colours2, True)
     return colours1, colours2
 
-  def get_graph(self, ea1, primary=False):
+  def get_graph(self, ea1, primary=False, asm_type="native"):
     """
     Get the graph representation of the function at address @ea1
     """
@@ -902,9 +961,13 @@ class CBinDiff:
                   and bbins.basic_block_id = bb.id
                   and bb.id = fb.basic_block_id
                   and f.id = fb.function_id
+                  and fb.asm_type = bb.asm_type
+                  and ins.asm_type = bb.asm_type
                   and f.address = ?
+                  and bb.asm_type = ?
+                  and ins.address is not null
                 order by bb.address asc""".format(db=db)
-      cur.execute(sql, (str(ea1),))
+      cur.execute(sql, (str(ea1), asm_type))
       for row in result_iter(cur):
         bb_ea = str(int(row["bb_address"]))
         ins_ea = str(int(row["ins_address"]))
@@ -934,8 +997,10 @@ class CBinDiff:
                    and bbs.id = fbs.basic_block_id
                    and fbs.basic_block_id = bbr.child_id
                    and f.address = ?
+                   and fbs.asm_type = ?
+                   and bbs.asm_type = fbs.asm_type
                  order by 1 asc, 2 asc""".format(db=db)
-      cur.execute(sql, (str(ea1), ))
+      cur.execute(sql, (str(ea1), asm_type))
       rows = result_iter(cur)
 
       for row in rows:

@@ -132,7 +132,7 @@ TABLES = [
   """ create table if not exists instructions (
                   id integer primary key,
                   func_id integer not null,
-                  address text unique,
+                  address text,
                   disasm text,
                   mnemonic text,
                   comment1 text,
@@ -141,11 +141,13 @@ TABLES = [
                   name text,
                   type text,
                   pseudocomment text,
-                  pseudoitp integer) """,
+                  pseudoitp integer,
+                  asm_type text) """,
   """ create table if not exists basic_blocks (
                   id integer primary key,
                   num integer,
-                  address text unique)""",
+                  address text,
+                  asm_type text)""",
   """ create table if not exists bb_relations (
                   id integer primary key,
                   parent_id integer not null references basic_blocks(id) ON DELETE CASCADE,
@@ -157,7 +159,8 @@ TABLES = [
   """ create table if not exists function_bblocks (
                   id integer primary key,
                   function_id integer not null references functions(id) on delete cascade,
-                  basic_block_id integer not null references basic_blocks(id) on delete cascade)""",
+                  basic_block_id integer not null references basic_blocks(id) on delete cascade,
+                  asm_type text)""",
   """create table if not exists callgraph (
                   id integer primary key,
                   func_id integer not null references functions(id) on delete cascade,

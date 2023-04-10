@@ -343,6 +343,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_diff_microcode = self.AddCommand("Diff microcode")
       self.cmd_diff_c = self.AddCommand("Diff pseudo-code")
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
+      self.cmd_diff_graph_microcode = self.AddCommand("Diff microcode in a graph")
       self.cmd_diff_external = self.AddCommand("Diff using an external tool")
       self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
       self.cmd_view_callgraph_context = self.AddCommand("Show callers and callees graph")
@@ -408,6 +409,14 @@ class CIDAChooser(CDiaphoraChooser):
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
+    elif cmd_id == self.cmd_diff_graph_microcode:
+      item = self.items[n]
+      ea1 = int(item[CHOOSER_ITEM_MAIN_EA], 16)
+      name1 = item[CHOOSER_ITEM_MAIN_NAME]
+      ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
+      name2 = item[CHOOSER_ITEM_DIFF_NAME]
+      log("Diff microcode graph for 0x%x - 0x%x" % (ea1, ea2))
+      self.bindiff.graph_diff_microcode(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_view_callgraph_context:
       item = self.items[n]
       ea1 = int(item[CHOOSER_ITEM_MAIN_EA], 16)
@@ -1454,6 +1463,27 @@ class CIDABinDiff(diaphora.CBinDiff):
     uitimercallback_t(graph1, 100)
     uitimercallback_t(graph2, 100)
 
+  def graph_diff_microcode(self, ea1, name1, ea2, name2):
+    g1 = self.get_graph(str(ea1), True, "microcode")
+    g2 = self.get_graph(str(ea2), False, "microcode")
+
+    if g1 == ({}, {}) or g2 == ({}, {}):
+      warning("Sorry, graph information is not available for one of the databases.")
+      return False
+
+    colours = self.compare_graphs(g1, ea1, g2, ea2)
+
+    title1 = "Microcode graph for %s (primary)" % name1
+    title2 = "Microcode graph for %s (secondary)" % name2
+    graph1 = CDiffGraphViewer(title1, g1, colours[0])
+    graph2 = CDiffGraphViewer(title2, g2, colours[1])
+    graph1.Show()
+    graph2.Show()
+
+    set_dock_pos(title2, title1, DP_RIGHT)
+    uitimercallback_t(graph1, 100)
+    uitimercallback_t(graph2, 100)
+
   def get_calls_graph(self, name, type, db):
     cur = self.db_cursor()
     rows = []
@@ -1822,13 +1852,15 @@ class CIDABinDiff(diaphora.CBinDiff):
     plain_line = ida_lines.tag_remove(color_line)
     plain_line = plain_line.strip(" ")
 
+    mnem = None
     tokens = plain_line.split(" ")
     for i, x in enumerate(tokens[1:]):
       if not x.isdigit():
+        mnem = x
         pos = plain_line.find(x)
         plain_line = plain_line[pos:]
         break
-    return plain_line
+    return plain_line, mnem
 
   def get_microcode_bblocks(self, mba):
     mba.build_graph()
@@ -1839,7 +1871,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         continue
 
       block = mba.get_mblock(i)
-      print("BLOCK", i, "TYPE", block.type)
       if block.type == hr.BLT_STOP:
         continue
 
@@ -1852,11 +1883,16 @@ class CIDABinDiff(diaphora.CBinDiff):
       for line in lines:
         color_line = line.strip("\n").strip(" ")
         pos = color_line.find(";")
+        line_ea = None
+        comments = None
         if pos > -1:
+          comments = color_line[pos+1:].strip(" ")
+          line_ea = int(comments.split(" ")[0], 16)
           color_line = color_line[:pos]
-        plain_line = self.get_plain_microcode_line(color_line)
-        new_lines.append([plain_line, color_line])
-      
+        plain_line, mnem = self.get_plain_microcode_line(color_line)
+        new_lines.append({"address":line_ea, "line":plain_line, "mnemonic":mnem, \
+                          "color_line":color_line, "comments":comments,})
+
       bblocks[i] = {"start":block.start, "end":block.end, "lines":new_lines}
 
     bb_relations = {}
@@ -1874,25 +1910,34 @@ class CIDABinDiff(diaphora.CBinDiff):
     return bblocks, bb_relations
 
   def get_microcode(self, f, ea):
-      mbr = hr.mba_ranges_t(f)
-      hf = hr.hexrays_failure_t()
-      ml = hr.mlist_t()
-      vp = CPrinter_t()
-      mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
-      mba._print(vp)
-      bblocks, bb_relations = self.get_microcode_bblocks(mba)
-      for line in vp.mc:
-        line = ida_lines.tag_remove(line).strip("\n")
-        pos = line.find(";")
-        if pos > -1:
-          line = line[:pos]
-      
-        tokens = re.split(r"\W+", line)
-        tokens = list(filter(None, tokens))
-        if len(tokens) > 2:
-          self.microcode[ea].append(line.strip(" "))
-      
-      return tokens
+    if not self.decompiler_available:
+      return [], []
+
+    mbr = hr.mba_ranges_t(f)
+    hf = hr.hexrays_failure_t()
+    ml = hr.mlist_t()
+    vp = CPrinter_t()
+    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, hr.MMAT_GENERATED)
+    if mba is None:
+      return [], []
+
+    mba._print(vp)
+    bblocks = []
+    bb_relations = []
+    bblocks, bb_relations = self.get_microcode_bblocks(mba)
+    
+    self.microcode[ea] = []
+    for line in vp.mc:
+      line = ida_lines.tag_remove(line).strip("\n")
+      pos = line.find(";")
+      if pos > -1:
+        line = line[:pos]
+    
+      tokens = re.split(r"\W+", line)
+      tokens = list(filter(None, tokens))
+      if len(tokens) > 2:
+        self.microcode[ea].append(line.strip(" "))
+    return bblocks, bb_relations
 
   def decompile_and_get(self, ea):
     if not self.decompiler_available or is_spec_ea(ea):
@@ -1990,15 +2035,11 @@ class CIDABinDiff(diaphora.CBinDiff):
     warning("""AUTOHIDE REGISTRY\nIf you close one tab you can always re-open it by pressing F3
 or selecting Edit -> Plugins -> Diaphora - Show results""")
 
-  # Ripped out from REgoogle
+  # Ripped out from REgoogle (which is dead since long ago...)
   def constant_filter(self, value):
     """Filter for certain constants/immediate values. Not all values should be
-    taken into account for searching. Especially not very small values that
-    may just contain the stack frame size.
-
-    @param value: constant value
-    @type value: int
-    @return: C{True} if value should be included in query. C{False} otherwise
+    taken into account for searching. Especially not very small values that may
+    just contain the stack frame size.
     """
     # no small values
     if value < 0x1000:
@@ -2253,7 +2294,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       instructions = []
       for x in dir(hr):
         if x.startswith("m_"):
-          instructions.append(x[2:])
+          mnem = x[2:]
+          if mnem not in instructions:
+            instructions.append(x[2:])
 
       instructions.sort()
       return instructions
@@ -2505,6 +2548,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     function_flags = get_func_attr(f, FUNCATTR_FLAGS)
     pseudo, pseudo_lines, pseudo_hash1, pseudocode_primes, pseudo_hash2, pseudo_hash3 = self.extract_function_pseudocode_features(f)
     microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
+    microcode_bblocks, microcode_bbrelations = self.get_microcode(func, ea)
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
     md_index = self.extract_function_mdindex(bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree)
@@ -2526,6 +2570,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
              strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
              function_hash, bytes_sum, md_index, constants, len(constants), seg_rva,
              assembly_addrs, kgh_hash, None, None, microcode, clean_microcode, microcode_spp,
+             microcode_bblocks, microcode_bbrelations,
              callers, callees,
              basic_blocks_data, bb_relations)
 
@@ -2586,6 +2631,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       d["microcode"],
       d["clean_microcode"],
       d["microcode_spp"],
+      d["microcode_bblocks"],
+      d["microcode_bbrelations"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
@@ -2600,7 +2647,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     strongly_connected_spp, clean_assembly, clean_pseudo, mnemonics_spp, switches,
     function_hash, bytes_sum, md_index, constants, constants_size, seg_rva,
     assembly_addrs, kgh_hash, source_file, userdata, microcode, clean_microcode,
-    microcode_spp,
+    microcode_spp, microcode_bblocks, microcode_bbrelations, 
     callers, callees,
     basic_blocks_data, bb_relations) = l
     d = dict(
@@ -2653,6 +2700,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
           bb_relations = bb_relations,
           microcode = microcode,
           clean_microcode = clean_microcode,
+          microcode_bblocks = microcode_bblocks,
+          microcode_bbrelations = microcode_bbrelations,
           microcode_spp = microcode_spp,
           userdata = userdata)
     return d
