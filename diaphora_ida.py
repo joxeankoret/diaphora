@@ -92,9 +92,6 @@ Enable this option if you're only interested in the new functionality. Disable
 it for patch diffing if you're interested in small modifications (like buffer
 sizes).
 
-This is recommended for diffing big databases (more than 20,000 functions in the
-database).
-
 You can disable it by un-checking the 'Relaxed calculations of differences
 ratios' option."""
 
@@ -3213,6 +3210,7 @@ def _diff_or_export(use_ui, **options):
   
   return bd
 
+#-------------------------------------------------------------------------------
 def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd = CIDABinDiff(db1)
   bd.db = diaphora.sqlite3_connect(db1)
@@ -3235,7 +3233,7 @@ class BinDiffOptions:
       warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get('unreliable', False)
-    self.slow = kwargs.get('slow', total_functions <= 2000)
+    self.slow = kwargs.get('slow', total_functions <= config.MIN_FUNCTIONS_TO_DISABLE_SLOW)
     self.experimental = kwargs.get('experimental', True)
     self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
     self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))
