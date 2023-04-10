@@ -50,6 +50,8 @@ from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
 from pygments.formatters import HtmlFormatter
 
+import diaphora_config as config
+
 from diaphora_heuristics import get_query_fields
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 
@@ -705,7 +707,9 @@ class CCallGraphViewer(GraphViewer):
     self.callees = callees
 
     self.nodes = {}
-    self.node_types = {"target":0x00ff00, "callee":0xFFFFFF, "caller":0xFFFFFF}
+    self.node_types = {"target":config.CALLGRAPH_COLOR_TARGET,
+                       "callee":config.CALLGRAPH_COLOR_CALLEE,
+                       "caller":config.CALLGRAPH_COLOR_CALLER}
 
   def OnRefresh(self):
     self.Clear()
@@ -3275,17 +3279,17 @@ class CHtmlDiff:
   }
 
   .diff_add {
-    background-color: #aaffaa;
+    background-color: """ + config.DIFF_COLOR_ADDED + """;
   }
   .diff_chg {
-    background-color: #ffff77;
+    background-color: """ + config.DIFF_COLOR_CHANGED + """;
   }
   .diff_sub {
-    background-color: #ffaaaa;
+    background-color: """ + config.DIFF_COLOR_SUBTRACTED + """;
   }
   .diff_lineno {
     text-align: right;
-    background-color: #e0e0e0;
+    background-color: """ + config.DIFF_COLOR_LINE_NO + """;
   }
   """
 

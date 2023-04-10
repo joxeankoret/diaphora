@@ -36,6 +36,9 @@ from threading import Thread, Lock
 from multiprocessing import cpu_count
 from difflib import SequenceMatcher, unified_diff
 
+import diaphora_config as config
+importlib.reload(config)
+
 import diaphora_heuristics
 importlib.reload(diaphora_heuristics)
 from diaphora_heuristics import *
@@ -632,7 +635,7 @@ class CBinDiff:
     num = 0
     for key in microcode_bblocks:
       # Create a new microcode basic block
-      start_ea = microcode_bblocks[key]["start"]
+      start_ea = self.get_valid_prop(microcode_bblocks[key]["start"])
       cur_execute(sql_bblock, [num, start_ea])
       bblock_id = cur.lastrowid
       microcode_bblocks[key]["bblock_id"] = bblock_id
@@ -857,6 +860,10 @@ class CBinDiff:
     # Replace aName_XXX with aXXX, useful to ignore small changes in 
     # offsets created to strings
     tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
+
+    # Replace the common microcode format for "mov #0xaddress.size, whatever"
+    tmp = self.re_sub(r"\#0x[A-Z0-9]+", "0xXXX", tmp)
+
     return tmp
 
   def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
