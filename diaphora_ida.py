@@ -50,6 +50,7 @@ from pygments import highlight
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
 from pygments.formatters import HtmlFormatter
 
+from diaphora_heuristics import get_query_fields
 from others.tarjan_sort import strongly_connected_components, robust_topological_sort
 
 from jkutils.factor import primesbelow as primes
@@ -450,6 +451,24 @@ class CIDAChooser(CDiaphoraChooser):
 
     return rows
 
+  def add_manual_match_internal(self, name1, name2):
+    main_row = self.bindiff.get_function_row(name1)
+    diff_row = self.bindiff.get_function_row(name2, "diff")
+    ratio = self.bindiff.compare_function_rows(main_row, diff_row)
+    total = len(self.bindiff.partial_chooser.items)
+
+    ea1 = main_row["address"]
+    name1 = main_row["name"]
+    ea2 = diff_row["address"]
+    name2 = diff_row["name"]
+    desc = "Manual match"
+    bb1 = main_row["nodes"]
+    bb2 = diff_row["nodes"]
+    self.bindiff.partial_chooser.add_item(diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2))
+    self.bindiff.matched_primary[name1]   = {"name":name2, "ratio":ratio}
+    self.bindiff.matched_secondary[name2] = {"name":name1, "ratio":ratio}
+    self.bindiff.partial_chooser.Refresh()
+
   def add_manual_match(self):
     f = choose_func("Select a function from the current database...", 0)
     if f is not None:
@@ -467,21 +486,7 @@ class CIDAChooser(CDiaphoraChooser):
           warning(line % (repr(name1), repr(name2)))
         else:
           log("Adding manual match between %s and %s" % (name1, name2))
-          sql = """ select distinct f.address ea, f.name name1, df.address ea2, df.name name2,
-                           'Manual Match' description,
-                           f.pseudocode pseudo1, df.pseudocode pseudo2,
-                           f.assembly asm1, df.assembly asm2,
-                           f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                           f.nodes bb1, df.nodes bb2,
-                           cast(f.md_index as real) md1, cast(df.md_index as real) md2
-                      from functions f,
-                           diff.functions df
-                     where f.name = %s
-                       and df.name = %s""" % (repr(name1), repr(name2))
-          # XXX: FIXME: Joxean, matches aren't added just like this any more, fix this!!!
-          self.bindiff.add_matches_from_query_ratio(sql, "best", "partial")
-          for chooser in [self.bindiff.best_chooser, self.bindiff.partial_chooser, self.bindiff.unreliable_chooser]:
-            chooser.Refresh()
+          self.add_manual_match_internal(name1, name2)
 
   def OnSelectionChange(self, sel_list):
     self.selected_items = sel_list
