@@ -45,7 +45,6 @@ from diaphora_heuristics import *
 
 import database
 importlib.reload(database)
-from database import SQL_MAX_PROCESSED_ROWS, SQL_TIMEOUT_LIMIT
 
 from database import schema
 importlib.reload(schema)
@@ -285,15 +284,12 @@ class CBinDiff:
 
     self.microcode = {}
 
-    self.unreliable = self.get_value_for("unreliable", False)
-    self.relaxed_ratio = self.get_value_for("relaxed_ratio", False)
-    self.experimental = self.get_value_for("experimental", True)
-    self.slow_heuristics = self.get_value_for("slow_heuristics", False)
-    self.use_decompiler_always = self.get_value_for("use_decompiler_always", True)
-    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
-
-    self.use_decompiler_always = self.get_value_for("use_decompiler", True)
-    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", True)
+    self.unreliable = self.get_value_for("unreliable", config.DIFFING_ENABLE_UNRELIABLE)
+    self.relaxed_ratio = self.get_value_for("relaxed_ratio", config.DIFFING_ENABLE_RELAXED_RATIO)
+    self.experimental = self.get_value_for("experimental", config.DIFFING_ENABLE_EXPERIMENTAL)
+    self.slow_heuristics = self.get_value_for("slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS)
+    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK)
+    self.use_decompiler = self.get_value_for("use_decompiler", config.EXPORTING_USE_DECOMPILER)
     self.project_script = self.get_value_for("project_script", None)
     self.hooks = None
 
@@ -315,11 +311,11 @@ class CBinDiff:
     # LIMITS
     #
     # Do not run heuristics for more than X seconds (by default, 3 minutes).
-    self.timeout = self.get_value_for("SQL_TIMEOUT_LIMIT", SQL_TIMEOUT_LIMIT)
+    self.timeout = self.get_value_for("SQL_TIMEOUT_LIMIT", config.SQL_TIMEOUT_LIMIT)
     # It's typical in SQL queries to get a cartesian product of the 
     # results in the functions tables. Do not process more than this
     # value per each 20k functions.
-    self.SQL_MAX_PROCESSED_ROWS = self.get_value_for("SQL_MAX_PROCESSED_ROWS", SQL_MAX_PROCESSED_ROWS)
+    self.SQL_MAX_PROCESSED_ROWS = self.get_value_for("SQL_MAX_PROCESSED_ROWS", config.SQL_MAX_PROCESSED_ROWS)
     # Limits to filter the functions to export
     self.min_ea = 0
     self.max_ea = 0
@@ -1310,7 +1306,7 @@ class CBinDiff:
             break
 
           t.join(0.1)
-          if time.monotonic() - t.time > SQL_TIMEOUT_LIMIT:
+          if time.monotonic() - t.time > config.SQL_TIMEOUT_LIMIT:
             do_cancel = True
             try:
               log_refresh("Timeout, cancelling queries...")

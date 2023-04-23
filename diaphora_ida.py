@@ -41,8 +41,6 @@ try:
 except ImportError:
   has_hexrays = False
 
-from database import SQL_MAX_PROCESSED_ROWS, SQL_TIMEOUT_LIMIT
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "codecut"))
 from codecut import lfa
 
@@ -2008,7 +2006,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def guess_type(self, ea):
     t = guess_type(ea)
-    if not self.use_decompiler_always:
+    if not self.use_decompiler:
       return t
     else:
       try:
@@ -3163,7 +3161,7 @@ def _diff_or_export(use_ui, **options):
   t0 = time.monotonic()
   try:
     bd = CIDABinDiff(opts.file_out)
-    bd.use_decompiler_always = opts.use_decompiler
+    bd.use_decompiler = opts.use_decompiler
     bd.exclude_library_thunk = opts.exclude_library_thunk
     bd.unreliable = opts.unreliable
     bd.slow_heuristics = opts.slow
@@ -3177,8 +3175,8 @@ def _diff_or_export(use_ui, **options):
     bd.ignore_small_functions = opts.ignore_small_functions
     bd.function_summaries_only = opts.func_summaries_only
     bd.export_microde = opts.export_microcode
-    bd.max_processed_rows = SQL_MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
-    bd.timeout = SQL_TIMEOUT_LIMIT * max(total_functions / 20000, 1)
+    bd.max_processed_rows = config.SQL_MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
+    bd.timeout = config.SQL_TIMEOUT_LIMIT * max(total_functions / 20000, 1)
     bd.project_script = opts.project_script
 
     if export:
@@ -3235,32 +3233,34 @@ class BinDiffOptions:
     sqlite_db = os.path.splitext(get_idb_path())[0] + ".sqlite"
     self.file_out = kwargs.get('file_out', sqlite_db)
     self.file_in  = kwargs.get('file_in', '')
-    self.use_decompiler = kwargs.get('use_decompiler', True)
-    self.exclude_library_thunk = kwargs.get('exclude_library_thunk', True)
+    self.use_decompiler = kwargs.get('use_decompiler', config.EXPORTING_USE_DECOMPILER)
+    self.exclude_library_thunk = kwargs.get('exclude_library_thunk', config.EXPORTING_EXCLUDE_LIBRARY_THUNK)
 
     self.relax = kwargs.get('relax')
     if self.relax:
       warning(MSG_RELAXED_RATIO_ENABLED)
 
-    self.unreliable = kwargs.get('unreliable', False)
+    self.unreliable = kwargs.get('unreliable', config.DIFFING_ENABLE_UNRELIABLE)
     self.slow = kwargs.get('slow', total_functions <= config.MIN_FUNCTIONS_TO_DISABLE_SLOW)
-    self.experimental = kwargs.get('experimental', True)
+    self.experimental = kwargs.get('experimental', config.DIFFING_ENABLE_EXPERIMENTAL)
     self.min_ea = kwargs.get('min_ea', get_inf_attr(INF_MIN_EA))
     self.max_ea = kwargs.get('max_ea', get_inf_attr(INF_MAX_EA))
-    self.ida_subs = kwargs.get('ida_subs', True)
-    self.ignore_sub_names = kwargs.get('ignore_sub_names', True)
-    self.ignore_all_names = kwargs.get('ignore_all_names', False)
-    self.ignore_small_functions = kwargs.get('ignore_small_functions', False)
+    self.ida_subs = kwargs.get('ida_subs', config.EXPORTING_ONLY_NON_IDA_SUBS)
+    self.ignore_sub_names = kwargs.get('ignore_sub_names', config.DIFFING_IGNORE_SUB_FUNCTION_NAMES)
+    self.ignore_all_names = kwargs.get('ignore_all_names', config.DIFFING_IGNORE_ALL_FUNCTION_NAMES)
+    self.ignore_small_functions = kwargs.get('ignore_small_functions', config.DIFFING_IGNORE_SMALL_FUNCTIONS)
 
     # Enable, by default, exporting only function summaries for huge dbs.
-    self.func_summaries_only = kwargs.get('func_summaries_only', total_functions > 100000)
+    too_big_db = total_functions > config.MIN_FUNCTIONS_TO_CONSIDER_HUGE
+    self.func_summaries_only = kwargs.get('func_summaries_only', too_big_db)
 
     # Python script to run for both the export and diffing process
     self.project_script = kwargs.get('project_script')
 
     # Microcode slows down the export process and might cause false positives
     # with big to huge databases, disable it by default for 'big' databases
-    self.export_microcode = kwargs.get('export_microcode', total_functions <= 8000)
+    medium_db = total_functions <= config.MIN_FUNCTIONS_TO_CONSIDER_MEDIUM
+    self.export_microcode = kwargs.get('export_microcode', medium_db)
 
 #-------------------------------------------------------------------------------
 class CHtmlDiff:
@@ -3447,7 +3447,7 @@ def main():
     project_script = os.getenv("DIAPHORA_PROJECT_SCRIPT")
     if project_script is not None:
       bd.project_script = project_script
-    bd.use_decompiler_always = use_decompiler
+    bd.use_decompiler = use_decompiler
 
     bd.exclude_library_thunk = bd.get_value_for("exclude_library_thunk", bd.exclude_library_thunk)
     bd.ida_subs = bd.get_value_for("ida_subs", bd.ida_subs)
