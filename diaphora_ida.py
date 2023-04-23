@@ -526,21 +526,25 @@ class CBinDiffExporterSetup(Form):
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
   exporting the first database.
 
-  SQLite databases:                                                                                                                                     Export filter limits:
+  SQLite databases:                                                                                                                                                          Export filter limits:
   <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
   <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
+  Export options:
   <Use the decompiler if available:{rUseDecompiler}>
+  <#Enable this option to disable exporting microcode#Export microcode instructions and basic blocks:{rExportMicrocode}>
   <Do not export library and thunk functions:{rExcludeLibraryThunk}>
   <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
   <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
+  <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroupExport}>|
+
+  Diffing options:
   <Use probably unreliable methods:{rUnreliable}>
   <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
   <Use speed ups:{rExperimental}##Use tricks to speed ups some of the most common diffing tasks>
   <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
-  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
-  <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroup1}>
+  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>{cGroup1}>
 
   Project specific rules:
   <#Select the project specific Python script rules#Python script:{iProjectSpecificRules}>
@@ -551,17 +555,18 @@ class CBinDiffExporterSetup(Form):
             'iFileOpen': Form.FileInput(open=True, swidth=40, hlp="SQLite database (*.sqlite)"),
             'iMinEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'iMaxEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-            'cGroup1'  : Form.ChkGroupControl(("rUseDecompiler",
-                                               "rExcludeLibraryThunk",
-                                               "rUnreliable",
-                                               "rNonIdaSubs",
+            'cGroupExport' : Form.ChkGroupControl(("rUseDecompiler",
+                                                   "rExcludeLibraryThunk",
+                                                   "rIgnoreSmallFunctions",
+                                                   "rExportMicrocode",
+                                                   "rNonIdaSubs",
+                                                   "rFuncSummariesOnly")),
+            'cGroup1'  : Form.ChkGroupControl(("rUnreliable",
                                                "rSlowHeuristics",
                                                "rRelaxRatio",
                                                "rExperimental",
-                                               "rFuncSummariesOnly",
                                                "rIgnoreSubNames",
-                                               "rIgnoreAllNames",
-                                               "rIgnoreSmallFunctions")),
+                                               "rIgnoreAllNames")),
             'iProjectSpecificRules' : Form.FileInput(open=True, hlp="Python scripts (*.py)")}
 
     Form.__init__(self, s, args)
@@ -587,6 +592,7 @@ class CBinDiffExporterSetup(Form):
     self.rIgnoreAllNames.checked = opts.ignore_all_names
     self.rIgnoreSmallFunctions.checked = opts.ignore_small_functions
     self.rFuncSummariesOnly.checked = opts.func_summaries_only
+    self.rExportMicrocode.checked = opts.export_microcode
 
   def get_options(self):
     opts = dict(
@@ -605,7 +611,8 @@ class CBinDiffExporterSetup(Form):
       ignore_all_names = self.rIgnoreAllNames.checked,
       ignore_small_functions = self.rIgnoreSmallFunctions.checked,
       func_summaries_only = self.rFuncSummariesOnly.checked,
-      project_script = self.iProjectSpecificRules.value
+      project_script = self.iProjectSpecificRules.value,
+      export_microcode = self.rExportMicrocode.checked
     )
     return BinDiffOptions(**opts)
 
@@ -958,6 +965,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         crashed_before = False
         continue
 
+      self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
       if props == False:
         continue
@@ -1916,7 +1924,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     return bblocks, bb_relations
 
   def get_microcode(self, f, ea):
-    if not self.decompiler_available:
+    if not self.decompiler_available or not self.export_microcode:
       return [], []
 
     mbr = hr.mba_ranges_t(f)
@@ -2276,7 +2284,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     micro_spp = 1
     clean_micro = None
     mnemonics = set()
-    if f in self.microcode:
+    if self.export_microcode and f in self.microcode:
       micro = "\n".join(self.microcode[f])
       ret = []
       for line in self.microcode[f]:
@@ -2291,7 +2299,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
             break
         line = line[line.find(mnem):]
         ret.append(line)
-        micro_spp *= self.primes[self.microcode_ins_list.index(mnem)]
+        if mnem in self.microcode_ins_list:
+          micro_spp *= self.primes[self.microcode_ins_list.index(mnem)]
+        else:
+          log("Warning: Mnemonic %s not found in the list of microcode instructions!" % repr(mnem))
       clean_micro = self.get_cmp_asm_lines("\n".join(ret))
     return micro, clean_micro, micro_spp
 
@@ -2385,8 +2396,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
     mnemonics_spp = 1
     cpu_ins_list = GetInstructionList()
     cpu_ins_list.sort()
-
-    self.microcode_ins_list = self.get_microcode_instructions()
 
     for block in flow:
       if block.end_ea == 0 or block.end_ea == BADADDR:
@@ -3167,6 +3176,7 @@ def _diff_or_export(use_ui, **options):
     bd.ignore_all_names = opts.ignore_all_names
     bd.ignore_small_functions = opts.ignore_small_functions
     bd.function_summaries_only = opts.func_summaries_only
+    bd.export_microde = opts.export_microcode
     bd.max_processed_rows = SQL_MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
     bd.timeout = SQL_TIMEOUT_LIMIT * max(total_functions / 20000, 1)
     bd.project_script = opts.project_script
@@ -3247,6 +3257,10 @@ class BinDiffOptions:
 
     # Python script to run for both the export and diffing process
     self.project_script = kwargs.get('project_script')
+
+    # Microcode slows down the export process and might cause false positives
+    # with big to huge databases, disable it by default for 'big' databases
+    self.export_microcode = kwargs.get('export_microcode', total_functions <= 8000)
 
 #-------------------------------------------------------------------------------
 class CHtmlDiff:
@@ -3440,7 +3454,7 @@ def main():
     bd.ignore_sub_names = bd.get_value_for("ignore_sub_names", bd.ignore_sub_names)
     bd.function_summaries_only = bd.get_value_for("function_summaries_only", bd.function_summaries_only)
     bd.min_ea = int(bd.get_value_for("from_address", "0"), 16)
-
+    bd.export_microcode = bd.get_value_for("self.export_microcode", bd.export_microcode)
     to_ea = bd.get_value_for("to_address", None)
     if to_ea is not None:
       bd.max_ea = int(to_ea, 16)

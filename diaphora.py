@@ -336,6 +336,10 @@ class CBinDiff:
     self.ignore_all_names = self.get_value_for("ignore_all_names", True)
     # Ignore small functions?
     self.ignore_small_functions = self.get_value_for("ignore_small_functions", False)
+
+    # Export microcode instructions?
+    self.export_microcode = self.get_value_for("export_microcode", True)
+
     # Number of CPU threads/cores to use?
     cpus = cpu_count() - 1
     if cpus < 1:
