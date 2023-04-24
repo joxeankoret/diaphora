@@ -1183,7 +1183,7 @@ class CBinDiff:
 
     postfix = ""
     if self.ignore_small_functions:
-      postfix = " and f.instructions > 5 and df.instructions > 5 "
+      postfix = config.SQL_DEFAULT_POSTFIX
 
     if self.hooks is not None:
       if 'get_queries_postfix' in dir(self.hooks):
@@ -1402,8 +1402,6 @@ class CBinDiff:
                   clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2,
                   clean_micro1, clean_micro2):
     """
-    XXX: FIXME: Joxean, this function needs some serious improvements.
-
     Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
     1.0 would be the best possible match and 0.0 would be the worst one.
     """
@@ -1459,7 +1457,7 @@ class CBinDiff:
     v4 = 0.0
     if md1 == md2 and md1 > 0.0:
       # A MD-Index >= 10.0 is somehow rare
-      if self.relaxed_ratio and md1 > 10.0:
+      if self.relaxed_ratio and md1 > config.MINIMUM_RARE_MD_INDEX:
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
 
@@ -1587,7 +1585,7 @@ class CBinDiff:
       item = None
 
       if val is None:
-        val = 0.5
+        val = config.DEFAULT_PARTIAL_RATIO
 
       if r == 1.0:
         chooser = best
@@ -1604,7 +1602,7 @@ class CBinDiff:
       else:
         chooser = None
         item = None
-        if r < 0.5 and r > val and unreliable is not None:
+        if r < config.DEFAULT_PARTIAL_RATIO and r > val and unreliable is not None:
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
           matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
@@ -1723,7 +1721,7 @@ class CBinDiff:
 
         item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
         self.add_match(name1, name2, 1.0, item, category)
-        if r < 0.5:
+        if r < config.DEFAULT_PARTIAL_RATIO:
           debug_refresh("Warning: Best match 0x%s:%s -> 0x%sx:%s have a bad ratio: %f" % (ea, name1, ea2, name2, r))
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
@@ -1768,7 +1766,7 @@ class CBinDiff:
         if self.has_better_match(name1, name2, ratio):
           continue
 
-        if ratio >= 0.5:
+        if ratio >= config.DEFAULT_PARTIAL_RATIO:
           # Check the row match
           should_add, ratio2 = self.check_match(row)
           if not should_add:
@@ -1960,7 +1958,7 @@ class CBinDiff:
                   """
       cur.execute(sql)
       log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
-      self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
+      self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO)
 
     heur = 'Brute forcing (Compilation Unit)'
     sql = """select """ + get_query_fields(heur) + """
@@ -1975,7 +1973,7 @@ class CBinDiff:
                 and f.kgh_hash > 7 and df.kgh_hash > 7 """
     cur.execute(sql)
     log_refresh("Finding via brute-forcing (Compilation Unit)...")
-    self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=0.5)
+    self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO)
 
     if cur.connection.in_transaction:
       cur.execute("commit")
@@ -2093,7 +2091,7 @@ class CBinDiff:
 
     NOTE: Yes, this looks odd, it is yet another workaround for an old IDA bug.
     See this issue for more details:
-    
+
     https://github.com/joxeankoret/diaphora/issues/151
     """
     try:
@@ -2552,7 +2550,7 @@ class CBinDiff:
               r = self.compare_function_rows(main_row, diff_row)
               if r == 1.0:
                 chooser = "best"
-              elif r > 0.3:
+              elif r > config.DEFAULT_TRUSTED_PARTIAL_RATIO:
                 chooser = "partial"
               else:
                 continue
@@ -2680,14 +2678,14 @@ class CBinDiff:
       size = len(main_rows)
       # If the number of functions in that gap is less than a hardcoded size, do
       # continue...
-      if size > 0 and size <= 100:
+      if size > 0 and size <= config.MAX_FUNCTIONS_PER_GAP:
         # Then retrieve the diff database functions in that area...
         cur.execute(sql.format(db="diff"), range2)
         diff_rows = list(cur.fetchall())
         size = len(diff_rows)
         # Check again the same number of maximum hardcoded functions that we'll
         # consider for this heuristic...
-        if size > 0 and size <= 100:
+        if size > 0 and size <= config.MAX_FUNCTIONS_PER_GAP:
 
           local_main_matched = set()
           main_score = {}
@@ -2714,7 +2712,7 @@ class CBinDiff:
               r = self.compare_function_rows(main_row, diff_row)
               if r == 1.0:
                 chooser = "best"
-              elif r >= 0.5:
+              elif r >= config.DEFAULT_PARTIAL_RATIO:
                 chooser = "partial"
               else:
                 continue
@@ -2786,7 +2784,7 @@ class CBinDiff:
     that functions F2 and F3 correspond to F2' and F3', so we try to find those
     functions that should correspond to the gap between unmatched functions and
     then brute force these subsets when they have a maximum hardcoded number of
-    100 functions. We don't consider bigger gaps. For now.
+    MAX_FUNCTIONS_PER_GAP. We don't consider bigger gaps. For now.
     """
     self.cleanup_matches()
 
@@ -2948,7 +2946,10 @@ if __name__ == "__main__":
   elif is_ida:
     diaphora_dir = os.path.dirname(__file__)
     script = os.path.join(diaphora_dir, "diaphora_ida.py")
-    exec(compile(open(script, "rb").read(), script, 'exec'))
+    buf = None
+    with open(script, "rb") as f:
+      buf = f.read()
+    exec(compile(buf, script, 'exec'))
     do_diff = False
   else:
     import argparse

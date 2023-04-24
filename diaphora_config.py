@@ -47,6 +47,9 @@ EXPORTING_ONLY_NON_IDA_SUBS = True
 EXPORTING_FUNCTION_SUMMARIES_ONLY = False
 EXPORTING_USE_MICROCODE = True
 
+# Number of rows that must be inserted to commit the transaction
+EXPORTING_FUNCTIONS_TO_COMMIT = 5000
+
 # The minimum number of functions in a database to, by default, disable running
 # slow queries.
 MIN_FUNCTIONS_TO_DISABLE_SLOW = 2000
@@ -78,9 +81,32 @@ SQL_TIMEOUT_LIMIT = 60 * 5
 #
 # Update: Initially, it was only used for matches found by diffing previous good
 # known matches. However, it's also used now for matches where the function name
-# is the same for both.
+# is the same for both because, believe it or not, there can be another function
+# with the very same pseudo-code or assembly, but a different name, but that is
+# not the true match, because the true match is the one with that function name.
 MATCHES_BONUS_RATIO = 0.01
 
 # Number of decimal digits to use for calculations and displaying ratios in the
 # choosers.
 DECIMAL_VALUES = "7f"
+
+# The maximum number of functions that could be in a gap of unmatched functions
+# for the "Local Affinity" heuristic to be launched.
+MAX_FUNCTIONS_PER_GAP = 100
+
+# The default SQL's WHERE clause postfix used to determine when a function is
+# small.
+SQL_DEFAULT_POSTFIX = " and f.instructions > 5 and df.instructions > 5 "
+
+# Used as a speed up when "relaxed ratio calculations" is enabled, to consider
+# structurally equal two functions with the same MD-Index if its value is bigger
+# than the specified value.
+MINIMUM_RARE_MD_INDEX = 10.0
+
+# The minimum ratio needed to assign some heuristics to the partial matches tab
+# instead of dropping the result or putting it in the unreliable matches tab.
+DEFAULT_PARTIAL_RATIO = 0.5
+
+# Some heuristics generates much less false positives, if at all, therefore we
+# can relax the minimum ratio needed to consider a match good or bad.
+DEFAULT_TRUSTED_PARTIAL_RATIO = 0.3

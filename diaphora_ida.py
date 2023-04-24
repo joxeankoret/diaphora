@@ -787,7 +787,6 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 
 #-------------------------------------------------------------------------------
 class CExternalDiffingDialog(Form):
-  """Simple Form to test multilinetext and combo box controls"""
   def __init__(self):
       Form.__init__(self, r"""STARTITEM 0
 BUTTON YES* Diff Pseudo-code
@@ -979,9 +978,9 @@ class CIDABinDiff(diaphora.CBinDiff):
         callgraph_all_primes[ret] = 1
       self.save_function(props)
 
-      # Try to fix bug #30 and, also, try to speed up operations as
-      # doing a commit every 10 functions, as before, is overkill.
-      if total_funcs > 5000 and i % (total_funcs/10) == 0:
+      # Try to fix bug #30 and, also, try to speed up operations as doing a
+      # commit every 10 functions, as before, is overkill.
+      if total_funcs > config.EXPORTING_FUNCTIONS_TO_COMMIT and i % (total_funcs/10) == 0:
         self.db.commit()
         self.db.execute("PRAGMA synchronous = OFF")
         self.db.execute("PRAGMA journal_mode = MEMORY")

@@ -1232,7 +1232,7 @@ def check_heuristics_ratio():
   import pprint
   pprint.pprint(ratios)
   
-  assert(ratios == Counter({1: 21, 2: 22, 0: 5, 3: 1}))
+  assert(ratios == Counter({1: 22, 2: 22, 0: 5, 3: 1}))
 
 #-------------------------------------------------------------------------------
 def check_mandatory_fields():
