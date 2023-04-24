@@ -77,8 +77,6 @@ CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
   "stru_", "dbl_", "locret_", "flt_", "jpt_"]
 CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
 
-DECIMAL_VALUES = "7f"
-
 ITEM_MAIN_EA = 0
 ITEM_MAIN_NAME = 1
 ITEM_DIFF_EA = 2
@@ -95,14 +93,6 @@ ITEM_DIFF_BBLOCKS = 7
 # reason, in a format supported by IDA.
 CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
 
-# This is a value that we add when we found a match by diffing previous known
-# good matches assembly and pseudocode. The problem is that 2 functions can have
-# the same assembly or pseudo-code but be different functions. However, as we're
-# getting the match from previously known good matches, even if our internal
-# function to calculate similarity gives out the same ratio, we know for a fact
-# that the match found by diffing matches is *the* match. To prevent such little
-# problems, we just add this value to the calculated ratio and that's about it.
-CALLEES_MATCHES_BONUS_RATIO = 0.01
 
 #-------------------------------------------------------------------------------
 import logging
@@ -215,7 +205,7 @@ class CChooser():
     if self.title.startswith("Unmatched in"):
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
-      dec_vals = "%." + DECIMAL_VALUES
+      dec_vals = "%." + config.DECIMAL_VALUES
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
                         "%08x" % int(item.ea2), item.vfname2, dec_vals % item.ratio,
                         "%d" % item.bb1, "%d" % item.bb2, item.description])
@@ -223,11 +213,11 @@ class CChooser():
 
   def get_color(self):
     if self.title.startswith("Best"):
-      return 0xffff99
+      return config.HIGHLIGHT_FUNCTION_BEST
     elif self.title.startswith("Partial"):
-      return 0x99ff99
+      return HIGHLIGHT_FUNCTION_PARTIAL
     elif self.title.startswith("Unreliable"):
-      return 0x9999ff
+      return HIGHLIGHT_FUNCTION_UNRELIABLE
 
 #-------------------------------------------------------------------------------
 class bytes_encoder(json.JSONEncoder):
@@ -310,31 +300,30 @@ class CBinDiff:
     ####################################################################
     # LIMITS
     #
-    # Do not run heuristics for more than X seconds (by default, 3 minutes).
+    # Do not run heuristics for more than SQL_TIMEOUT_LIMIT seconds.
     self.timeout = self.get_value_for("SQL_TIMEOUT_LIMIT", config.SQL_TIMEOUT_LIMIT)
-    # It's typical in SQL queries to get a cartesian product of the 
-    # results in the functions tables. Do not process more than this
-    # value per each 20k functions.
+    # It's typical in SQL queries to get a cartesian product of the results in
+    # the functions tables. Do not process more than this number of rows.
     self.SQL_MAX_PROCESSED_ROWS = self.get_value_for("SQL_MAX_PROCESSED_ROWS", config.SQL_MAX_PROCESSED_ROWS)
     # Limits to filter the functions to export
     self.min_ea = 0
     self.max_ea = 0
     # Export only non IDA automatically generated function names? I.e.,
     # excluding these starting with sub_*
-    self.ida_subs = True
+    self.ida_subs = config.EXPORTING_ONLY_NON_IDA_SUBS
     # Export only function summaries instead of also exporting both the
     # basic blocks and all instructions used by functions?
-    self.function_summaries_only = False
+    self.function_summaries_only = config.EXPORTING_FUNCTION_SUMMARIES_ONLY
     # Ignore IDA's automatically generated sub_* names for heuristics
     # like the 'Same name'?
-    self.ignore_sub_names = True
+    self.ignore_sub_names = config.DIFFING_IGNORE_SUB_FUNCTION_NAMES
     # Ignore any and all function names for the 'Same name' heuristic?
-    self.ignore_all_names = self.get_value_for("ignore_all_names", True)
+    self.ignore_all_names = self.get_value_for("ignore_all_names", config.DIFFING_IGNORE_ALL_FUNCTION_NAMES)
     # Ignore small functions?
-    self.ignore_small_functions = self.get_value_for("ignore_small_functions", False)
+    self.ignore_small_functions = self.get_value_for("ignore_small_functions", config.DIFFING_IGNORE_SMALL_FUNCTIONS)
 
     # Export microcode instructions?
-    self.export_microcode = self.get_value_for("export_microcode", True)
+    self.export_microcode = self.get_value_for("export_microcode", config.EXPORTING_USE_MICROCODE)
 
     # Number of CPU threads/cores to use?
     cpus = cpu_count() - 1
@@ -702,11 +691,7 @@ class CBinDiff:
     try:
       # The last 6 fields are callers, callees, basic_blocks_data & bb_relations
       for prop in props[:len(props)-6]:
-        # This is a hack for 64 bit architectures kernels
-        if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
-          prop = str(prop)
-        elif type(prop) is bytes:
-          prop = prop.encode("utf-8")
+        prop = self.get_valid_prop(prop)
 
         if type(prop) is list or type(prop) is set:
           new_props.append(json.dumps(list(prop), ensure_ascii=False, cls=bytes_encoder))
@@ -1426,7 +1411,7 @@ class CBinDiff:
     md2 = float(md2)
 
     fratio = quick_ratio
-    decimal_values = "{0:.%s}" % DECIMAL_VALUES
+    decimal_values = "{0:.%s}" % config.DECIMAL_VALUES
     if self.relaxed_ratio:
       fratio = real_quick_ratio
       decimal_values = "{0:.1f}"
@@ -1849,8 +1834,8 @@ class CBinDiff:
             item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
           else:
             the_chooser = choose
-            if ratio + CALLEES_MATCHES_BONUS_RATIO < 1.0:
-              ratio += CALLEES_MATCHES_BONUS_RATIO
+            if ratio + config.MATCHES_BONUS_RATIO < 1.0:
+              ratio += config.MATCHES_BONUS_RATIO
 
             item = [ea, name1, ea2, name2, desc, ratio, bb1, bb2]
 
@@ -2584,8 +2569,8 @@ class CBinDiff:
               else:
                 continue
 
-              if r + CALLEES_MATCHES_BONUS_RATIO < 1.0:
-                r += CALLEES_MATCHES_BONUS_RATIO
+              if r + config.MATCHES_BONUS_RATIO < 1.0:
+                r += config.MATCHES_BONUS_RATIO
 
               should_add = True
               if self.hooks is not None:
