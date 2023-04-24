@@ -521,12 +521,15 @@ class CBinDiffExporterSetup(Form):
   def __init__(self):
     s = r"""Diaphora
   Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
-  If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are
-  exporting the first database.
+  If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are exporting the first database.
 
-  SQLite databases:                                                                                                                                                          Export filter limits:
-  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
-  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
+  SQLite databases:
+  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}>
+  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}>
+
+  Export filter limits:
+  <#Minimum address to find functions to export#From address:{iMinEA}>
+  <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
   Export options:
   <Use the decompiler if available:{rUseDecompiler}>
@@ -549,8 +552,8 @@ class CBinDiffExporterSetup(Form):
 
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
-    args = {'iFileSave': Form.FileInput(save=True, swidth=40, hlp="SQLite database (*.sqlite)"),
-            'iFileOpen': Form.FileInput(open=True, swidth=40, hlp="SQLite database (*.sqlite)"),
+    args = {'iFileSave': Form.FileInput(save=True, hlp="SQLite database (*.sqlite)"),
+            'iFileOpen': Form.FileInput(open=True, hlp="SQLite database (*.sqlite)"),
             'iMinEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'iMaxEA':    Form.NumericInput(tp=Form.FT_HEX, swidth=22),
             'cGroupExport' : Form.ChkGroupControl(("rUseDecompiler",
