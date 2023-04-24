@@ -1914,7 +1914,9 @@ class CBinDiff:
       self.search_small_differences("partial")
 
   def find_brute_force(self):
-    # XXX: FIXME: Joxean, this is unreliable at best
+    """
+    Brute force the unmatched functions. This is unreliable at best.
+    """
     cur = self.db_cursor()
     sql = "create temporary table unmatched(id integer null primary key, address, main)"
     cur.execute(sql)
@@ -1990,7 +1992,6 @@ class CBinDiff:
       self.find_brute_force()
 
   def find_unmatched(self):
-    # XXX: FIXME: Joxean, this function is doing what another function does!!!
     cur = self.db_cursor()
     try:
       sql = "select name, address from functions"
@@ -2454,7 +2455,6 @@ class CBinDiff:
     return ret
 
   def functions_exists(self, name1, name2):
-    # XXX: FIXME: Joxean, add a cache here?
     l = []
     cur = self.db_cursor()
     try:
