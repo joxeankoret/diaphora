@@ -2039,8 +2039,6 @@ class CBinDiff:
     """
     Save all the results (best, partial, unreliable, multimatches and unmatched)
     to the file @filename.
-
-    XXX: FIXME: Joxean, this must be refactored.
     """
     if os.path.exists(filename):
       os.remove(filename)
@@ -2070,35 +2068,19 @@ class CBinDiff:
         results_sql   = "insert or ignore into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         unmatched_sql = "insert into unmatched values (?, ?, ?, ?)"
 
-        for item in self.best_chooser.items:
-          l = list(item)
-          l.insert(0, 'best')
-          cur.execute(results_sql, l)
+        d = {"best"      : [self.best_chooser, results_sql],
+             "partial"   : [self.partial_chooser, results_sql],
+             "unreliable": [self.unreliable_chooser, results_sql],
+             "multimatch": [self.multimatch_chooser, results_sql],
+             "primary"   : [self.unmatched_primary, unmatched_sql],
+             "secondary" : [self.unmatched_second, unmatched_sql]}
 
-        for item in self.partial_chooser.items:
-          l = list(item)
-          l.insert(0, 'partial')
-          cur.execute(results_sql, l)
-
-        for item in self.unreliable_chooser.items:
-          l = list(item)
-          l.insert(0, 'unreliable')
-          cur.execute(results_sql, l)
-
-        for item in self.multimatch_chooser.items:
-          l = list(item)
-          l.insert(0, 'multimatch')
-          cur.execute(results_sql, l)
-
-        for item in self.unmatched_primary.items:
-          l = list(item)
-          l.insert(0, 'primary')
-          cur.execute(unmatched_sql, l)
-
-        for item in self.unmatched_second.items:
-          l = list(item)
-          l.insert(0, 'secondary')
-          cur.execute(unmatched_sql, l)
+        for category in d:
+          chooser, sql_cmd = d[category]
+          for item in chooser.items:
+            l = list(item)
+            l.insert(0, category)
+            cur.execute(sql_cmd, l)
 
       log("Diffing results saved in file '%s'." % filename)
     finally:
@@ -2107,9 +2089,12 @@ class CBinDiff:
 
   def try_attach(self, cur, db):
     """
-    Try attaching the diff database and ignore any error???
+    Try attaching the diff database and ignore errors...
 
-    NOTE: I know, this looks odd. Is yet another workaround for an old IDA bug.
+    NOTE: Yes, this looks odd, it is yet another workaround for an old IDA bug.
+    See this issue for more details:
+    
+    https://github.com/joxeankoret/diaphora/issues/151
     """
     try:
       cur.execute('attach "%s" as diff' % db)
