@@ -11,7 +11,7 @@ CALLGRAPH_COLOR_TARGET = 0xEEFF00
 CALLGRAPH_COLOR_CALLER = 0xFFFFFF
 CALLGRAPH_COLOR_CALLEE = 0xFFFFFF
 
-# Colors for displaying differences
+# Colors for displaying differences.
 # NOTE: Colors in this case are in the format "#RGB" because they are used for
 # the CSS.
 DIFF_COLOR_ADDED      = "#aaffaa"
@@ -20,10 +20,15 @@ DIFF_COLOR_SUBTRACTED = "#ffaaaa"
 DIFF_COLOR_LINE_NO    = "#e0e0e0"
 
 # Colors for highlighting functions when the appropriate popup menu option is
-# selected
+# selected, in 0xBGR format.
 HIGHLIGHT_FUNCTION_BEST       = 0xffff99
 HIGHLIGHT_FUNCTION_PARTIAL    = 0x99ff99
 HIGHLIGHT_FUNCTION_UNRELIABLE = 0x9999ff
+
+# Colors for displaying control flow graph differences, in 0xBGR format.
+GRAPH_BBLOCK_MATCH_PARTIAL = 0xCCFFFF
+GRAPH_BBLOCK_MATCH_PERFECT = 0xFFFFFF
+GRAPH_BBLOCK_MATCH_NONE    = 0xCCCCFF
 
 ################################################################################
 # Default export & diffing options

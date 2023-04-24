@@ -215,9 +215,9 @@ class CChooser():
     if self.title.startswith("Best"):
       return config.HIGHLIGHT_FUNCTION_BEST
     elif self.title.startswith("Partial"):
-      return HIGHLIGHT_FUNCTION_PARTIAL
+      return config.HIGHLIGHT_FUNCTION_PARTIAL
     elif self.title.startswith("Unreliable"):
-      return HIGHLIGHT_FUNCTION_UNRELIABLE
+      return config.HIGHLIGHT_FUNCTION_UNRELIABLE
 
 #-------------------------------------------------------------------------------
 class bytes_encoder(json.JSONEncoder):
@@ -892,8 +892,8 @@ class CBinDiff:
           if not mod:
             # Perfect match, we discovered a basic block equal in both
             # functions
-            colours1[key1] = 0xffffff
-            colours2[key2] = 0xffffff
+            colours1[key1] = config.GRAPH_BBLOCK_MATCH_PERFECT
+            colours2[key2] = config.GRAPH_BBLOCK_MATCH_PERFECT
             dones1.add(key1)
             dones2.add(key2)
             break
@@ -904,8 +904,8 @@ class CBinDiff:
             # NOTE:
             # Do not add the partial matches to the dones lists, as we
             # can have complete matches after a partial match!
-            colours1[key1] = 0xCCffff
-            colours2[key2] = 0xCCffff
+            colours1[key1] = config.GRAPH_BBLOCK_MATCH_PARTIAL
+            colours2[key2] = config.GRAPH_BBLOCK_MATCH_PARTIAL
             break
     return colours1, colours2
 
@@ -920,9 +920,9 @@ class CBinDiff:
 
     # Consider, by default, all blocks added, news
     for key1 in bblocks1:
-      colours1[key1] = 0xCCCCFF
+      colours1[key1] = config.GRAPH_BBLOCK_MATCH_NONE
     for key2 in bblocks2:
-      colours2[key2] = 0xCCCCFF
+      colours2[key2] = config.GRAPH_BBLOCK_MATCH_NONE
 
     colours1, colours2 = self.compare_graphs_pass(bblocks1, bblocks2, colours1, colours2, False)
     colours1, colours2 = self.compare_graphs_pass(bblocks1, bblocks2, colours1, colours2, True)
@@ -1601,7 +1601,7 @@ class CBinDiff:
       if done:
         matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
         self.add_match(name1, name2, r, item, chooser)
-      else: #Or "elif not done"
+      else:
         chooser = None
         item = None
         if r < 0.5 and r > val and unreliable is not None:
@@ -1627,6 +1627,9 @@ class CBinDiff:
       self.add_matches_internal(cur, best=best, partial=partial, unreliable=unreliable, debug=debug)
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
+      print("*"*80)
+      print(sql)
+      print("*"*80)
       traceback.print_exc()
       raise
     finally:
