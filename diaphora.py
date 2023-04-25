@@ -1482,9 +1482,6 @@ class CBinDiff:
   def all_functions_matched(self):
     """
     Did we match already all the functions?
-
-    XXX: FIXME: Double check this function, I'm not sure it really works now
-    after the so many changes made.
     """
     return len(self.matched_primary)   == self.total_functions1 or \
            len(self.matched_secondary) == self.total_functions2
