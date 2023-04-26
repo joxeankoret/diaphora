@@ -60,6 +60,9 @@ MIN_FUNCTIONS_TO_CONSIDER_MEDIUM = 8000
 # exporting everything.
 MIN_FUNCTIONS_TO_CONSIDER_HUGE = 100000
 
+# Block size to use to generate fuzzy hashes for pseudo-codes with DeepToad
+FUZZY_HASHING_BLOCK_SIZE = 512
+
 ################################################################################
 # Default SQL related configuration options
 
@@ -110,3 +113,38 @@ DEFAULT_PARTIAL_RATIO = 0.5
 # Some heuristics generates much less false positives, if at all, therefore we
 # can relax the minimum ratio needed to consider a match good or bad.
 DEFAULT_TRUSTED_PARTIAL_RATIO = 0.3
+
+# Regular expressions used to clean-up the pseudo-code and assembly dumps in
+# order to get better comparison ratios.
+CLEANING_CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
+  "qword_", "dword_", "byte_", "word_", "off_", "def_", "unk_", "asc_",
+  "stru_", "dbl_", "locret_", "flt_", "jpt_"]
+CLEANING_CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
+
+# When diffing the same binary with just symbol names stripped, usually around
+# 99% of the functions are matched by address. This value indicates what is that
+# percent that Diaphora will use to enable this speed up.
+SPEEDUP_STRIPPED_BINARIES_MIN_PERCENT = 99.0
+
+# There are some easy methods to speed up diffing when both databases have names
+# (symbols), specially when almost the whole binary matches. This value is used
+# to determine what is the minimum percent of matched functions to enable this
+# speed up.
+SPEEDUP_PATCH_DIFF_SYMBOLS_MIN_PERCENT = 90.0
+
+# Sometimes functions are just renamed but they are still in the binary, thus,
+# the patch diffing speed up could miss such changes. This is the minimum ratio
+# used to compare functions that differ in names and were not matched previously
+# by function name.
+SPEEDUP_PATCH_DIFF_RENAMED_FUNCTION_MIN_RATIO = 0.6
+
+# If the number of basic blocks differ in more than 75% we should ignore that 
+# match that was discovered by diffing the assembly or pseudo-code of previous
+# matches. This value is a percent, not the number of different basic blocks.
+DIFFING_MATCHES_MAX_DIFFERENT_BBLOCKS_PERCENT = 25
+
+# Small functions cause a lot of false positives and different heuristics are
+# differently affected by what is a small function. This value configures the 
+# minimum number of basic blocks a function must have for the heuristic that
+# finds new matches by diffing previous matches to consider or drop this match.
+DIFFING_MATCHES_MIN_BBLOCKS = 3

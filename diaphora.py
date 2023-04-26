@@ -49,9 +49,6 @@ importlib.reload(database)
 from database import schema
 importlib.reload(schema)
 
-from pygments.lexers import NasmLexer, CppLexer, DiffLexer
-from pygments.formatters import HtmlFormatter
-
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
                             primesbelow as primes)
@@ -66,25 +63,14 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "3.0.0"
-COPYRIGHT_VALUE="Copyright(c) 2015-2023 Joxean Koret"
-COMMENT_VALUE="Diaphora diffing plugin for IDA version %s" % VERSION_VALUE
-
-# Used to clean-up the pseudo-code and assembly dumps in order to get
-# better comparison ratios
-CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
-  "qword_", "dword_", "byte_", "word_", "off_", "def_", "unk_", "asc_",
-  "stru_", "dbl_", "locret_", "flt_", "jpt_"]
-CMP_REMS = ["dword ptr ", "byte ptr ", "word ptr ", "qword ptr ", "short ptr"]
+VERSION_VALUE   = "3.0.0"
+COPYRIGHT_VALUE = "Copyright(c) 2015-2023 Joxean Koret"
 
 ITEM_MAIN_EA = 0
 ITEM_MAIN_NAME = 1
 ITEM_DIFF_EA = 2
 ITEM_DIFF_NAME = 3
-ITEM_DESCRIPTION = 4
 ITEM_RATIO = 5
-ITEM_MAIN_BBLOCKS = 6
-ITEM_DIFF_BBLOCKS = 7
 
 # Yes, yes, I know, parsing C/C++ with regular expressions is wrong and cannot
 # be done, but we don't need to parse neither real nor complete C/C++, and we
@@ -149,7 +135,8 @@ def log(msg):
 
 #-------------------------------------------------------------------------------
 def log_refresh(msg, show=False, do_log=True):
-  log(msg)
+  if do_log:
+    log(msg)
 
 #-------------------------------------------------------------------------------
 def debug_refresh(msg, show=False):
@@ -168,9 +155,6 @@ class CChooser():
       self.ratio = ratio
       self.bb1 = int(bb1)
       self.bb2 = int(bb2)
-      self.cmd_import_selected = None
-      self.cmd_import_all = None
-      self.cmd_import_all_funcs = None
 
     def __str__(self):
       return '%08x' % int(self.ea)
@@ -184,7 +168,6 @@ class CChooser():
 
     self.n = 0
     self.items = []
-    self.icon = 41
     self.bindiff = bindiff
     self.show_commands = show_commands
 
@@ -264,9 +247,8 @@ class CBinDiff:
     self.equal_callgraph = False
 
     self.kfh = CKoretFuzzyHashing()
-    # With this block size we're sure it will only apply to functions
-    # somehow big
-    self.kfh.bsize = 32
+    # With this block size we're sure it will only apply to "big" functions
+    self.kfh.bsize = config.FUZZY_HASHING_BLOCK_SIZE
 
     self.pseudo = {}
     self.pseudo_hash = {}
@@ -485,23 +467,6 @@ class CBinDiff:
       cur.execute(sql, values)
     finally:
       cur.close()
-
-  def get_instruction_id(self, addr):
-    """
-    Get the id of the given instruction with address @addr
-    """
-    cur = self.db_cursor()
-    rowid = None
-    try:
-      sql = "select id from instructions where address = ?"
-      cur.execute(sql, (str(addr),))
-      row = cur.fetchone()
-      rowid = None
-      if row is not None:
-        rowid = row["id"]
-    finally:
-      cur.close()
-    return rowid
 
   def get_bb_id(self, addr):
     """
@@ -807,7 +772,7 @@ class CBinDiff:
     tmp = self.re_sub(" // .*", "", pseudo)
 
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
-    for rep in CMP_REPS:
+    for rep in config.CLEANING_CMP_REPS:
       tmp = self.re_sub(rep + "[a-f0-9A-F]+", rep + "XXXX", tmp)
     tmp = self.re_sub("v[0-9]+", "vXXX", tmp)
     tmp = self.re_sub("a[0-9]+", "aXXX", tmp)
@@ -826,11 +791,11 @@ class CBinDiff:
     tmp = asm.split(";")[0]
     tmp = tmp.split(" # ")[0]
     # Now, replace sub_, byte_, word_, dword_, loc_, etc...
-    for rep in CMP_REPS:
+    for rep in config.CLEANING_CMP_REPS:
       tmp = self.re_sub(rep + "[a-f0-9A-F]+", "XXXX", tmp)
 
     # Remove dword ptr, byte ptr, etc...
-    for rep in CMP_REMS:
+    for rep in config.CLEANING_CMP_REMS:
       tmp = self.re_sub(rep + "[a-f0-9A-F]+", "", tmp)
 
     reps = [r"\+[a-f0-9A-F]+h\+"]
@@ -1021,7 +986,7 @@ class CBinDiff:
     """
     Check if the function name looks like an IDA's auto-generated one
     """
-    for rep in CMP_REPS:
+    for rep in config.CLEANING_CMP_REPS:
       if name.startswith(rep):
         return True
     return False
@@ -1665,6 +1630,10 @@ class CBinDiff:
       self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable="partial")
     except:
       log("Error: %s" % str(sys.exc_info()[1]))
+      print("*"*80)
+      print(sql)
+      print("*"*80)
+      traceback.print_exc()
       raise
     finally:
       cur.close()
@@ -1769,6 +1738,7 @@ class CBinDiff:
           if not should_add:
             continue
 
+          ratio = ratio2
           ea = str(row["ea"])
           name1 = row["name1"]
           ea2 = row["ea2"]
@@ -1840,64 +1810,6 @@ class CBinDiff:
           self.add_match(name1, name2, ratio, item, the_chooser)
     finally:
       cur.close()
-
-  def get_function_id(self, name, primary=True):
-    """
-    Get the function id for the function with name @name at either the main or
-    diff function.
-    """
-    cur = self.db_cursor()
-    rid = None
-    db_name = "main"
-    if not primary:
-      db_name = "diff"
-
-    try:
-      sql = "select id from %s.functions where name = ?" % db_name
-      cur.execute(sql, (name,))
-      row = cur.fetchone()
-      if row:
-        rid = row["id"]
-    finally:
-      cur.close()
-    
-    return rid
-
-  def get_function_id_by_address(self, ea, primary=True):
-    """
-    Get the function id for the function with address @ea at either the main or
-    diff function.
-    """
-    cur = self.db_cursor()
-    rid = None
-    db_name = "main"
-    if not primary:
-      db_name = "diff"
-
-    try:
-      sql = "select id from %s.functions where address = ?" % db_name
-      cur.execute(sql, (ea,))
-      row = cur.fetchone()
-      if row:
-        rid = row["id"]
-    finally:
-      cur.close()
-    
-    return rid
-
-  def find_callgraph_matches(self):
-    best_items = list(self.all_matches["best"])
-    self.find_callgraph_matches_from(best_items, 0.60)
-
-    partial_items = list(self.all_matches["partial"])
-    self.find_callgraph_matches_from(partial_items, 0.80)
-
-  def run_thread(self, target, args, name):
-    t = Thread(target=target, args=args)
-    t.timeout = False
-    t.name = name
-    t.start()
-    t.join()
 
   def find_partial_matches(self):
     """
@@ -2130,8 +2042,6 @@ class CBinDiff:
     bb2 = int(diff_row["nodes"])
     md1 = main_row["md_index"]
     md2 = diff_row["md_index"]
-    source1 = main_row["source_file"]
-    source2 = diff_row["source_file"]
     clean_asm1 = main_row["clean_assembly"]
     clean_asm2 = diff_row["clean_assembly"]
     clean_pseudo1 = main_row["clean_pseudo"]
@@ -2167,7 +2077,7 @@ class CBinDiff:
       # clear it's the same binary with very little changes like, probably, just
       # symbols stripped.
       percent = (matches*100) / total
-      if percent >= 99:
+      if percent >= config.SPEEDUP_STRIPPED_BINARIES_MIN_PERCENT:
         self.is_symbols_stripped = True
         msg = "A total of %d matches out of %d, %f%% percent have the same address" % (matches, total, percent)
         log("Symbols stripped detected: %s" % msg)
@@ -2210,7 +2120,7 @@ class CBinDiff:
       # If more than 90% of the best matches share the same exact mangled name
       # it is clear where patch diffing 2 different versions of the same binary.
       percent = (matches*100) / total
-      if percent > 90:
+      if percent > config.SPEEDUP_PATCH_DIFF_SYMBOLS_MIN_PERCENT:
         # We already have them matched, just instruct the heuristic engine to
         # finish by doing brute forcing with the remaining functions and that's
         # about it.
@@ -2265,7 +2175,7 @@ class CBinDiff:
       cur.close()
     return main, diff
 
-  def search_remaining_functions(self, main_unmatched, diff_unmatched, config):
+  def search_remaining_functions(self, main_unmatched, diff_unmatched, values):
     """
     Search potentially renamed functions in a usual patch diffing session.
     """
@@ -2274,21 +2184,21 @@ class CBinDiff:
                     diff.functions df
               where f.address = ?
                 and df.address = ?"""
-    if not config["small"]:
+    if not values["small"]:
       sql += " and f.nodes >= 3 and df.nodes >= 3 "
 
     cur = self.db_cursor()
     try:
       for ea1, name1 in main_unmatched:
-        if config["only_sub"]:
+        if values["only_sub"]:
           if not name1.startswith("sub_"):
             continue
 
         for ea2, name2 in diff_unmatched:
-          cur.execute(sql, (config["heur"], ea1, ea2))
+          cur.execute(sql, (values["heur"], ea1, ea2))
           self.add_matches_internal(cur, best="best", \
                                     partial="partial",\
-                                    val=config["val"])
+                                    val=values["val"])
     finally:
       cur.close()
 
@@ -2299,9 +2209,12 @@ class CBinDiff:
     """
     main_unmatched, diff_unmatched = self.get_unmatched_functions()
     if self.is_patch_diff:
-      heur = "Renamed function in patch diffing session"
-      config = {"only_sub":True, "heur":heur, "small":False, "val":0.6}
-      self.search_remaining_functions(main_unmatched, diff_unmatched, config)
+      heur = "Renamed or anonymous function match in patch diffing session"
+      values = {"only_sub":True,
+                "heur"    :heur,
+                "small"   :False,
+                "val"     : config.SPEEDUP_PATCH_DIFF_RENAMED_FUNCTION_MIN_RATIO}
+      self.search_remaining_functions(main_unmatched, diff_unmatched, values)
 
   def itemize_for_chooser(self, item):
     """
@@ -2535,13 +2448,15 @@ class CBinDiff:
               max_nodes = max(main_row["nodes"], diff_row["nodes"])
 
               # If the number of basic blocks differ in more than 75% ignore...
-              if ((min_nodes * 100) / max_nodes) < 25:
+              if ((min_nodes * 100) / max_nodes) < config.DIFFING_MATCHES_MAX_DIFFERENT_BBLOCKS_PERCENT:
                 continue
-              
+
               # There is a high risk of false positives with small functions,
               # therefore, it's preferred to miss functions than having false
               # positives
-              if main_row["nodes"] < 3 or diff_row["nodes"] < 3:
+              if main_row["nodes"] < config.DIFFING_MATCHES_MIN_BBLOCKS:
+                continue
+              if diff_row["nodes"] < config.DIFFING_MATCHES_MIN_BBLOCKS:
                 continue
 
               r = self.compare_function_rows(main_row, diff_row)

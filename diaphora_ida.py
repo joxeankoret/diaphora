@@ -69,15 +69,12 @@ from PyQt5 import QtWidgets
 # Chooser items indices. They do differ from the CChooser.item items that are
 # handled in diaphora.py.
 import diaphora
-CHOOSER_ITEM_INDEX = 0
+
 CHOOSER_ITEM_MAIN_EA = diaphora.ITEM_MAIN_EA + 1
 CHOOSER_ITEM_MAIN_NAME = diaphora.ITEM_MAIN_NAME + 1
 CHOOSER_ITEM_DIFF_EA = diaphora.ITEM_DIFF_EA + 1
 CHOOSER_ITEM_DIFF_NAME = diaphora.ITEM_DIFF_NAME + 1
-CHOOSER_ITEM_DESCRIPTION = diaphora.ITEM_DESCRIPTION + 1
 CHOOSER_ITEM_RATIO = diaphora.ITEM_RATIO
-CHOOSER_ITEM_MAIN_BBLOCKS = diaphora.ITEM_MAIN_BBLOCKS
-CHOOSER_ITEM_DIFF_BBLOCKS = diaphora.ITEM_DIFF_BBLOCKS
 
 # Constants unexported in IDA Python
 PRTYPE_SEMI = 0x0008
@@ -1542,7 +1539,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
-    ea2, cmt1, cmt2, operand_names, name, mtype, mdis, mcmt, mitp = ins_data2
+    ea2, cmt1, cmt2, operand_names, name, mtype, _, mcmt, mitp = ins_data2
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
@@ -1644,7 +1641,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     
     diff_list = difflib._mdiff(lines1.splitlines(1), lines2.splitlines(1))
     for x in diff_list:
-      left, right, ignore = x
+      left, right, _ = x
       left_line  = left[0]
       right_line = right[0]
     
@@ -1688,7 +1685,10 @@ class CIDABinDiff(diaphora.CBinDiff):
       if len(import_rows) > 0:
         import_syms = {}
         for row in import_rows:
-          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operand_names"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+          operand_names = row["operand_names"]
+          if operand_names is not None:
+            operand_names = json.loads(operand_names)
+          import_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], operand_names, row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
         # Check in the current database
         sql = """ select distinct ins.address ea, ins.disasm dis, ins.comment1 cmt1, ins.comment2 cmt2, ins.operand_names operand_names, ins.name name, ins.type type, ins.pseudocomment cmt, ins.pseudoitp itp
@@ -1705,7 +1705,10 @@ class CIDABinDiff(diaphora.CBinDiff):
         if len(match_rows) > 0:
           matched_syms = {}
           for row in match_rows:
-            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], json.loads(row["operand_names"]), row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
+            operand_names = row["operand_names"]
+            if operand_names is not None:
+              operand_names = json.loads(operand_names)
+            matched_syms[row["ea"]] = [row["ea"], row["cmt1"], row["cmt2"], operand_names, row["name"], row["type"], row["dis"], row["cmt"], row["itp"]]
 
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
@@ -2114,7 +2117,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   def extract_function_constants(self, ins, x, constants):
     for operand in ins.ops:
-      the_const = None
       if operand.type == o_imm:
         if self.is_constant(operand, x) and self.constant_filter(operand.value):
           constants.append(operand.value)
@@ -2736,7 +2738,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
       # First, put names found with IDAMagicStrings to anonymous modules found
       # with LFA
       for source_file in d:
-        for ref_ea, func_name, mod_name in d[source_file]:
+        for _, func_name, mod_name in d[source_file]:
           func_ea = idc.get_name_ea_simple(func_name)
           if func_ea not in func_modules:
             # print("0x%08x:%s -> %s" % (func_ea, func_name, mod_name))
@@ -2745,7 +2747,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
               if func_ea >= module.start and func_ea <= module.end:
                 if module.name == "":
                   module.name = mod_name
-    
+
       #
       # Next sub-step: find the limits of modules with the same name that appear
       # multiple times and update the end address to the last found one.
@@ -2799,7 +2801,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
       module["total"] = str(total_funcs)
       module["primes"] = str(primes)
-      module["pseudo_primes"] = str(pseudocode_primes)
+      module["pseudo_primes"] = str(pseudo_primes)
 
     return new_modules
 
@@ -2830,9 +2832,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
         cur.execute(sql1, vals)
         cu_id = cur.lastrowid
 
-        primes = 1
-        pseudo_primes = 1
-
         total_funcs = 0
         for func in Functions(module["start"], module["end"]):
           # Some functions (like thunk ones) might be ignored when exporting
@@ -2841,7 +2840,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
             if func_id not in dones:
               dones.add(func_id)
               cur.execute(sql2, (cu_id, func_id))
-              cur.execute(sql4, (module["name"], func_id))
+              cur.execute(sql4, (module_name, func_id))
 
         cur.execute(sql3, [module["primes"], module["pseudo_primes"], module["total"], cu_id])
         if cur.rowcount == 0:
@@ -2910,7 +2909,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results""")
 
   def get_til_names(self):
     idb_path = get_idb_path()
-    filename, ext = os.path.splitext(idb_path)
+    filename, _ = os.path.splitext(idb_path)
     til_path = "%s.til" % filename
 
     with open(til_path, "rb") as f:
@@ -3176,8 +3175,8 @@ def _diff_or_export(use_ui, **options):
     bd.ignore_all_names = opts.ignore_all_names
     bd.ignore_small_functions = opts.ignore_small_functions
     bd.function_summaries_only = opts.func_summaries_only
-    bd.export_microde = opts.export_microcode
-    bd.max_processed_rows = config.SQL_MAX_PROCESSED_ROWS * max(total_functions / 20000, 1)
+    bd.export_microcode = opts.export_microcode
+    bd.SQL_MAX_PROCESSED_ROWS = config.SQL_MAX_PROCESSED_ROWS
     bd.timeout = config.SQL_TIMEOUT_LIMIT * max(total_functions / 20000, 1)
     bd.project_script = opts.project_script
 
@@ -3255,6 +3254,8 @@ class BinDiffOptions:
     # Enable, by default, exporting only function summaries for huge dbs.
     too_big_db = total_functions > config.MIN_FUNCTIONS_TO_CONSIDER_HUGE
     self.func_summaries_only = kwargs.get('func_summaries_only', too_big_db)
+    if too_big_db:
+      warning(MSG_FUNCTION_SUMMARIES_ONLY)
 
     # Python script to run for both the export and diffing process
     self.project_script = kwargs.get('project_script')
