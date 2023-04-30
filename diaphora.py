@@ -1287,7 +1287,7 @@ class CBinDiff:
       l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
       for item in l:
         # An example item:
-        # item = [ea, name, ea, name, "100% equal", 1, nodes, nodes]
+        # item = [ea1, name1, ea2, name2, "100% equal", 1, nodes1, nodes2]
         ea = item[0]
         name1 = item[1]
         name2 = item[3]
@@ -2031,7 +2031,7 @@ class CBinDiff:
     Compare the functions of one SQL match.
     """
     name1 = main_row["name"]
-    name2 = main_row["name"]
+    name2 = diff_row["name"]
     pseudo1 = main_row["pseudocode"]
     pseudo2 = diff_row["pseudocode"]
     asm1 = main_row["assembly"]
@@ -2243,8 +2243,86 @@ class CBinDiff:
           if key not in dones:
             dones.add(key)
             self.multimatch_chooser.add_item(item)
+            score = self.deep_ratio(int(item.ea), int(item.ea2))
+            debug_refresh("Deep comparing %s-%s, score %f" % (hex(int(item.ea)), hex(int(item.ea2)), score))
             ignore_list.add(ea)
+
     return ignore_list, dones
+
+  def deep_ratio(self, ea1, ea2):
+    score = 0
+    cur = self.db_cursor()
+    sql = "select * from {db}.functions where address = ?"
+    try:
+      cur.execute(sql.format(db='main'), (ea1,))
+      main_row = cur.fetchone()
+
+      cur.execute(sql.format(db='diff'), (ea2,))
+      diff_row = cur.fetchone()
+
+      name1 = main_row["name"]
+      name2 = diff_row["name"]
+      print(main_row["name"], diff_row["name"])
+
+      source1 = main_row["source_file"]
+      source2 = diff_row["source_file"]
+      if source1 is not None and source2 is not None:
+        if source1 == source2 and source1 != "":
+          score += 0.1
+
+      pseudocode_primes1 = main_row["pseudocode_primes"]
+      pseudocode_primes2 = diff_row["pseudocode_primes"]
+      if pseudocode_primes1 is not None and pseudocode_primes2 is not None:
+        if pseudocode_primes1 == pseudocode_primes2 and pseudocode_primes1 != "":
+          score += 0.1
+
+      in1 = main_row["indegree"]
+      in2 = diff_row["indegree"]
+      if in1 == in2 and in1 != 0:
+        score += 0.1
+
+      out1 = main_row["outdegree"]
+      out2 = diff_row["outdegree"]
+      if out1 == out2 and out1 != 0:
+        score += 0.1
+
+      switches1 = main_row["switches"]
+      switches2 = diff_row["switches"]
+      if switches1 == switches2 and switches1 != '[]':
+        score += 0.3
+
+      cc1 = main_row["cyclomatic_complexity"]
+      cc2 = diff_row["cyclomatic_complexity"]
+      if cc1 == cc2 and cc1 != 0:
+        score += 0.1
+
+      if main_row["constants"] != '[]':
+        if main_row["constants"] == diff_row["constants"]:
+          score += 0.3
+        else:
+          set1 = set(json.loads(main_row["constants"]))
+          set2 = set(json.loads(diff_row["constants"]))
+          set_result = set1.intersection(set2)
+          if len(set_result) > 0:
+            print("CONSTANTS INTERSECTION")
+            score += len(set_result) * 0.05
+
+      if not name1 in self.main_deep_ratios:
+        self.main_deep_ratios[name1] = {"score":score, "name":name2}
+      
+      if score > self.main_deep_ratios[name1]["score"]:
+        self.main_deep_ratios[name1] = {"score":score, "name":name2}
+
+      if not name2 in self.diff_deep_ratios:
+        self.diff_deep_ratios[name2] = {"score":score, "name":name1}
+      
+      if score > self.diff_deep_ratios[name2]["score"]:
+        self.diff_deep_ratios[name2] = {"score":score, "name":name1}
+
+    finally:
+      cur.close()
+    
+    return score
 
   def find_unresolved_multimatches(self, max_main, multi_main, max_diff, multi_diff):
     # First pass, group them
@@ -2276,7 +2354,8 @@ class CBinDiff:
           multi_main[ea1] = [item]
     
         if ea2 not in max_diff:
-          max_diff[ea2] = ratio        
+          max_diff[ea2] = ratio
+
         # If the previous ratio we got is less than this one, ignore
         if max_diff[ea2] > ratio:
           continue
@@ -2342,7 +2421,17 @@ class CBinDiff:
     """
     self.cleanup_matches()
 
+    self.main_deep_ratios = {}
+    self.diff_deep_ratios = {}
+
     max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
+    
+    if os.getenv("DIAPHORA_DEBUG") is not None:
+      import pprint
+      print("FINAL DEEP RATIOS")
+      pprint.pprint(self.main_deep_ratios)
+      pprint.pprint(self.diff_deep_ratios)
+
     self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
 
   def same_processor_both_databases(self):
