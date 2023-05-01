@@ -1363,13 +1363,26 @@ class CBinDiff:
       return 0
     return ast_ratio(ast1, ast2)
 
-  def check_ratio(self, ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
-                  clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2,
-                  clean_micro1, clean_micro2):
+  def check_ratio(self, main_d, diff_d):
     """
     Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
     1.0 would be the best possible match and 0.0 would be the worst one.
     """
+    ast1 = main_d["ast"]
+    ast2 = diff_d["ast"]
+    pseudo1 = main_d["pseudo"]
+    pseudo2 = diff_d["pseudo"]
+    asm1 = main_d["asm"]
+    asm2 = diff_d["asm"]
+    md1 = main_d["md"]
+    md2 = diff_d["md"]
+    clean_asm1 = main_d["clean_asm"]
+    clean_asm2 = diff_d["clean_asm"]
+    clean_pseudo1 = main_d["clean_pseudo"]
+    clean_pseudo2 = diff_d["clean_pseudo"]
+    clean_micro1 = main_d["clean_micro"]
+    clean_micro2 = diff_d["clean_micro"]
+
     md1 = float(md1)
     md2 = float(md2)
 
@@ -1442,6 +1455,11 @@ class CBinDiff:
         if v != 1.0 and v > r:
           r = v
 
+    if r < 1.0:
+      score = self.deep_ratio(int(main_d["ea"]), int(diff_d["ea"]))
+      if r + score < 1.0:
+        r += score
+
     return r
 
   def all_functions_matched(self):
@@ -1456,27 +1474,36 @@ class CBinDiff:
     Check a single SQL heuristic match and return whether it should be ignored
     or not, and also the similarity ratio for this match.
     """
-    ea = str(row["ea"])
-    name1 = row["name1"]
+
+    ea = row["ea"]
     ea2 = row["ea2"]
+    name1 = row["name1"]
     name2 = row["name2"]
     desc = row["description"]
-    pseudo1 = row["pseudo1"]
-    pseudo2 = row["pseudo2"]
-    asm1 = row["asm1"]
-    asm2 = row["asm2"]
-    ast1 = row["pseudo_primes1"]
-    ast2 = row["pseudo_primes2"]
-    bb1 = int(row["bb1"])
-    bb2 = int(row["bb2"])
-    md1 = row["md1"]
-    md2 = row["md2"]
-    clean_asm1 = row["clean_asm1"]
-    clean_asm2 = row["clean_asm2"]
-    clean_pseudo1 = row["clean_pseudo1"]
-    clean_pseudo2 = row["clean_pseudo2"]
-    clean_micro1 = row["clean_micro1"]
-    clean_micro2 = row["clean_micro2"]
+
+    main_d = {}
+    main_d["ea"] = row["ea"]
+    main_d["name"] = row["name1"]
+    main_d["pseudo"] = row["pseudo1"]
+    main_d["asm"] = row["asm1"]
+    main_d["ast"] = row["pseudo_primes1"]
+    main_d["bb"] = row["bb1"]
+    main_d["md"] = row["md1"]
+    main_d["clean_asm"] = row["clean_asm1"]
+    main_d["clean_pseudo"] = row["clean_pseudo1"]
+    main_d["clean_micro"] = row["clean_micro1"]
+
+    diff_d = {}
+    diff_d["ea"] = row["ea2"]
+    diff_d["name"] = row["name2"]
+    diff_d["pseudo"] = row["pseudo2"]
+    diff_d["asm"] = row["asm2"]
+    diff_d["ast"] = row["pseudo_primes2"]
+    diff_d["bb"] = row["bb2"]
+    diff_d["md"] = row["md2"]
+    diff_d["clean_asm"] = row["clean_asm2"]
+    diff_d["clean_pseudo"] = row["clean_pseudo2"]
+    diff_d["clean_micro"] = row["clean_micro2"]
 
     nullsub = "nullsub_"
     if name1.startswith(nullsub) or name2.startswith(nullsub):
@@ -1487,9 +1514,7 @@ class CBinDiff:
       return False, 0.0
 
     if ratio is None:
-      r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2, \
-                           clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2, \
-                           clean_micro1, clean_micro2)
+      r = self.check_ratio(main_d, diff_d)
       if debug:
         logging.debug("0x%x 0x%x %d" % (int(ea), int(ea2), r))
     else:
@@ -1502,9 +1527,7 @@ class CBinDiff:
     should_add = True
     if self.hooks is not None:
       if 'on_match' in dir(self.hooks):
-        d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-        d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
-        should_add, r = self.hooks.on_match(d1, d2, desc, r)
+        should_add, r = self.hooks.on_match(main_d, diff_d, desc, r)
 
     return should_add, r
 
@@ -2030,28 +2053,31 @@ class CBinDiff:
     """
     Compare the functions of one SQL match.
     """
-    name1 = main_row["name"]
-    name2 = diff_row["name"]
-    pseudo1 = main_row["pseudocode"]
-    pseudo2 = diff_row["pseudocode"]
-    asm1 = main_row["assembly"]
-    asm2 = diff_row["assembly"]
-    ast1 = main_row["pseudocode_primes"]
-    ast2 = diff_row["pseudocode_primes"]
-    bb1 = int(main_row["nodes"])
-    bb2 = int(diff_row["nodes"])
-    md1 = main_row["md_index"]
-    md2 = diff_row["md_index"]
-    clean_asm1 = main_row["clean_assembly"]
-    clean_asm2 = diff_row["clean_assembly"]
-    clean_pseudo1 = main_row["clean_pseudo"]
-    clean_pseudo2 = diff_row["clean_pseudo"]
-    clean_micro1 = main_row["clean_microcode"]
-    clean_micro2 = diff_row["clean_microcode"]
+    main_d = {}
+    main_d["ea"] = main_row["address"]
+    main_d["name"] = main_row["name"]
+    main_d["pseudo"] = main_row["pseudocode"]
+    main_d["asm"] = main_row["assembly"]
+    main_d["ast"] = main_row["pseudocode_primes"]
+    main_d["bb"] = main_row["nodes"]
+    main_d["md"] = main_row["md_index"]
+    main_d["clean_asm"] = main_row["clean_assembly"]
+    main_d["clean_pseudo"] = main_row["clean_pseudo"]
+    main_d["clean_micro"] = main_row["clean_microcode"]
 
-    ratio = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2,\
-                             clean_asm1, clean_asm2, clean_pseudo1, clean_pseudo2, \
-                             clean_micro1, clean_micro2)
+    diff_d = {}
+    diff_d["ea"] = diff_row["address"]
+    diff_d["name"] = diff_row["name"]
+    diff_d["pseudo"] = diff_row["pseudocode"]
+    diff_d["asm"] = diff_row["assembly"]
+    diff_d["ast"] = diff_row["pseudocode_primes"]
+    diff_d["bb"] = diff_row["nodes"]
+    diff_d["md"] = diff_row["md_index"]
+    diff_d["clean_asm"] = diff_row["clean_assembly"]
+    diff_d["clean_pseudo"] = diff_row["clean_pseudo"]
+    diff_d["clean_micro"] = diff_row["clean_microcode"]
+
+    ratio = self.check_ratio(main_d, diff_d)
     return ratio
 
   def search_just_stripped_binaries(self):
@@ -2243,82 +2269,82 @@ class CBinDiff:
           if key not in dones:
             dones.add(key)
             self.multimatch_chooser.add_item(item)
-            score = self.deep_ratio(int(item.ea), int(item.ea2))
-            debug_refresh("Deep comparing %s-%s, score %f" % (hex(int(item.ea)), hex(int(item.ea2)), score))
             ignore_list.add(ea)
 
     return ignore_list, dones
 
   def deep_ratio(self, ea1, ea2):
+    """
+    Try to get a score to add to the value returned by `check_ratio()` so less
+    multimatches happen.
+
+    It's usually pretty hard to determine which is the right match when there is
+    a multimatch. However, in some cases it can be decided by simply taking a
+    look to things like the compilation unit it belongs to, or the AST primes,
+    or the numeric and string constants, etc... In this function I try to remove
+    decidable false positives causing multimatches by adding a very small value
+    to the calculated ratio so it doesn't cause false positives while removing,
+    at the same time, an acceptable number of multimatches (which are also kind
+    of false positives).
+    """
     score = 0
+
+    # It isn't 100% clear if the required fields should be better added to the
+    # main_d/diff_d dicts instead of issuing SQL queries for every match. The
+    # logic says so, but I haven't seen any noticeable performance penalty.
     cur = self.db_cursor()
     sql = "select * from {db}.functions where address = ?"
     try:
-      cur.execute(sql.format(db='main'), (ea1,))
+      cur.execute(sql.format(db='main'), (str(ea1),))
       main_row = cur.fetchone()
 
-      cur.execute(sql.format(db='diff'), (ea2,))
+      cur.execute(sql.format(db='diff'), (str(ea2),))
       diff_row = cur.fetchone()
 
       name1 = main_row["name"]
       name2 = diff_row["name"]
-      print(main_row["name"], diff_row["name"])
 
       source1 = main_row["source_file"]
       source2 = diff_row["source_file"]
       if source1 is not None and source2 is not None:
         if source1 == source2 and source1 != "":
-          score += 0.1
+          score += 0.001
 
       pseudocode_primes1 = main_row["pseudocode_primes"]
       pseudocode_primes2 = diff_row["pseudocode_primes"]
       if pseudocode_primes1 is not None and pseudocode_primes2 is not None:
         if pseudocode_primes1 == pseudocode_primes2 and pseudocode_primes1 != "":
-          score += 0.1
+          score += 0.001
 
       in1 = main_row["indegree"]
       in2 = diff_row["indegree"]
       if in1 == in2 and in1 != 0:
-        score += 0.1
+        score += 0.001
 
       out1 = main_row["outdegree"]
       out2 = diff_row["outdegree"]
       if out1 == out2 and out1 != 0:
-        score += 0.1
+        score += 0.001
 
       switches1 = main_row["switches"]
       switches2 = diff_row["switches"]
       if switches1 == switches2 and switches1 != '[]':
-        score += 0.3
+        score += 0.003
 
       cc1 = main_row["cyclomatic_complexity"]
       cc2 = diff_row["cyclomatic_complexity"]
       if cc1 == cc2 and cc1 != 0:
-        score += 0.1
+        score += 0.001
 
       if main_row["constants"] != '[]':
         if main_row["constants"] == diff_row["constants"]:
-          score += 0.3
+          score += 0.003
         else:
           set1 = set(json.loads(main_row["constants"]))
           set2 = set(json.loads(diff_row["constants"]))
           set_result = set1.intersection(set2)
           if len(set_result) > 0:
-            print("CONSTANTS INTERSECTION")
-            score += len(set_result) * 0.05
-
-      if not name1 in self.main_deep_ratios:
-        self.main_deep_ratios[name1] = {"score":score, "name":name2}
-      
-      if score > self.main_deep_ratios[name1]["score"]:
-        self.main_deep_ratios[name1] = {"score":score, "name":name2}
-
-      if not name2 in self.diff_deep_ratios:
-        self.diff_deep_ratios[name2] = {"score":score, "name":name1}
-      
-      if score > self.diff_deep_ratios[name2]["score"]:
-        self.diff_deep_ratios[name2] = {"score":score, "name":name1}
-
+            score += len(set_result) * 0.0005
     finally:
       cur.close()
     
@@ -2421,17 +2447,7 @@ class CBinDiff:
     """
     self.cleanup_matches()
 
-    self.main_deep_ratios = {}
-    self.diff_deep_ratios = {}
-
     max_main, max_diff, ignore_main, ignore_diff = self.find_multimatches()
-    
-    if os.getenv("DIAPHORA_DEBUG") is not None:
-      import pprint
-      print("FINAL DEEP RATIOS")
-      pprint.pprint(self.main_deep_ratios)
-      pprint.pprint(self.diff_deep_ratios)
-
     self.add_final_chooser_items(ignore_main, ignore_diff, max_main, max_diff)
 
   def same_processor_both_databases(self):
