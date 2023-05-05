@@ -1,6 +1,16 @@
 ################################################################################
 # Diaphora 3.0 configuration options
+#
+# NOTES: This configurationfile is a normal python script, therefore, you are
+# free to add you own code here.
 ################################################################################
+
+################################################################################
+# Imports required by the configuration file
+import os
+
+CONFIGURATION_FILE_PATH = os.path.realpath(__file__)
+CONFIGURATION_DIRECTORY = os.path.dirname(CONFIGURATION_FILE_PATH)
 
 ################################################################################
 # Default colors related options
@@ -148,3 +158,9 @@ DIFFING_MATCHES_MAX_DIFFERENT_BBLOCKS_PERCENT = 25
 # minimum number of basic blocks a function must have for the heuristic that
 # finds new matches by diffing previous matches to consider or drop this match.
 DIFFING_MATCHES_MIN_BBLOCKS = 3
+
+# Run default scripts?
+RUN_DEFAULT_SCRIPTS = True
+
+# Where is the default patch diffing script?
+DEFAULT_SCRIPT_PATCH_DIFF = os.path.join(CONFIGURATION_DIRECTORY, "scripts/patch_diff_vulns.py")

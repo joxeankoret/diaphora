@@ -1129,9 +1129,6 @@ class CBinDiff:
     finally:
       cur.close()
 
-    if not self.ignore_all_names:
-      self.find_same_name("partial")
-
   def run_heuristics_for_category(self, arg_category, total_cpus = None):
     """
     Run a total of @total_cpus threads running SQL heuristics for category @arg_category
@@ -2151,6 +2148,12 @@ class CBinDiff:
         # finish by doing brute forcing with the remaining functions and that's
         # about it.
         self.is_patch_diff = True
+        if self.project_script is None or self.project_script == "":
+          if config.RUN_DEFAULT_SCRIPTS:
+            log("Loading default script for patch diffing sessions...")
+            self.project_script = config.DEFAULT_SCRIPT_PATCH_DIFF
+            self.load_hooks()
+
         msg = "A total of %d matches out of %d, %f%% percent have the same name" % (matches, total, percent)
         log("Patch diffing detected: %s" % msg)
         ret = True
@@ -2877,6 +2880,9 @@ class CBinDiff:
           # Dirty magic. Might or might not work...
           log_refresh("Checking 'dirty' heuristics...")
           skip_others = self.apply_dirty_heuristics()
+
+        if not self.ignore_all_names:
+          self.find_same_name("partial")
 
         if skip_others:
           self.find_remaining_functions()
