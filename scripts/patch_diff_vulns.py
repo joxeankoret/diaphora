@@ -80,7 +80,7 @@ class CVulnerabilityPatches:
           # Search all of our function calls patterns
           for pattern in PATTERNS:
             if src_line.find(pattern) > -1:
-              pattern = "Pattern %s" % pattern
+              pattern = f'Pattern {pattern}'
               bcontinue = False
               break
 
@@ -99,7 +99,7 @@ class CVulnerabilityPatches:
           # finding more stuff for this function.
           if not bcontinue:
             # Report matches while it's still finding for exciting reversers
-            msg = f"Potentially interesting patch found (pattern {pattern}): {name1} - {name2}"
+            msg = f"Potentially interesting patch found (pattern {repr(pattern)}): {name1} - {name2}"
             log(msg)
             log(f"> {line}")
 

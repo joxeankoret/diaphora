@@ -18,7 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import sys
-import imp
 import time
 import json
 import decimal
@@ -821,36 +820,6 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     self.project_script = None
     self.hooks = None
-
-  def load_hooks(self):
-    if self.project_script is None or self.project_script == "":
-      return True
-
-    try:
-      log("Loading project specific Python script %s" % self.project_script)
-      module = imp.load_source("diaphora_hooks", self.project_script)
-    except:
-      print("Error loading project specific Python script: %s" % str(sys.exc_info()[1]))
-      return False
-
-    if module is None:
-      # How can it be?
-      return False
-
-    keys = dir(module)
-    if 'HOOKS' not in keys:
-      log("Error: The project specific script doesn't export the HOOKS dictionary")
-      return False
-
-    hooks = module.HOOKS
-    if 'DiaphoraHooks' not in hooks:
-      log("Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry.")
-      return False
-
-    hook_class = hooks["DiaphoraHooks"]
-    self.hooks = hook_class(self)
-
-    return True
 
   def refresh(self):
     idaapi.request_refresh(0xFFFFFFFF)
