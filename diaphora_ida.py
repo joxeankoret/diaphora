@@ -1509,6 +1509,9 @@ class CIDABinDiff(diaphora.CBinDiff):
   def import_instruction(self, ins_data1, ins_data2):
     ea1 = self.get_base_address() + int(ins_data1[0])
     ea2, cmt1, cmt2, operand_names, name, mtype, _, mcmt, mitp = ins_data2
+    if operand_names is None:
+      operand_names = []
+
     # Set instruction level comments
     if cmt1 is not None and get_cmt(ea1, 0) is None:
       set_cmt(ea1, cmt1, 0)
@@ -1698,6 +1701,7 @@ class CIDABinDiff(diaphora.CBinDiff):
               self.do_import_instruction_level_item(diff_rows, import_syms, matched_syms)
             except:
               log("Error importing item: %s" % str(sys.exc_info()[1]))
+              traceback.print_exc()
     finally:
       cur.close()
 
