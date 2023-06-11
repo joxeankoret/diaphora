@@ -8,10 +8,13 @@ Joxean Koret
 Public domain
 """
 
-from idaapi import Choose
 from difflib import ndiff
 
 from diaphora import CChooser, log
+
+#-------------------------------------------------------------------------------
+# pylint: disable=unused-argument
+# pylint: disable=missing-function-docstring
 
 #-------------------------------------------------------------------------------
 PATTERNS = ["memcpy", "strcpy", "strcat", "printf"]
@@ -19,6 +22,9 @@ COMPARISONS = [" < ", " > ", " <= ", " >= "]
 
 #-------------------------------------------------------------------------------
 class CVulnerabilityPatches:
+  """
+  Class used to find potentially fixed vulnerabilities by searching for patterns.
+  """
   def __init__(self, diaphora_obj):
     """ @diaphora_obj is the CIDABinDiff object being used.
     """
@@ -90,7 +96,7 @@ class CVulnerabilityPatches:
               for pattern in COMPARISONS:
                 if src_line.find(pattern) > -1:
                   # Ignore comparisons with 0?
-                  if src_line.find("%s0 " % pattern) == -1:
+                  if src_line.find(f"{pattern}0 ") == -1:
                     pattern = 'Potential size check added'
                     bcontinue = False
                     break

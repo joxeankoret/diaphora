@@ -1,9 +1,10 @@
-################################################################################
-# Diaphora 3.0 configuration options
-#
-# NOTES: This configurationfile is a normal python script, therefore, you are
-# free to add you own code here.
-################################################################################
+
+"""
+Behold, Diaphora 3.0 configuration options ahead!
+
+NOTES: This configuration file is a normal python script, therefore, you're free
+to add you own code here.
+"""
 
 ################################################################################
 # Imports required by the configuration file

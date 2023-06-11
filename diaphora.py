@@ -24,9 +24,9 @@ import sys
 import imp
 import time
 import json
-import logging
 import decimal
 import sqlite3
+import logging
 import datetime
 import importlib
 import threading
@@ -38,33 +38,50 @@ from multiprocessing import cpu_count
 from difflib import SequenceMatcher, unified_diff
 
 import diaphora_config as config
-importlib.reload(config)
-
 import diaphora_heuristics
-importlib.reload(diaphora_heuristics)
-from diaphora_heuristics import *
+
+from diaphora_heuristics import (
+  HEURISTICS,
+  HEUR_TYPE_RATIO,
+  HEUR_TYPE_RATIO_MAX,
+  HEUR_TYPE_RATIO_MAX_TRUSTED,
+  HEUR_FLAG_UNRELIABLE,
+  HEUR_FLAG_SLOW,
+  HEUR_FLAG_SAME_CPU,
+  HEUR_TYPE_NO_FPS,
+  get_query_fields,
+)
 
 import database
-importlib.reload(database)
+
 
 from database import schema
-importlib.reload(schema)
-
 from jkutils.kfuzzy import CKoretFuzzyHashing
-from jkutils.factor import (FACTORS_CACHE, difference, difference_ratio,
-                            primesbelow as primes)
+from jkutils.factor import (
+  FACTORS_CACHE,
+  difference,
+  difference_ratio,
+  primesbelow as primes,
+)
 
 try:
+  # pylint: disable-next=unused-import
   import idaapi
-  is_ida = True
+
+  IS_IDA = True
 except ImportError:
-  is_ida = False
+  IS_IDA = False
+
+importlib.reload(config)
+importlib.reload(diaphora_heuristics)
+importlib.reload(database)
+importlib.reload(schema)
 
 if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE   = "3.0.0"
+VERSION_VALUE = "3.0.0"
 COPYRIGHT_VALUE = "Copyright(c) 2015-2023 Joxean Koret"
 
 ITEM_MAIN_EA = 0
@@ -82,13 +99,13 @@ CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
 
 
 #-------------------------------------------------------------------------------
-import logging
-fmt ='[Diaphora: %(asctime)s] %(levelname)s: %(message)s'
+fmt = "[Diaphora: %(asctime)s] %(levelname)s: %(message)s"
 logging.basicConfig(format=fmt, level=logging.INFO)
+
 
 #-------------------------------------------------------------------------------
 def result_iter(cursor, arraysize=1000):
-  """ An iterator that uses fetchmany to keep memory usage down. """
+  """An iterator that uses fetchmany to keep memory usage down."""
   while True:
     results = cursor.fetchmany(arraysize)
     if not results:
@@ -96,58 +113,98 @@ def result_iter(cursor, arraysize=1000):
     for result in results:
       yield result
 
+
 #-------------------------------------------------------------------------------
 def quick_ratio(buf1, buf2):
-  try:
-    if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
-      return 0
-    s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
-    return s.quick_ratio()
-  except:
-    log("quick_ratio: %s" % str(sys.exc_info()[1]))
+  """
+  Call SequenceMatcher.quick_ratio() to get a comparison ratio.
+  """
+  if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
     return 0
+  seq = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
+  return seq.quick_ratio()
+
 
 #-------------------------------------------------------------------------------
 def real_quick_ratio(buf1, buf2):
-  try:
-    if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
-      return 0
-    s = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
-    return s.real_quick_ratio()
-  except:
-    log("real_quick_ratio: %s" % str(sys.exc_info()[1]))
+  """
+  Call SequenceMatcher.real_quick_ratio() to get a comparison ratio.
+  """
+  if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
     return 0
+  seq = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
+  return seq.real_quick_ratio()
+
 
 #-------------------------------------------------------------------------------
 def ast_ratio(ast1, ast2):
+  """
+  Quickly compare 2 fuzzy Abstract Syntax Trees and return a ratio.
+  """
+  if ast1 is None or ast2 is None:
+    return 0
+
   if ast1 == ast2:
     return 1.0
-  elif ast1 is None or ast2 is None:
-    return 0
+
   return difference_ratio(decimal.Decimal(ast1), decimal.Decimal(ast2))
 
-#-------------------------------------------------------------------------------
-def log(msg):
-  if isinstance(threading.current_thread(), threading._MainThread):
-    if is_ida or os.getenv("DIAPHORA_LOG_PRINT") is not None:
-      print(("[Diaphora: %s] %s" % (time.asctime(), msg)))
-    else:
-      logging.info(msg)
 
 #-------------------------------------------------------------------------------
-def log_refresh(msg, show=False, do_log=True):
+def log(message):
+  """
+  Print a message
+  """
+  # pylint: disable=protected-access
+  if isinstance(threading.current_thread(), threading._MainThread):
+    if IS_IDA or os.getenv("DIAPHORA_LOG_PRINT") is not None:
+      print(f"[Diaphora: {time.asctime()}] {message}")
+    else:
+      logging.info(message)
+  # pylint: enable=protected-access
+
+
+#-------------------------------------------------------------------------------
+def log_refresh(msg, do_log=True):
+  """
+  Print a message and refresh if required (not really used outside of IDA)
+  """
   if do_log:
     log(msg)
 
+
 #-------------------------------------------------------------------------------
-def debug_refresh(msg, show=False):
+def debug_refresh(msg):
+  """
+  Print a debugging message if debugging is enabled.
+  """
   if os.getenv("DIAPHORA_DEBUG"):
     log(msg)
 
+
 #-------------------------------------------------------------------------------
-class CChooser():
+# pylint: disable=consider-using-f-string
+class CChooser:
+  """
+  Our own chooser for displaying diffing results.
+  """
+
   class Item:
-    def __init__(self, ea, name, ea2 = None, name2 = None, desc="100% equal", ratio = 0, bb1 = 0, bb2 = 0):
+    """
+    A single chooser item.
+    """
+
+    def __init__(
+      self,
+      ea,
+      name,
+      ea2=None,
+      name2=None,
+      desc="100% equal",
+      ratio=0,
+      bb1=0,
+      bb2=0,
+    ):
       self.ea = ea
       self.vfname = name
       self.ea2 = ea2
@@ -158,7 +215,7 @@ class CChooser():
       self.bb2 = int(bb2)
 
     def __str__(self):
-      return '%08x' % int(self.ea)
+      return "%08x" % int(self.ea)
 
   def __init__(self, title, bindiff, show_commands=True):
     self.primary = True
@@ -182,20 +239,36 @@ class CChooser():
     self.cmd_show_pseudo = None
     self.cmd_highlight_functions = None
     self.cmd_unhighlight_functions = None
-    
+
     self.selected_items = []
 
   def add_item(self, item):
+    """
+    Add a single item
+    """
     if self.title.startswith("Unmatched in"):
       self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname])
     else:
       dec_vals = "%." + config.DECIMAL_VALUES
-      self.items.append(["%05lu" % self.n, "%08x" % int(item.ea), item.vfname,
-                        "%08x" % int(item.ea2), item.vfname2, dec_vals % item.ratio,
-                        "%d" % item.bb1, "%d" % item.bb2, item.description])
+      self.items.append(
+        [
+          "%05lu" % self.n,
+          "%08x" % int(item.ea),
+          item.vfname,
+          "%08x" % int(item.ea2),
+          item.vfname2,
+          dec_vals % item.ratio,
+          "%d" % item.bb1,
+          "%d" % item.bb2,
+          item.description,
+        ]
+      )
     self.n += 1
 
   def get_color(self):
+    """
+    Return the highlighting colour for the current chooser.
+    """
     if self.title.startswith("Best"):
       return config.HIGHLIGHT_FUNCTION_BEST
     elif self.title.startswith("Partial"):
@@ -203,25 +276,46 @@ class CChooser():
     elif self.title.startswith("Unreliable"):
       return config.HIGHLIGHT_FUNCTION_UNRELIABLE
 
-#-------------------------------------------------------------------------------
-class bytes_encoder(json.JSONEncoder):
-  def default(self, obj):
-    if isinstance(obj, bytes):
-      return obj.decode("utf-8")
-    return json.JSONEncoder.default(self, obj)
+  def show(self, force):
+    """
+    Fake method, it is only used when running from within IDA.
+    """
+
+
+# pylint: enable=consider-using-f-string
+
 
 #-------------------------------------------------------------------------------
-if "_DATABASES" in globals():
-  if len(_DATABASES) > 0:
-    for key in dict(_DATABASES):
-      log("Closing previously opened database %s" % key)
-      tmp_db = _DATABASES[key]
-      tmp_db.close()
-      del _DATABASES[key]
-else:
+class CBytesEncoder(json.JSONEncoder):
+  """
+  Class used to JSON encode some Python types that aren't supported by default.
+  """
+
+  def default(self, o):
+    if isinstance(o, bytes):
+      return o.decode("utf-8")
+    return json.JSONEncoder.default(self, o)
+
+
+#-------------------------------------------------------------------------------
+# pylint: disable=used-before-assignment
+# pylint: disable=global-variable-not-assigned
+
+if "_DATABASES" not in globals():
   _DATABASES = {}
 
+if len(_DATABASES) > 0:
+  for _key in dict(_DATABASES):
+    log(f"Closing previously opened database {_key}")
+    tmp_db = _DATABASES[_key]
+    tmp_db.close()
+    del _DATABASES[_key]
+
+
 def sqlite3_connect(db_name):
+  """
+  Return a SQL connection object.
+  """
   global _DATABASES
   db = sqlite3.connect(db_name, check_same_thread=False)
   db.text_factory = str
@@ -229,17 +323,26 @@ def sqlite3_connect(db_name):
   _DATABASES[db_name] = db
   return db
 
+
+# pylint: enable=global-variable-not-assigned
+# pylint: enable=used-before-assignment
+
+
 #-------------------------------------------------------------------------------
 class CBinDiff:
+  """
+  The main binary diffing class.
+  """
+
   def __init__(self, db_name, chooser=CChooser):
     self.names = dict()
-    self.primes = primes(2048*2048)
+    self.primes = primes(2048 * 2048)
     self.db_name = db_name
     self.dbs_dict = {}
-    self.db = None # Used exclusively by the exporter!
+    self.db = None  # Used exclusively by the exporter!
     self.open_db()
 
-    self.all_matches = {"best":[], "partial":[], "unreliable":[]}
+    self.all_matches = {"best": [], "partial": [], "unreliable": []}
     self.matched_primary = {}
     self.matched_secondary = {}
 
@@ -257,12 +360,24 @@ class CBinDiff:
 
     self.microcode = {}
 
-    self.unreliable = self.get_value_for("unreliable", config.DIFFING_ENABLE_UNRELIABLE)
-    self.relaxed_ratio = self.get_value_for("relaxed_ratio", config.DIFFING_ENABLE_RELAXED_RATIO)
-    self.experimental = self.get_value_for("experimental", config.DIFFING_ENABLE_EXPERIMENTAL)
-    self.slow_heuristics = self.get_value_for("slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS)
-    self.exclude_library_thunk = self.get_value_for("exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK)
-    self.use_decompiler = self.get_value_for("use_decompiler", config.EXPORTING_USE_DECOMPILER)
+    self.unreliable = self.get_value_for(
+      "unreliable", config.DIFFING_ENABLE_UNRELIABLE
+    )
+    self.relaxed_ratio = self.get_value_for(
+      "relaxed_ratio", config.DIFFING_ENABLE_RELAXED_RATIO
+    )
+    self.experimental = self.get_value_for(
+      "experimental", config.DIFFING_ENABLE_EXPERIMENTAL
+    )
+    self.slow_heuristics = self.get_value_for(
+      "slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS
+    )
+    self.exclude_library_thunk = self.get_value_for(
+      "exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK
+    )
+    self.use_decompiler = self.get_value_for(
+      "use_decompiler", config.EXPORTING_USE_DECOMPILER
+    )
     self.project_script = self.get_value_for("project_script", None)
     self.hooks = None
 
@@ -280,6 +395,10 @@ class CBinDiff:
     self.is_patch_diff = False
     self.is_same_processor = False
 
+    self.unmatched_primary = None
+    self.unmatched_second = None
+    self.do_continue = None
+
     ####################################################################
     # LIMITS
     #
@@ -287,7 +406,9 @@ class CBinDiff:
     self.timeout = self.get_value_for("SQL_TIMEOUT_LIMIT", config.SQL_TIMEOUT_LIMIT)
     # It's typical in SQL queries to get a cartesian product of the results in
     # the functions tables. Do not process more than this number of rows.
-    self.SQL_MAX_PROCESSED_ROWS = self.get_value_for("SQL_MAX_PROCESSED_ROWS", config.SQL_MAX_PROCESSED_ROWS)
+    self.sql_max_processed_rows = self.get_value_for(
+      "SQL_MAX_PROCESSED_ROWS", config.SQL_MAX_PROCESSED_ROWS
+    )
     # Limits to filter the functions to export
     self.min_ea = 0
     self.max_ea = 0
@@ -301,12 +422,18 @@ class CBinDiff:
     # like the 'Same name'?
     self.ignore_sub_names = config.DIFFING_IGNORE_SUB_FUNCTION_NAMES
     # Ignore any and all function names for the 'Same name' heuristic?
-    self.ignore_all_names = self.get_value_for("ignore_all_names", config.DIFFING_IGNORE_ALL_FUNCTION_NAMES)
+    self.ignore_all_names = self.get_value_for(
+      "ignore_all_names", config.DIFFING_IGNORE_ALL_FUNCTION_NAMES
+    )
     # Ignore small functions?
-    self.ignore_small_functions = self.get_value_for("ignore_small_functions", config.DIFFING_IGNORE_SMALL_FUNCTIONS)
+    self.ignore_small_functions = self.get_value_for(
+      "ignore_small_functions", config.DIFFING_IGNORE_SMALL_FUNCTIONS
+    )
 
     # Export microcode instructions?
-    self.export_microcode = self.get_value_for("export_microcode", config.EXPORTING_USE_MICROCODE)
+    self.export_microcode = self.get_value_for(
+      "export_microcode", config.EXPORTING_USE_MICROCODE
+    )
 
     # Number of CPU threads/cores to use?
     cpus = cpu_count() - 1
@@ -315,9 +442,9 @@ class CBinDiff:
     self.cpu_count = self.get_value_for("CPU_COUNT", cpus)
 
     # XXX: FIXME: Parallel diffing is broken outside of IDA due to parallelism problems
-    if not is_ida:
+    if not IS_IDA:
       self.cpu_count = 1
-    
+
     ####################################################################
 
   def __del__(self):
@@ -328,22 +455,31 @@ class CBinDiff:
           if tid in self.dbs_dict:
             db = self.dbs_dict[tid]
             with db.cursor() as cur:
-              cur.execute('detach "%s"' % self.last_diff_db)
+              cur.execute(f'detach "{self.last_diff_db}"')
       except:
-        # Ignore any error at this point
         pass
 
       self.db_close()
 
+  def refresh(self):
+    """
+    Fake member, it is only useful (and implemented) when running from within IDA.
+    """
+
   def load_hooks(self):
+    """
+    Load the project specific python script, if any was set.
+    """
     if self.project_script is None or self.project_script == "":
       return True
 
     try:
-      log("Loading project specific Python script %s" % self.project_script)
+      log(f"Loading project specific Python script {self.project_script}")
       module = imp.load_source("diaphora_hooks", self.project_script)
     except:
-      print("Error loading project specific Python script: %s" % str(sys.exc_info()[1]))
+      print(
+        f"Error loading project specific Python script: {str(sys.exc_info()[1])}"
+      )
       return False
 
     if module is None:
@@ -351,13 +487,17 @@ class CBinDiff:
       return False
 
     keys = dir(module)
-    if 'HOOKS' not in keys:
-      log("Error: The project specific script doesn't export the HOOKS dictionary")
+    if "HOOKS" not in keys:
+      log(
+        "Error: The project specific script doesn't export the HOOKS dictionary"
+      )
       return False
 
     hooks = module.HOOKS
-    if 'DiaphoraHooks' not in hooks:
-      log("Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry.")
+    if "DiaphoraHooks" not in hooks:
+      log(
+        "Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry."
+      )
       return False
 
     hook_class = hooks["DiaphoraHooks"]
@@ -369,13 +509,14 @@ class CBinDiff:
     """
     Try to search for a DIAPHORA_<value_name> environment variable.
     """
-    value = os.getenv("DIAPHORA_%s" % value_name.upper())
+    value = os.getenv(f"DIAPHORA_{value_name.upper()}")
     if value is not None:
-      if type(value) != type(default):
+      if isinstance(value, type(default)):
         value = type(default)(value)
       return value
     return default
 
+  # pylint: disable=protected-access
   def open_db(self):
     """
     Open the database @self.db_name.
@@ -388,12 +529,14 @@ class CBinDiff:
       self.db = db
       self.create_schema()
 
+  # pylint: enable=protected-access
+
   def get_db(self):
     """
     Return the current thread's assigned database object.
     """
     tid = threading.current_thread().ident
-    if not tid in self.dbs_dict:
+    if tid not in self.dbs_dict:
       self.open_db()
       if self.last_diff_db is not None:
         self.attach_database(self.last_diff_db)
@@ -407,6 +550,7 @@ class CBinDiff:
     db = self.get_db()
     return db.cursor()
 
+  # pylint: disable=protected-access
   def db_close(self):
     """
     Close the main database.
@@ -417,6 +561,8 @@ class CBinDiff:
       del self.dbs_dict[tid]
     if isinstance(threading.current_thread(), threading._MainThread):
       self.db.close()
+
+  # pylint: enable=protected-access
 
   def create_schema(self):
     """
@@ -432,7 +578,7 @@ class CBinDiff:
       cur.execute("select 1 from version")
       row = cur.fetchone()
       if not row:
-        cur.execute("insert into main.version values ('%s')" % VERSION_VALUE)
+        cur.execute("insert into main.version values (?)", (VERSION_VALUE,))
         cur.execute("commit")
     finally:
       cur.close()
@@ -460,7 +606,7 @@ class CBinDiff:
     """
     cur = self.db_cursor()
     try:
-      cur.execute('attach "%s" as diff' % diff_db)
+      cur.execute(f'attach "{diff_db}" as diff')
     finally:
       cur.close()
 
@@ -518,41 +664,49 @@ class CBinDiff:
     return rowid
 
   def get_valid_prop(self, prop):
-    # This is a hack for 64 bit architectures kernels
-    if type(prop) is int and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
+    """
+    Get a valid property to insert into the SQLite database.
+    This is a hack for 64 bit architectures kernels.
+    """
+    if isinstance(prop, int) and (prop > 0xFFFFFFFF or prop < -0xFFFFFFFF):
       prop = str(prop)
-    elif type(prop) is bytes:
+    elif isinstance(prop, bytes):
       prop = prop.encode("utf-8")
     return prop
 
-  def save_instructions_to_database(self, cur, bb_data, prop, func_id):
+  def save_instructions_to_database(self, cur, bb_data, func_id):
     """
     Save all the native assembly instructions in the basic block @bb_data to the
     database.
     """
     instructions_ids = {}
     sql = """insert into main.instructions (address, mnemonic, disasm,
-                                            comment1, comment2, operand_names, name,
-                                            type, pseudocomment, pseudoitp, func_id,
-                                            asm_type)
-                              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'native')"""
+                      comment1, comment2, operand_names, name,
+                      type, pseudocomment, pseudoitp, func_id,
+                      asm_type)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'native')"""
     cur_execute = cur.execute
     for key in bb_data:
       for instruction in bb_data[key]:
         instruction_properties = []
         for instruction_property in instruction:
-          prop = self.get_valid_prop(prop)
-          if type(instruction_property) is list or type(instruction_property) is set:
-            instruction_properties.append(json.dumps(list(instruction_property), ensure_ascii = False, cls = bytes_encoder))
+          if isinstance(instruction_property, (list, set)):
+            instruction_properties.append(
+              json.dumps(
+                list(instruction_property),
+                ensure_ascii=False,
+                cls=CBytesEncoder,
+              )
+            )
           else:
             instruction_properties.append(instruction_property)
-    
-        addr, mnem, disasm, cmt1, cmt2, operand_names, name, mtype = instruction
+
+        addr = instruction[0]
         pseudocomment = None
         pseudoitp = None
         if addr in self.pseudo_comments:
           pseudocomment, pseudoitp = self.pseudo_comments[addr]
-  
+
         instruction_properties.append(pseudocomment)
         instruction_properties.append(pseudoitp)
         instruction_properties.append(func_id)
@@ -561,7 +715,9 @@ class CBinDiff:
         instructions_ids[addr] = db_id
     return cur_execute, instructions_ids
 
-  def insert_basic_blocks_to_database(self, bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id):
+  def insert_basic_blocks_to_database(
+    self, bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id
+  ):
     """
     Insert basic blocks information as well as the relationship between assembly
     instructions and basic blocks.
@@ -570,7 +726,7 @@ class CBinDiff:
     bb_ids = {}
     sql1 = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'native')"
     sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
-    
+
     self_get_bb_id = self.get_bb_id
     for key in bb_data:
       # Insert each basic block
@@ -581,12 +737,12 @@ class CBinDiff:
         cur_execute(sql1, (num, str(ins_ea)))
         last_bb_id = cur.lastrowid
       bb_ids[ins_ea] = last_bb_id
-    
+
       # Insert relations between basic blocks and instructions
       for instruction in bb_data[key]:
         ins_id = instructions_ids[instruction[0]]
         cur_execute(sql2, (last_bb_id, ins_id))
-    
+
     # Insert relations between basic blocks
     sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
     for key in bb_relations:
@@ -597,25 +753,27 @@ class CBinDiff:
           cur_execute(sql, (bb_ids[key], bb_ids[bb]))
         except:
           # key doesnt exist because it doesnt have forward references to any bb
-          log("Error: %s" % str(sys.exc_info()[1]))
-    
+          log(f"Error: {str(sys.exc_info()[1])}")
+
     # And finally insert the functions to basic blocks relations
     sql = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'native')"
-    for key in bb_ids:
-      bb_id = bb_ids[key]
+    for key, bb_id in bb_ids.items():
       cur_execute(sql, (func_id, bb_id))
 
-  def save_microcode_instructions(self, func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations):
+  def save_microcode_instructions(
+    self, func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations
+  ):
     """
     Save all the microcode instructions in the basic block @bb_data to the database.
     """
-    instructions_ids = {}
     sql_inst = """insert into main.instructions (address, mnemonic, disasm, comment1,
-                                                 pseudocomment, func_id, asm_type)
-                              values (?, ?, ?, ?, ?, ?, 'microcode')"""
+                         pseudocomment, func_id, asm_type)
+                values (?, ?, ?, ?, ?, ?, 'microcode')"""
     sql_bblock = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'microcode')"
     sql_bbinst = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
-    sql_bbrelations = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+    sql_bbrelations = (
+      "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+    )
     sql_func_blocks = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'microcode')"
     num = 0
     for key in microcode_bblocks:
@@ -637,8 +795,15 @@ class CBinDiff:
           pseudocomment = line["comments"]
 
           # Insert the microcode instruction
-          args = [address, mnemonic, disasm, comment1, pseudocomment, func_id]
-          cur_execute(sql_inst, args)
+          arguments = [
+            address,
+            mnemonic,
+            disasm,
+            comment1,
+            pseudocomment,
+            func_id,
+          ]
+          cur_execute(sql_inst, arguments)
 
           inst_id = cur.lastrowid
           line["instruction_id"] = inst_id
@@ -659,19 +824,204 @@ class CBinDiff:
           child_id = microcode_bblocks[children]["bblock_id"]
           cur_execute(sql_bbrelations, [parent_id, child_id])
 
-  def save_function_to_database(self, props, cur, prop, func_id):
+  def get_function_from_dictionary(self, d):
+    """
+    Get a list ready to be used to insert rows from a given dictionary.
+    """
+    list_dict = (
+      d["name"],
+      d["nodes"],
+      d["edges"],
+      d["indegree"],
+      d["outdegree"],
+      d["size"],
+      d["instructions"],
+      d["mnems"],
+      d["names"],
+      d["proto"],
+      d["cc"],
+      d["prime"],
+      d["f"],
+      d["comment"],
+      d["true_name"],
+      d["bytes_hash"],
+      d["pseudo"],
+      d["pseudo_lines"],
+      d["pseudo_hash1"],
+      d["pseudocode_primes"],
+      d["function_flags"],
+      d["asm"],
+      d["proto2"],
+      d["pseudo_hash2"],
+      d["pseudo_hash3"],
+      d["strongly_connected_size"],
+      d["loops"],
+      d["rva"],
+      d["bb_topological"],
+      d["strongly_connected_spp"],
+      d["clean_assembly"],
+      d["clean_pseudo"],
+      d["mnemonics_spp"],
+      d["switches"],
+      d["function_hash"],
+      d["bytes_sum"],
+      d["md_index"],
+      d["constants"],
+      d["constants_size"],
+      d["seg_rva"],
+      d["assembly_addrs"],
+      d["kgh_hash"],
+      d["source_file"],
+      d["userdata"],
+      d["microcode"],
+      d["clean_microcode"],
+      d["microcode_spp"],
+      d["microcode_bblocks"],
+      d["microcode_bbrelations"],
+      d["callers"],
+      d["callees"],
+      d["basic_blocks_data"],
+      d["bb_relations"],
+    )
+    return list_dict
+
+  # pylint: disable=redefined-outer-name
+  def create_function_dictionary(self, list_dict):
+    """
+    Create a dictionary to be used with project specific hooks from a given list.
+    """
+    (
+      name,
+      nodes,
+      edges,
+      indegree,
+      outdegree,
+      size,
+      instructions,
+      mnems,
+      names,
+      proto,
+      cc,
+      prime,
+      f,
+      comment,
+      true_name,
+      bytes_hash,
+      pseudo,
+      pseudo_lines,
+      pseudo_hash1,
+      pseudocode_primes,
+      function_flags,
+      asm,
+      proto2,
+      pseudo_hash2,
+      pseudo_hash3,
+      strongly_connected_size,
+      loops,
+      rva,
+      bb_topological,
+      strongly_connected_spp,
+      clean_assembly,
+      clean_pseudo,
+      mnemonics_spp,
+      switches,
+      function_hash,
+      bytes_sum,
+      md_index,
+      constants,
+      constants_size,
+      seg_rva,
+      assembly_addrs,
+      kgh_hash,
+      source_file,
+      userdata,
+      microcode,
+      clean_microcode,
+      microcode_spp,
+      microcode_bblocks,
+      microcode_bbrelations,
+      callers,
+      callees,
+      basic_blocks_data,
+      bb_relations,
+    ) = list_dict
+    d = dict(
+      name=name,
+      nodes=nodes,
+      edges=edges,
+      indegree=indegree,
+      outdegree=outdegree,
+      size=size,
+      instructions=instructions,
+      mnems=mnems,
+      names=names,
+      proto=proto,
+      cc=cc,
+      prime=prime,
+      f=f,
+      comment=comment,
+      true_name=true_name,
+      bytes_hash=bytes_hash,
+      pseudo=pseudo,
+      pseudo_lines=pseudo_lines,
+      pseudo_hash1=pseudo_hash1,
+      pseudocode_primes=pseudocode_primes,
+      function_flags=function_flags,
+      asm=asm,
+      proto2=proto2,
+      pseudo_hash2=pseudo_hash2,
+      pseudo_hash3=pseudo_hash3,
+      strongly_connected_size=strongly_connected_size,
+      loops=loops,
+      rva=rva,
+      bb_topological=bb_topological,
+      strongly_connected_spp=strongly_connected_spp,
+      clean_assembly=clean_assembly,
+      clean_pseudo=clean_pseudo,
+      mnemonics_spp=mnemonics_spp,
+      switches=switches,
+      function_hash=function_hash,
+      bytes_sum=bytes_sum,
+      md_index=md_index,
+      constants=constants,
+      constants_size=constants_size,
+      seg_rva=seg_rva,
+      assembly_addrs=assembly_addrs,
+      kgh_hash=kgh_hash,
+      source_file=source_file,
+      callers=callers,
+      callees=callees,
+      basic_blocks_data=basic_blocks_data,
+      bb_relations=bb_relations,
+      microcode=microcode,
+      clean_microcode=clean_microcode,
+      microcode_bblocks=microcode_bblocks,
+      microcode_bbrelations=microcode_bbrelations,
+      microcode_spp=microcode_spp,
+      userdata=userdata,
+    )
+    return d
+  # pylint: enable=redefined-outer-name
+
+  def save_function_to_database(self, props, cur, func_id):
     """
     Save a single function to the database.
     """
     total_props = len(props)
     # The last 2 fields are basic_blocks_data & bb_relations for native assembly
-    bb_data, bb_relations = props[total_props-2:]
-    cur_execute, instructions_ids = self.save_instructions_to_database(cur, bb_data, prop, func_id)
-    self.insert_basic_blocks_to_database(bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id)
+    bb_data, bb_relations = props[total_props - 2:]
+    cur_execute, instructions_ids = self.save_instructions_to_database(
+      cur, bb_data, func_id
+    )
+    self.insert_basic_blocks_to_database(
+      bb_data, cur_execute, cur, instructions_ids, bb_relations, func_id
+    )
 
-    microcode_bblocks, microcode_bbrelations = props[total_props-6:total_props-4]
+    microcode_bblocks, microcode_bbrelations = props[total_props - 6:total_props - 4]
     if len(microcode_bblocks) > 0 and len(microcode_bbrelations) > 0:
-      self.save_microcode_instructions(func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations)
+      self.save_microcode_instructions(
+        func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations
+      )
 
   def save_function(self, props):
     """
@@ -686,50 +1036,54 @@ class CBinDiff:
     new_props = []
     try:
       # The last 6 fields are callers, callees, basic_blocks_data & bb_relations
-      for prop in props[:len(props)-6]:
+      for prop in props[: len(props) - 6]:
         prop = self.get_valid_prop(prop)
 
-        if type(prop) is list or type(prop) is set:
-          new_props.append(json.dumps(list(prop), ensure_ascii=False, cls=bytes_encoder))
+        if isinstance(prop, (list, set)):
+          new_props.append(
+            json.dumps(list(prop), ensure_ascii=False, cls=CBytesEncoder)
+          )
         else:
           new_props.append(prop)
 
       sql = """insert into main.functions (name, nodes, edges, indegree, outdegree, size,
-                                      instructions, mnemonics, names, prototype,
-                                      cyclomatic_complexity, primes_value, address,
-                                      comment, mangled_function, bytes_hash, pseudocode,
-                                      pseudocode_lines, pseudocode_hash1, pseudocode_primes,
-                                      function_flags, assembly, prototype2, pseudocode_hash2,
-                                      pseudocode_hash3, strongly_connected, loops, rva,
-                                      tarjan_topological_sort, strongly_connected_spp,
-                                      clean_assembly, clean_pseudo, mnemonics_spp, switches,
-                                      function_hash, bytes_sum, md_index, constants,
-                                      constants_count, segment_rva, assembly_addrs, kgh_hash,
-                                      source_file, userdata, microcode, clean_microcode,
-                                      microcode_spp)
-                                  values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    instructions, mnemonics, names, prototype,
+                    cyclomatic_complexity, primes_value, address,
+                    comment, mangled_function, bytes_hash, pseudocode,
+                    pseudocode_lines, pseudocode_hash1, pseudocode_primes,
+                    function_flags, assembly, prototype2, pseudocode_hash2,
+                    pseudocode_hash3, strongly_connected, loops, rva,
+                    tarjan_topological_sort, strongly_connected_spp,
+                    clean_assembly, clean_pseudo, mnemonics_spp, switches,
+                    function_hash, bytes_sum, md_index, constants,
+                    constants_count, segment_rva, assembly_addrs, kgh_hash,
+                    source_file, userdata, microcode, clean_microcode,
+                    microcode_spp)
+                  values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
       try:
         cur.execute(sql, new_props)
       except:
-        logging.error("Error handling props in save_function(): %s" % str(new_props))
+        logging.error(
+          "Error handling props in save_function(): %s", str(new_props)
+        )
         traceback.print_exc()
         raise
 
       func_id = cur.lastrowid
       # Save a list of [ id, primes_value, pseudocode_primes ]
-      self._funcs_cache[props[12]] = [ func_id, props[11], props[19] ]
+      self._funcs_cache[props[12]] = [func_id, props[11], props[19]]
 
       # Phase 2: Save the callers and callees of the function
-      callers, callees = props[len(props)-4:len(props)-2]
+      callers, callees = props[len(props) - 4:len(props) - 2]
       sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
       for caller in callers:
-        cur.execute(sql, (func_id, str(caller), 'caller'))
-      
+        cur.execute(sql, (func_id, str(caller), "caller"))
+
       for callee in callees:
-        cur.execute(sql, (func_id, str(callee), 'callee'))
+        cur.execute(sql, (func_id, str(callee), "callee"))
 
       # Phase 3: Insert the constants of the function
       sql = "insert into constants (func_id, constant) values (?, ?)"
@@ -747,13 +1101,15 @@ class CBinDiff:
 
       # Phase 4: Save the basic blocks relationships
       if not self.function_summaries_only:
-        self.save_function_to_database(props, cur, prop, func_id)
+        self.save_function_to_database(props, cur, func_id)
     finally:
       cur.close()
 
   def get_valid_definition(self, defs):
-    """ Try to get a valid structure definition by removing (yes) the 
-        invalid characters typically found in IDA's generated structs."""
+    """
+    Try to get a valid structure definition by removing (yes) the
+    invalid characters typically found in IDA's generated structs.
+    """
     ret = defs.replace("?", "_").replace("@", "_")
     ret = ret.replace("$", "_")
     return ret
@@ -833,12 +1189,12 @@ class CBinDiff:
     for rep in reps:
       tmp = self.re_sub(rep, "+XXXX+", tmp)
     tmp = self.re_sub(r"\.\.[a-f0-9A-F]{8}", "XXX", tmp)
-    
+
     # Strip any possible remaining white-space character at the end of
     # the cleaned-up instruction
     tmp = self.re_sub("[ \t\n]+$", "", tmp)
 
-    # Replace aName_XXX with aXXX, useful to ignore small changes in 
+    # Replace aName_XXX with aXXX, useful to ignore small changes in
     # offsets created to strings
     tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
 
@@ -847,7 +1203,9 @@ class CBinDiff:
 
     return tmp
 
-  def compare_graphs_pass(self, bblocks1, bblocks2, colours1, colours2, is_second = False):
+  def compare_graphs_pass(
+    self, bblocks1, bblocks2, colours1, colours2, is_second=False
+  ):
     """
     Compare the given basic blocks and calculate each basic block's colour. It's
     used to, later on, create a nice looking graph view in IDA.
@@ -905,7 +1263,7 @@ class CBinDiff:
             break
     return colours1, colours2
 
-  def compare_graphs(self, g1, ea1, g2, ea2):
+  def compare_graphs(self, g1, g2):
     """
     Compare two graphs (check `graph_diff` in diaphora_ida.py)
     """
@@ -920,8 +1278,12 @@ class CBinDiff:
     for key2 in bblocks2:
       colours2[key2] = config.GRAPH_BBLOCK_MATCH_NONE
 
-    colours1, colours2 = self.compare_graphs_pass(bblocks1, bblocks2, colours1, colours2, False)
-    colours1, colours2 = self.compare_graphs_pass(bblocks1, bblocks2, colours1, colours2, True)
+    colours1, colours2 = self.compare_graphs_pass(
+      bblocks1, bblocks2, colours1, colours2, False
+    )
+    colours1, colours2 = self.compare_graphs_pass(
+      bblocks1, bblocks2, colours1, colours2, True
+    )
     return colours1, colours2
 
   def get_graph(self, ea1, primary=False, asm_type="native"):
@@ -939,22 +1301,24 @@ class CBinDiff:
 
     try:
       sql = """ select bb.address bb_address, ins.address ins_address,
-                      ins.mnemonic ins_mnem, ins.disasm ins_disasm
-                 from {db}.function_bblocks fb,
-                      {db}.bb_instructions bbins,
-                      {db}.instructions ins,
-                      {db}.basic_blocks bb,
-                      {db}.functions f
-                where ins.id = bbins.instruction_id
-                  and bbins.basic_block_id = bb.id
-                  and bb.id = fb.basic_block_id
-                  and f.id = fb.function_id
-                  and fb.asm_type = bb.asm_type
-                  and ins.asm_type = bb.asm_type
-                  and f.address = ?
-                  and bb.asm_type = ?
-                  and ins.address is not null
-                order by bb.address asc""".format(db=db)
+            ins.mnemonic ins_mnem, ins.disasm ins_disasm
+         from {db}.function_bblocks fb,
+            {db}.bb_instructions bbins,
+            {db}.instructions ins,
+            {db}.basic_blocks bb,
+            {db}.functions f
+        where ins.id = bbins.instruction_id
+          and bbins.basic_block_id = bb.id
+          and bb.id = fb.basic_block_id
+          and f.id = fb.function_id
+          and fb.asm_type = bb.asm_type
+          and ins.asm_type = bb.asm_type
+          and f.address = ?
+          and bb.asm_type = ?
+          and ins.address is not null
+        order by bb.address asc""".format(
+        db=db
+      )
       cur.execute(sql, (str(ea1), asm_type))
       for row in result_iter(cur):
         bb_ea = str(int(row["bb_address"]))
@@ -969,25 +1333,27 @@ class CBinDiff:
         try:
           bb_blocks[bb_ea].append([ins_ea, mnem, dis])
         except KeyError:
-          bb_blocks[bb_ea] = [ [ins_ea, mnem, dis] ]
+          bb_blocks[bb_ea] = [[ins_ea, mnem, dis]]
 
       sql = """ select (select address
-                          from {db}.basic_blocks
-                         where id = bbr.parent_id) ea1,
-                       (select address
-                          from {db}.basic_blocks
-                         where id = bbr.child_id) ea2
-                  from {db}.bb_relations bbr,
-                       {db}.function_bblocks fbs,
-                       {db}.basic_blocks bbs,
-                       {db}.functions f
-                 where f.id = fbs.function_id
-                   and bbs.id = fbs.basic_block_id
-                   and fbs.basic_block_id = bbr.child_id
-                   and f.address = ?
-                   and fbs.asm_type = ?
-                   and bbs.asm_type = fbs.asm_type
-                 order by 1 asc, 2 asc""".format(db=db)
+              from {db}.basic_blocks
+             where id = bbr.parent_id) ea1,
+             (select address
+              from {db}.basic_blocks
+             where id = bbr.child_id) ea2
+          from {db}.bb_relations bbr,
+             {db}.function_bblocks fbs,
+             {db}.basic_blocks bbs,
+             {db}.functions f
+         where f.id = fbs.function_id
+           and bbs.id = fbs.basic_block_id
+           and fbs.basic_block_id = bbr.child_id
+           and f.address = ?
+           and fbs.asm_type = ?
+           and bbs.asm_type = fbs.asm_type
+         order by 1 asc, 2 asc""".format(
+        db=db
+      )
       cur.execute(sql, (str(ea1), asm_type))
       rows = result_iter(cur)
 
@@ -1009,7 +1375,7 @@ class CBinDiff:
     """
     cur = self.db_cursor()
     try:
-      cur.execute("delete from functions where address = ?", (str(ea), ))
+      cur.execute("delete from functions where address = ?", (str(ea),))
     finally:
       cur.close()
 
@@ -1029,8 +1395,8 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       sql = """select callgraph_primes, callgraph_all_primes from program
-              union all
-              select callgraph_primes, callgraph_all_primes from diff.program"""
+        union all
+        select callgraph_primes, callgraph_all_primes from diff.program"""
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) == 2:
@@ -1053,10 +1419,10 @@ class CBinDiff:
           if total == 0 or diff == 0:
             return 0
           else:
-            percent = diff * 100. / total
+            percent = diff * 100.0 / total
             return percent
       else:
-        raise Exception("Not enough rows in databases! Size is %d" % len(rows))
+        raise Exception(f"Not enough rows in databases! Size is {len(rows)}")
     finally:
       cur.close()
 
@@ -1070,7 +1436,7 @@ class CBinDiff:
     elif percent >= 100:
       log("Call graphs are absolutely different")
     else:
-      log("Call graphs from both programs differ in %f%%" % percent)
+      log(f"Call graphs from both programs differ in {percent}%")
 
   def add_match(self, name1, name2, ratio, item, chooser):
     """
@@ -1091,22 +1457,29 @@ class CBinDiff:
       if name1 in self.matched_primary:
         if self.matched_primary[name1]["ratio"] < ratio:
           old_ratio = self.matched_primary[name1]["ratio"]
-          debug_refresh("Found a better match for function %s -> %s, %f with %f" % (name1, name2, old_ratio, ratio))
+          message = f"Found a better match for function {name1} -> {name2}, {old_ratio} with {ratio}"
+          debug_refresh(message)
 
       if chooser is not None:
         if item not in self.all_matches[chooser]:
           self.all_matches[chooser].append(item)
 
-        self.matched_primary[name1]   = {"name":name2, "ratio":ratio}
-        self.matched_secondary[name2] = {"name":name1, "ratio":ratio}
+        self.matched_primary[name1] = {"name": name2, "ratio": ratio}
+        self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
 
   def has_best_match(self, name1, name2):
     """
     Check if we have a best match for the given two functions (not for the pair).
     """
-    if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] == 1.0:
+    if (
+      name1 in self.matched_primary
+      and self.matched_primary[name1]["ratio"] == 1.0
+    ):
       return True
-    elif name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] == 1.0:
+    elif (
+      name2 in self.matched_secondary
+      and self.matched_secondary[name2]["ratio"] == 1.0
+    ):
       return True
     return False
 
@@ -1115,14 +1488,23 @@ class CBinDiff:
     Check if there if we found a better match already for either @name1 or @name2.
     """
     ratio = float(ratio)
-    if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] > ratio:
+    if (
+      name1 in self.matched_primary
+      and self.matched_primary[name1]["ratio"] > ratio
+    ):
       return True
-    elif name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio:
+    elif (
+      name2 in self.matched_secondary
+      and self.matched_secondary[name2]["ratio"] > ratio
+    ):
       return True
 
-    # If we have a match by name, that's the best match    
+    # If we have a match by name, that's the best match
     if not name1.startswith("sub_") and not name2.startswith("sub_"):
-      if name1 in self.matched_primary and self.matched_primary[name1]["name"] == name1:
+      if (
+        name1 in self.matched_primary
+        and self.matched_primary[name1]["name"] == name1
+      ):
         return True
     return False
 
@@ -1134,12 +1516,12 @@ class CBinDiff:
     try:
       # Start by calculating the total number of functions in both databases
       sql = """select count(*) total from functions
-              union all
-              select count(*) total from diff.functions"""
+        union all
+        select count(*) total from diff.functions"""
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) != 2:
-        Warning("Malformed database, only %d rows!" % len(rows))
+        Warning(f"Malformed database, only {len(rows)} rows!")
         cur.close()
         raise Exception("Malformed database!")
 
@@ -1160,7 +1542,7 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def run_heuristics_for_category(self, arg_category, total_cpus = None):
+  def run_heuristics_for_category(self, arg_category, total_cpus=None):
     """
     Run a total of @total_cpus threads running SQL heuristics for category @arg_category
     """
@@ -1179,18 +1561,20 @@ class CBinDiff:
       postfix = config.SQL_DEFAULT_POSTFIX
 
     if self.hooks is not None:
-      if 'get_queries_postfix' in dir(self.hooks):
+      if "get_queries_postfix" in dir(self.hooks):
         postfix = self.hooks.get_queries_postfix(arg_category, postfix)
 
     threads_list = []
     heuristics = list(HEURISTICS)
     if self.hooks is not None:
-      if 'get_heuristics' in dir(self.hooks):
+      if "get_heuristics" in dir(self.hooks):
         heuristics = self.hooks.get_heuristics(arg_category, heuristics)
 
     for heur in heuristics:
-      if len(self.matched_primary) == self.total_functions1 or \
-         len(self.matched_secondary) == self.total_functions2:
+      if (
+        len(self.matched_primary) == self.total_functions1
+        or len(self.matched_secondary) == self.total_functions2
+      ):
         log("All functions matched in at least one database, finishing.")
         break
 
@@ -1198,8 +1582,8 @@ class CBinDiff:
       if category != arg_category:
         continue
 
-      name  = heur["name"]
-      sql   = heur["sql"]
+      name = heur["name"]
+      sql = heur["sql"]
       ratio = heur["ratio"]
       min_value = 0.0
       if ratio in [HEUR_TYPE_RATIO_MAX, HEUR_TYPE_RATIO_MAX_TRUSTED]:
@@ -1207,15 +1591,15 @@ class CBinDiff:
 
       flags = heur["flags"]
       if HEUR_FLAG_UNRELIABLE in flags and not self.unreliable:
-        log_refresh("Skipping unreliable heuristic '%s'" % name)
+        log_refresh(f"Skipping unreliable heuristic '{name}'")
         continue
 
       if HEUR_FLAG_SLOW in flags and not self.slow_heuristics:
-        log_refresh("Skipping slow heuristic '%s'" % name)
+        log_refresh(f"Skipping slow heuristic '{name}'")
         continue
 
       if HEUR_FLAG_SAME_CPU in flags and not self.is_same_processor:
-        log_refresh("Skipping processor specific heuristic '%s'" % name)
+        log_refresh(f"Skipping processor specific heuristic '{name}'")
         continue
 
       if arg_category.lower() == "unreliable":
@@ -1225,21 +1609,29 @@ class CBinDiff:
         best = "best"
         partial = "partial"
 
-      log_refresh("%s Finding with heuristic '%s'" % (mode, name))
+      log_refresh(f"{mode} Finding with heuristic '{name}'")
       sql = sql.replace("%POSTFIX%", postfix)
 
       if self.hooks is not None:
-        if 'on_launch_heuristic' in dir(self.hooks):
+        if "on_launch_heuristic" in dir(self.hooks):
           sql = self.hooks.on_launch_heuristic(name, sql)
 
       if ratio == HEUR_TYPE_NO_FPS:
         t = Thread(target=self.add_matches_from_query, args=(sql, best))
       elif ratio == HEUR_TYPE_RATIO:
-        t = Thread(target=self.add_matches_from_query_ratio, args=(sql, best, partial))
+        t = Thread(
+          target=self.add_matches_from_query_ratio, args=(sql, best, partial)
+        )
       elif ratio == HEUR_TYPE_RATIO_MAX:
-        t = Thread(target=self.add_matches_from_query_ratio_max, args=(sql, best, partial, min_value))
+        t = Thread(
+          target=self.add_matches_from_query_ratio_max,
+          args=(sql, best, partial, min_value),
+        )
       elif ratio == HEUR_TYPE_RATIO_MAX_TRUSTED:
-        t = Thread(target=self.add_matches_from_query_ratio_max_trusted, args=(sql, min_value))
+        t = Thread(
+          target=self.add_matches_from_query_ratio_max_trusted,
+          args=(sql, min_value),
+        )
       else:
         traceback.print_exc()
         raise Exception("Invalid heuristic ratio calculation value!")
@@ -1257,19 +1649,29 @@ class CBinDiff:
       while len(threads_list) >= total_cpus:
         for i, t in enumerate(threads_list):
           if not t.is_alive():
-            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
+            debug_refresh(
+              f"[Parallel] Heuristic '{t.name}' took {time.monotonic() - t.time}..."
+            )
             del threads_list[i]
-            debug_refresh("[Parallel] Waiting for any of %d thread(s) running to finish..." % len(threads_list))
+            debug_refresh(
+              f"[Parallel] Waiting for any of {len(threads_list)} thread(s) running to finish..."
+            )
             break
           else:
-            log_refresh("[Parallel] %d thread(s) running, waiting for at least one to finish..." % len(threads_list), do_log=False)
+            log_refresh(
+              f"[Parallel] {len(threads_list)} thread(s) running, waiting for at least one to finish...",
+              do_log=False,
+            )
             t.join(0.1)
-            if is_ida:
+            if IS_IDA:
               self.refresh()
 
     # XXX: FIXME: THIS CODE IS TERRIBLE, REFACTOR IT!!!
     if len(threads_list) > 0:
-      log_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list), do_log=False)
+      log_refresh(
+        f"[Parallel] Waiting for remaining {len(threads_list)} thread(s) to finish...",
+        do_log=False,
+      )
 
       do_cancel = False
       times = 0
@@ -1278,9 +1680,13 @@ class CBinDiff:
         for i, t in enumerate(threads_list):
           t.join(0.1)
           if not t.is_alive():
-            debug_refresh("[Parallel] Heuristic '%s' took %f..." % (t.name, time.monotonic() - t.time))
+            debug_refresh(
+              f"[Parallel] Heuristic '{t.name}' took {time.monotonic() - t.time}..."
+            )
             del threads_list[i]
-            debug_refresh("[Parallel] Waiting for remaining %d thread(s) to finish..." % len(threads_list))
+            debug_refresh(
+              f"[Parallel] Waiting for any of {len(threads_list)} thread(s) running to finish..."
+            )
             break
 
           t.join(0.1)
@@ -1291,13 +1697,17 @@ class CBinDiff:
               t.timeout = True
               self.get_db().interrupt()
             except:
-              log(("database.interrupt(): %s" % str(sys.exc_info()[1])))
+              log(f"database.interrupt(): {str(sys.exc_info()[1])}")
 
         if times % 50 == 0:
           names = []
           for x in threads_list:
             names.append(x.name)
-          log_refresh("[Parallel] %d thread(s) still running:\n%s" % (len(threads_list), ", ".join(names)))
+
+          tmp_names = ", ".join(names)
+          log_refresh(
+            f"[Parallel] {len(threads_list)} thread(s) still running:\n{tmp_names}"
+          )
           self.show_summary()
 
     self.cleanup_matches()
@@ -1310,10 +1720,10 @@ class CBinDiff:
     dones = {}
     d = {}
     ea_ratios = {}
-    for key in self.all_matches:
+    for key, items in self.all_matches.items():
       d[key] = []
-      l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
-      for item in l:
+      l_items = sorted(items, key=lambda x: float(x[5]), reverse=True)
+      for item in l_items:
         # An example item:
         # item = [ea1, name1, ea2, name2, "100% equal", 1, nodes1, nodes2]
         ea = item[0]
@@ -1322,12 +1732,12 @@ class CBinDiff:
         ratio = item[5]
 
         # Ignore duplicated matches (might happen due to parallelism)
-        match = "%s-%s" % (name1, name2)
+        match = f"{name1}-{name2}"
         if match in dones:
           continue
 
         if name1 == name2:
-          debug_refresh("Using a fake 1.0 ratio for match %s - %s" % (name1, name2))
+          debug_refresh(f"Using a fake 1.0 ratio for match {name1} - {name2}")
           ratio = 1.0
 
         dones[match] = ratio
@@ -1344,23 +1754,22 @@ class CBinDiff:
     # Update know the dict of matched functions for both databases
     self.matched_primary = {}
     self.matched_secondary = {}
-    for key in d:
-      l = d[key]
-      for item in l:
+    for key, l_items in d.items():
+      for item in l_items:
         name1 = item[1]
         name2 = item[3]
         ratio = item[5]
-        self.matched_primary[name1] = {"name":name2, "ratio":ratio}
-        self.matched_secondary[name2] = {"name":name1, "ratio":ratio}
+        self.matched_primary[name1] = {"name": name2, "ratio": ratio}
+        self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
 
     self.all_matches = d
 
-  def count_different_matches(self, l):
+  def count_different_matches(self, items):
     """
     Return the total number of different items using the first field.
     """
     dones = set()
-    for item in l:
+    for item in items:
       dones.add(item[0])
     return len(dones)
 
@@ -1380,8 +1789,13 @@ class CBinDiff:
     unreliable = self.get_total_matches_for("unreliable")
     total = best + partial + unreliable
     percent = (total * 100) / self.total_functions1
-    log("Current results: Best %d, Partial %d, Unreliable %d" % (best, partial, unreliable))
-    log("Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1))
+    log(f"Current results: Best {best}, Partial {partial}, Unreliable {unreliable}")
+
+    # pylint: disable-next=consider-using-f-string
+    log(
+      "Matched %1.2f%% of main binary functions (%d out of %d)"
+      % (percent, total, self.total_functions1)
+    )
 
   def ast_ratio(self, ast1, ast2):
     """
@@ -1400,8 +1814,6 @@ class CBinDiff:
     ast2 = diff_d["ast"]
     pseudo1 = main_d["pseudo"]
     pseudo2 = diff_d["pseudo"]
-    asm1 = main_d["asm"]
-    asm2 = diff_d["asm"]
     md1 = main_d["md"]
     md2 = diff_d["md"]
     clean_asm1 = main_d["clean_asm"]
@@ -1422,14 +1834,24 @@ class CBinDiff:
 
     v3 = 0
     ast_done = False
-    if self.relaxed_ratio and ast1 is not None and ast2 is not None and max(len(ast1), len(ast2)) < 16:
+    if (
+      self.relaxed_ratio
+      and ast1 is not None
+      and ast2 is not None
+      and max(len(ast1), len(ast2)) < 16
+    ):
       ast_done = True
       v3 = self.ast_ratio(ast1, ast2)
       if v3 == 1.0:
         return v3
 
     v1 = 0
-    if pseudo1 is not None and pseudo2 is not None and pseudo1 != "" and pseudo2 != "":
+    if (
+      pseudo1 is not None
+      and pseudo2 is not None
+      and pseudo1 != ""
+      and pseudo2 != ""
+    ):
       if clean_pseudo1 == "" or clean_pseudo2 == "":
         log("Error cleaning pseudo-code!")
       else:
@@ -1494,10 +1916,12 @@ class CBinDiff:
     """
     Did we match already all the functions?
     """
-    return len(self.matched_primary)   == self.total_functions1 or \
-           len(self.matched_secondary) == self.total_functions2
+    return (
+      len(self.matched_primary) == self.total_functions1
+      or len(self.matched_secondary) == self.total_functions2
+    )
 
-  def check_match(self, row, ratio = None, debug=False):
+  def check_match(self, row, ratio=None, debug=False):
     """
     Check a single SQL heuristic match and return whether it should be ignored
     or not, and also the similarity ratio for this match.
@@ -1544,7 +1968,8 @@ class CBinDiff:
     if ratio is None:
       r = self.check_ratio(main_d, diff_d)
       if debug:
-        logging.debug("0x%x 0x%x %d" % (int(ea), int(ea2), r))
+        msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
+        logging.debug(msg)
     else:
       r = ratio
 
@@ -1554,12 +1979,14 @@ class CBinDiff:
 
     should_add = True
     if self.hooks is not None:
-      if 'on_match' in dir(self.hooks):
+      if "on_match" in dir(self.hooks):
         should_add, r = self.hooks.on_match(main_d, diff_d, desc, r)
 
     return should_add, r
 
-  def add_matches_internal(self, cur, best, partial, val=None, unreliable=None, debug=False):
+  def add_matches_internal(
+    self, cur, best, partial, val=None, unreliable=None, debug=False
+  ):
     """
     Wrapper for various functions that find matches based on SQL queries. Always
     use this function when issuing SQL heuristics (if it's possible).
@@ -1568,14 +1995,16 @@ class CBinDiff:
     matches = []
     cur_thread = threading.current_thread()
     t = time.monotonic()
-    while self.SQL_MAX_PROCESSED_ROWS == 0 or (self.SQL_MAX_PROCESSED_ROWS != 0 and i < self.SQL_MAX_PROCESSED_ROWS):
+    while self.sql_max_processed_rows == 0 or (
+      self.sql_max_processed_rows != 0 and i < self.sql_max_processed_rows
+    ):
       if time.monotonic() - t > self.timeout or cur_thread.timeout:
         log("Timeout")
         break
 
       i += 1
       if i % 50000 == 0:
-        log("Processed %d rows..." % i)
+        log(f"Processed {i} rows...")
       row = cur.fetchone()
       if row is None:
         break
@@ -1615,32 +2044,40 @@ class CBinDiff:
       else:
         chooser = None
         item = None
-        if r < config.DEFAULT_PARTIAL_RATIO and r > val and unreliable is not None:
+        if (
+          r < config.DEFAULT_PARTIAL_RATIO
+          and r > val
+          and unreliable is not None
+        ):
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
           matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
-        
+
         if chooser is not None:
           self.add_match(name1, name2, r, item, chooser)
 
     return matches
 
-  def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
+  def add_matches_from_query_ratio(
+    self, sql, best, partial, unreliable=None, debug=False
+  ):
     """
     Find matches using the query @sql and the usual rules.
     """
     if self.all_functions_matched():
       return
-    
+
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      self.add_matches_internal(cur, best=best, partial=partial, unreliable=unreliable, debug=debug)
+      self.add_matches_internal(
+        cur, best=best, partial=partial, unreliable=unreliable, debug=debug
+      )
     except:
-      log("Error: %s" % str(sys.exc_info()[1]))
-      print("*"*80)
+      log(f"Error: {str(sys.exc_info()[1])}")
+      print("*" * 80)
       print(sql)
-      print("*"*80)
+      print("*" * 80)
       traceback.print_exc()
       raise
     finally:
@@ -1656,12 +2093,14 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      self.add_matches_internal(cur, best=best, partial=partial, val=val, unreliable="unreliable")
+      self.add_matches_internal(
+        cur, best=best, partial=partial, val=val, unreliable="unreliable"
+      )
     except:
-      log("Error: %s" % str(sys.exc_info()[1]))
-      print("*"*80)
+      log(f"Error: {str(sys.exc_info()[1])}")
+      print("*" * 80)
       print(sql)
-      print("*"*80)
+      print("*" * 80)
       traceback.print_exc()
       raise
     finally:
@@ -1678,12 +2117,14 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       cur.execute(sql)
-      self.add_matches_internal(cur, best="best", partial="partial", val=val, unreliable="partial")
+      self.add_matches_internal(
+        cur, best="best", partial="partial", val=val, unreliable="partial"
+      )
     except:
-      log("Error: %s" % str(sys.exc_info()[1]))
-      print("*"*80)
+      log(f"Error: {str(sys.exc_info()[1])}")
+      print("*" * 80)
       print(sql)
-      print("*"*80)
+      print("*" * 80)
       traceback.print_exc()
       raise
     finally:
@@ -1718,7 +2159,7 @@ class CBinDiff:
       while not cur_thread.timeout:
         i += 1
         if i % 1000 == 0:
-          log("Processed %d rows..." % i)
+          log(f"Processed {i} rows...")
         row = cur.fetchone()
         if row is None:
           break
@@ -1739,9 +2180,11 @@ class CBinDiff:
         item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
         self.add_match(name1, name2, 1.0, item, category)
         if r < config.DEFAULT_PARTIAL_RATIO:
-          debug_refresh("Warning: Best match 0x%s:%s -> 0x%sx:%s have a bad ratio: %f" % (ea, name1, ea2, name2, r))
+          debug_refresh(
+            f"Warning: Best match 0x{ea}:{name1} -> 0x{ea2}x:{name2} have a bad ratio: {r}"
+          )
     except:
-      log("Error: %s" % str(sys.exc_info()[1]))
+      log(f"Error: {str(sys.exc_info()[1])}")
     finally:
       cur.close()
 
@@ -1750,20 +2193,24 @@ class CBinDiff:
     Find matches where most used names are the same.
     """
     cur = self.db_cursor()
-    
+
     # Same basic blocks, edges, mnemonics, etc... but different names
-    name = 'Nodes, edges, complexity and mnemonics with small differences'
-    sql = """ select """ + get_query_fields(name) + """ ,
-                     f.names  f_names,
-                     df.names df_names
-                from functions f,
-                     diff.functions df
-               where f.nodes = df.nodes
-                 and f.edges = df.edges
-                 and f.mnemonics = df.mnemonics
-                 and f.cyclomatic_complexity = df.cyclomatic_complexity
-                 and f.names != '[]' """
-    
+    name = "Nodes, edges, complexity and mnemonics with small differences"
+    sql = (
+      """ select """
+      + get_query_fields(name)
+      + """ ,
+           f.names  f_names,
+           df.names df_names
+        from functions f,
+           diff.functions df
+         where f.nodes = df.nodes
+         and f.edges = df.edges
+         and f.mnemonics = df.mnemonics
+         and f.cyclomatic_complexity = df.cyclomatic_complexity
+         and f.names != '[]' """
+    )
+
     try:
       cur.execute(sql)
       rows = result_iter(cur)
@@ -1779,7 +2226,7 @@ class CBinDiff:
         s2 = set(json.loads(row["df_names"]))
         total = max(len(s1), len(s2))
         commons = len(s1.intersection(s2))
-        ratio = (commons * 1.) / total
+        ratio = (commons * 1.0) / total
         if self.has_better_match(name1, name2, ratio):
           continue
 
@@ -1814,14 +2261,18 @@ class CBinDiff:
     """
     cur = self.db_cursor()
     desc = "Perfect match, same name"
-    sql = """select distinct """ + get_query_fields(desc) + """
-               from functions f,
-                    diff.functions df
-              where (df.mangled_function = f.mangled_function
-                 or df.name = f.name)
-                and f.name not like 'nullsub_%'"""
+    sql = (
+      """select distinct """
+      + get_query_fields(desc)
+      + """
+         from functions f,
+          diff.functions df
+        where (df.mangled_function = f.mangled_function
+         or df.name = f.name)
+        and f.name not like 'nullsub_%'"""
+    )
 
-    log_refresh("Finding with heuristic '%s'" % desc)
+    log_refresh(f"Finding with heuristic '{desc}'")
     try:
       cur.execute(sql)
       rows = cur.fetchall()
@@ -1848,7 +2299,9 @@ class CBinDiff:
           bb2 = int(row["bb2"])
           md1 = row["md1"]
           md2 = row["md2"]
-          if float(ratio) == 1.0 or (self.relaxed_ratio and md1 != 0 and md1 == md2):
+          if float(ratio) == 1.0 or (
+            self.relaxed_ratio and md1 != 0 and md1 == md2
+          ):
             the_chooser = "best"
             item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
           else:
@@ -1906,45 +2359,63 @@ class CBinDiff:
           cur.execute(sql, (ea, 0))
 
     if self.slow_heuristics:
-      heur = 'Brute forcing (MD-Index and KOKA hash)'
-      sql = """select """ + get_query_fields(heur) + """
-                from functions f,
-                      diff.functions df,
-                      unmatched um
-                where ((f.address = um.address and um.main = 1)
-                  or (df.address = um.address and um.main = 0))
-                  and ((f.md_index = df.md_index
-                  and f.md_index > 1 and df.md_index > 1)
-                  or (f.kgh_hash = df.kgh_hash
-                  and f.kgh_hash > 7 and df.kgh_hash > 7))
-                  """
+      heur = "Brute forcing (MD-Index and KOKA hash)"
+      sql = (
+        """select """
+        + get_query_fields(heur)
+        + """
+        from functions f,
+            diff.functions df,
+            unmatched um
+        where ((f.address = um.address and um.main = 1)
+          or (df.address = um.address and um.main = 0))
+          and ((f.md_index = df.md_index
+          and f.md_index > 1 and df.md_index > 1)
+          or (f.kgh_hash = df.kgh_hash
+          and f.kgh_hash > 7 and df.kgh_hash > 7))
+          """
+      )
       cur.execute(sql)
       log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
-      self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO)
+      self.add_matches_from_cursor_ratio_max(
+        cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO
+      )
 
-    heur = 'Brute forcing (Compilation Unit)'
-    sql = """select """ + get_query_fields(heur) + """
-               from functions f,
-                    diff.functions df,
-                    unmatched um
-              where ((f.address = um.address and um.main = 1)
-                 or (df.address = um.address and um.main = 0))
-                and f.source_file = df.source_file
-                and f.source_file != ''
-                and df.source_file is not null
-                and f.kgh_hash > 7 and df.kgh_hash > 7 """
+    heur = "Brute forcing (Compilation Unit)"
+    sql = (
+      """select """
+      + get_query_fields(heur)
+      + """
+         from functions f,
+          diff.functions df,
+          unmatched um
+        where ((f.address = um.address and um.main = 1)
+         or (df.address = um.address and um.main = 0))
+        and f.source_file = df.source_file
+        and f.source_file != ''
+        and df.source_file is not null
+        and f.kgh_hash > 7 and df.kgh_hash > 7 """
+    )
     cur.execute(sql)
     log_refresh("Finding via brute-forcing (Compilation Unit)...")
-    self.add_matches_from_cursor_ratio_max(cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO)
+    self.add_matches_from_cursor_ratio_max(
+      cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO
+    )
 
     if cur.connection.in_transaction:
       cur.execute("commit")
     cur.close()
 
   def find_experimental_matches(self):
+    """
+    Run heuristics labeled as experimental.
+    """
     self.run_heuristics_for_category("Experimental")
 
   def find_unreliable_matches(self):
+    """
+    Launch unreliable heuristics. Subject to be removed in the near future.
+    """
     self.run_heuristics_for_category("Unreliable")
     if self.slow_heuristics and self.unreliable:
       # Find using brute-force
@@ -1952,6 +2423,10 @@ class CBinDiff:
       self.find_brute_force()
 
   def find_unmatched(self):
+    """
+    Find the functions that weren't matched after running all the selected
+    heuristics.
+    """
     cur = self.db_cursor()
     try:
       sql = "select name, address from functions"
@@ -2001,7 +2476,7 @@ class CBinDiff:
     """
     if os.path.exists(filename):
       os.remove(filename)
-      log("Previous diff results '%s' removed." % filename)
+      log(f"Previous diff results '{filename}' removed.")
 
     results_db = sqlite3_connect(filename)
 
@@ -2011,10 +2486,12 @@ class CBinDiff:
       cur.execute(sql)
 
       sql = "insert into config values (?, ?, ?, ?)"
-      cur.execute(sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime()))
+      cur.execute(
+        sql, (self.db_name, self.last_diff_db, VERSION_VALUE, time.asctime())
+      )
 
       sql = """create table results (type, line, address, name, address2, name2,
-                                     ratio, bb1, bb2, description)"""
+                   ratio, bb1, bb2, description)"""
       cur.execute(sql)
 
       sql = "create unique index uq_results on results(address, address2)"
@@ -2024,24 +2501,27 @@ class CBinDiff:
       cur.execute(sql)
 
       with results_db:
-        results_sql   = "insert or ignore into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        results_sql = "insert or ignore into results values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         unmatched_sql = "insert into unmatched values (?, ?, ?, ?)"
 
-        d = {"best"      : [self.best_chooser, results_sql],
-             "partial"   : [self.partial_chooser, results_sql],
-             "unreliable": [self.unreliable_chooser, results_sql],
-             "multimatch": [self.multimatch_chooser, results_sql],
-             "primary"   : [self.unmatched_primary, unmatched_sql],
-             "secondary" : [self.unmatched_second, unmatched_sql]}
+        d = {
+          "best": [self.best_chooser, results_sql],
+          "partial": [self.partial_chooser, results_sql],
+          "unreliable": [self.unreliable_chooser, results_sql],
+          "multimatch": [self.multimatch_chooser, results_sql],
+          "primary": [self.unmatched_primary, unmatched_sql],
+          "secondary": [self.unmatched_second, unmatched_sql],
+        }
 
-        for category in d:
-          chooser, sql_cmd = d[category]
-          for item in chooser.items:
-            l = list(item)
-            l.insert(0, category)
-            cur.execute(sql_cmd, l)
+        for category, fields in d.items():
+          chooser, sql_cmd = fields
+          if chooser is not None:
+            for item in chooser.items:
+              item_list = list(item)
+              item_list.insert(0, category)
+              cur.execute(sql_cmd, item_list)
 
-      log("Diffing results saved in file '%s'." % filename)
+      log(f"Diffing results saved in file '{filename}'.")
     finally:
       cur.close()
       results_db.close()
@@ -2056,7 +2536,7 @@ class CBinDiff:
     https://github.com/joxeankoret/diaphora/issues/151
     """
     try:
-      cur.execute('attach "%s" as diff' % db)
+      cur.execute(f'attach "{db}" as diff')
     except:
       pass
 
@@ -2068,11 +2548,11 @@ class CBinDiff:
     row = None
     cur = self.db_cursor()
     try:
-      sql = "select * from {db}.functions where name = ?".format(db=db_name)
+      sql = f"select * from {db_name}.functions where name = ?"
       cur.execute(sql, [name])
       row = cur.fetchone()
     except:
-      log("ERROR at get_function_row: %s" % str(sys.exc_info()[1]))
+      log(f"ERROR at get_function_row: {str(sys.exc_info()[1])}")
     finally:
       cur.close()
     return row
@@ -2120,29 +2600,33 @@ class CBinDiff:
 
     try:
       sql = """select count(0)
-                 from main.functions f,
-                      diff.functions df
-                where f.address = df.address """
+         from main.functions f,
+            diff.functions df
+        where f.address = df.address """
       cur.execute(sql)
       row = cur.fetchone()
       matches = row[0]
-    
+
       # If more than 99% of the best matches share the same exact address it is
       # clear it's the same binary with very little changes like, probably, just
       # symbols stripped.
-      percent = (matches*100) / total
+      percent = (matches * 100) / total
       if percent >= config.SPEEDUP_STRIPPED_BINARIES_MIN_PERCENT:
         self.is_symbols_stripped = True
-        msg = "A total of %d matches out of %d, %f%% percent have the same address" % (matches, total, percent)
-        log("Symbols stripped detected: %s" % msg)
+        message = f"A total of {matches} matches out of {total}, {percent}% percent have the same address"
+        log(f"Symbols stripped detected: {message}")
 
         heur = "Same binary with symbols stripped"
-        sql = """
-        select distinct """ + get_query_fields(heur) + """
-          from functions f,
-               diff.functions df
-         where f.address = df.address"""
-        log_refresh("Finding via %s..." % repr(heur))
+        sql = (
+          """
+    select distinct """
+          + get_query_fields(heur)
+          + """
+      from functions f,
+         diff.functions df
+     where f.address = df.address"""
+        )
+        log_refresh(f"Finding via {repr(heur)}")
 
         self.add_matches_from_query(sql, "best")
         ret = True
@@ -2164,16 +2648,16 @@ class CBinDiff:
 
     try:
       sql = """select count(0)
-                 from main.functions f,
-                      diff.functions df
-                where f.mangled_function = df.mangled_function """
+         from main.functions f,
+            diff.functions df
+        where f.mangled_function = df.mangled_function """
       cur.execute(sql)
       row = cur.fetchone()
       matches = row[0]
 
       # If more than 90% of the best matches share the same exact mangled name
       # it is clear where patch diffing 2 different versions of the same binary.
-      percent = (matches*100) / total
+      percent = (matches * 100) / total
       if percent > config.SPEEDUP_PATCH_DIFF_SYMBOLS_MIN_PERCENT:
         # We already have them matched, just instruct the heuristic engine to
         # finish by doing brute forcing with the remaining functions and that's
@@ -2185,8 +2669,8 @@ class CBinDiff:
             self.project_script = config.DEFAULT_SCRIPT_PATCH_DIFF
             self.load_hooks()
 
-        msg = "A total of %d matches out of %d, %f%% percent have the same name" % (matches, total, percent)
-        log("Patch diffing detected: %s" % msg)
+        msg = f"A total of {matches} matches out of {total}, {percent}% percent have the same name"
+        log(f"Patch diffing detected: {msg}")
         ret = True
     finally:
       cur.close()
@@ -2212,19 +2696,19 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       sql = """select 'main' db_name, name, address from main.functions
-                union
-               select 'diff' db_name, name, address from diff.functions
-      """
+        union
+         select 'diff' db_name, name, address from diff.functions
+    """
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) > 0:
         for row in rows:
           name = row["name"]
           d = self.matched_primary
-          l = main
+          l = list(main)
           if row["db_name"] == "diff":
             d = self.matched_secondary
-            l = diff
+            l = list(diff)
 
           if name not in d:
             ea = row["address"]
@@ -2239,11 +2723,15 @@ class CBinDiff:
     """
     Search potentially renamed functions in a usual patch diffing session.
     """
-    sql = """select """ + get_query_fields("?", quote=False) + """
-               from main.functions f,
-                    diff.functions df
-              where f.address = ?
-                and df.address = ?"""
+    sql = (
+      """select """
+      + get_query_fields("?", quote=False)
+      + """
+         from main.functions f,
+          diff.functions df
+        where f.address = ?
+        and df.address = ?"""
+    )
     if not values["small"]:
       sql += " and f.nodes >= 3 and df.nodes >= 3 "
 
@@ -2254,11 +2742,11 @@ class CBinDiff:
           if not name1.startswith("sub_"):
             continue
 
-        for ea2, name2 in diff_unmatched:
+        for ea2, _ in diff_unmatched:
           cur.execute(sql, (values["heur"], ea1, ea2))
-          self.add_matches_internal(cur, best="best", \
-                                    partial="partial",\
-                                    val=values["val"])
+          self.add_matches_internal(
+            cur, best="best", partial="partial", val=values["val"]
+          )
     finally:
       cur.close()
 
@@ -2270,10 +2758,12 @@ class CBinDiff:
     main_unmatched, diff_unmatched = self.get_unmatched_functions()
     if self.is_patch_diff:
       heur = "Renamed or anonymous function match in patch diffing session"
-      values = {"only_sub":True,
-                "heur"    :heur,
-                "small"   :False,
-                "val"     : config.SPEEDUP_PATCH_DIFF_RENAMED_FUNCTION_MIN_RATIO}
+      values = {
+        "only_sub": True,
+        "heur": heur,
+        "small": False,
+        "val": config.SPEEDUP_PATCH_DIFF_RENAMED_FUNCTION_MIN_RATIO,
+      }
       self.search_remaining_functions(main_unmatched, diff_unmatched, values)
 
   def itemize_for_chooser(self, item):
@@ -2299,7 +2789,7 @@ class CBinDiff:
       if len(multi[ea]) > 1:
         for multi_match in multi[ea]:
           item = self.itemize_for_chooser(multi_match[2])
-          key = "%s-%s" % (item.ea, item.ea2)
+          key = f"{item.ea}-{item.ea2}"
           if key not in dones:
             dones.add(key)
             self.multimatch_chooser.add_item(item)
@@ -2329,14 +2819,11 @@ class CBinDiff:
     cur = self.db_cursor()
     sql = "select * from {db}.functions where address = ?"
     try:
-      cur.execute(sql.format(db='main'), (str(ea1),))
+      cur.execute(sql.format(db="main"), (str(ea1),))
       main_row = cur.fetchone()
 
-      cur.execute(sql.format(db='diff'), (str(ea2),))
+      cur.execute(sql.format(db="diff"), (str(ea2),))
       diff_row = cur.fetchone()
-
-      name1 = main_row["name"]
-      name2 = diff_row["name"]
 
       source1 = main_row["source_file"]
       source2 = diff_row["source_file"]
@@ -2347,7 +2834,10 @@ class CBinDiff:
       pseudocode_primes1 = main_row["pseudocode_primes"]
       pseudocode_primes2 = diff_row["pseudocode_primes"]
       if pseudocode_primes1 is not None and pseudocode_primes2 is not None:
-        if pseudocode_primes1 == pseudocode_primes2 and pseudocode_primes1 != "":
+        if (
+          pseudocode_primes1 == pseudocode_primes2
+          and pseudocode_primes1 != ""
+        ):
           score += 0.001
 
       in1 = main_row["indegree"]
@@ -2362,7 +2852,7 @@ class CBinDiff:
 
       switches1 = main_row["switches"]
       switches2 = diff_row["switches"]
-      if switches1 == switches2 and switches1 != '[]':
+      if switches1 == switches2 and switches1 != "[]":
         score += 0.003
 
       cc1 = main_row["cyclomatic_complexity"]
@@ -2370,7 +2860,7 @@ class CBinDiff:
       if cc1 == cc2 and cc1 != 0:
         score += 0.001
 
-      if main_row["constants"] != '[]':
+      if main_row["constants"] != "[]":
         if main_row["constants"] == diff_row["constants"]:
           score += 0.003
         else:
@@ -2381,38 +2871,41 @@ class CBinDiff:
             score += len(set_result) * 0.0005
     finally:
       cur.close()
-    
+
     return score
 
   def find_unresolved_multimatches(self, max_main, multi_main, max_diff, multi_diff):
+    """
+    Find unresolved multimatches.
+    """
     # First pass, group them
     dones = set()
-    for key in self.all_matches:
-      l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
+    for key, items in self.all_matches.items():
+      l = sorted(items, key=lambda x: float(x[5]), reverse=True)
       for match in l:
         ea1 = match[0]
         ea2 = match[2]
         ratio = match[5]
-    
-        key = "%s-%s" % (ea1, ea2)
+
+        key = f"{ea1}-{ea2}"
         if key in dones:
           continue
         dones.add(key)
 
         if ea1 not in max_main:
           max_main[ea1] = ratio
-    
+
         # If the previous ratio we got is less than this one, ignore
         if max_main[ea1] > ratio:
           continue
         max_main[ea1] = ratio
-    
+
         item = [ea2, ratio, match]
         try:
           multi_main[ea1].append(item)
         except KeyError:
           multi_main[ea1] = [item]
-    
+
         if ea2 not in max_diff:
           max_diff[ea2] = ratio
 
@@ -2420,13 +2913,13 @@ class CBinDiff:
         if max_diff[ea2] > ratio:
           continue
         max_diff[ea2] = ratio
-    
+
         item = [ea1, ratio, match]
         try:
           multi_diff[ea2].append(item)
         except KeyError:
           multi_diff[ea2] = [item]
-    
+
     return max_main, multi_main, max_diff, multi_diff
 
   def find_multimatches(self):
@@ -2439,7 +2932,9 @@ class CBinDiff:
     multi_diff = {}
 
     # First, find all the unresolved multimatches
-    values = self.find_unresolved_multimatches(max_main, multi_main, max_diff, multi_diff)
+    values = self.find_unresolved_multimatches(
+      max_main, multi_main, max_diff, multi_diff
+    )
     max_main, multi_main, max_diff, multi_diff = values
 
     # Now, add them to the corresponding chooser
@@ -2447,8 +2942,12 @@ class CBinDiff:
     ignore_diff = set()
     dones = set()
 
-    ignore_main, dones = self.add_multimatches_to_chooser(multi_main, ignore_main, dones)
-    ignore_diff, dones = self.add_multimatches_to_chooser(multi_diff, ignore_diff, dones)
+    ignore_main, dones = self.add_multimatches_to_chooser(
+      multi_main, ignore_main, dones
+    )
+    ignore_diff, dones = self.add_multimatches_to_chooser(
+      multi_diff, ignore_diff, dones
+    )
 
     return max_main, max_diff, ignore_main, ignore_diff
 
@@ -2456,11 +2955,13 @@ class CBinDiff:
     """
     Build the final matches list and add matches to the corresponding chooser.
     """
-    CHOOSERS = {"best":self.best_chooser, "partial":self.partial_chooser,
-                "unreliable":self.unreliable_chooser}
-    for key in self.all_matches:
-      l = self.all_matches[key]
-      l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
+    CHOOSERS = {
+      "best": self.best_chooser,
+      "partial": self.partial_chooser,
+      "unreliable": self.unreliable_chooser,
+    }
+    for key, l in self.all_matches.items():
+      l = sorted(l, key=lambda x: float(x[5]), reverse=True)
       for match in l:
         item = self.itemize_for_chooser(match)
         if item.ea in ignore_main or item.ea2 in ignore_diff:
@@ -2492,9 +2993,9 @@ class CBinDiff:
     cur = self.db_cursor()
     try:
       sql = """ select 1
-                  from main.program mp,
-                       diff.program dp
-                 where mp.processor = dp.processor"""
+          from main.program mp,
+             diff.program dp
+         where mp.processor = dp.processor"""
       cur.execute(sql)
       row = cur.fetchone()
       if row is not None:
@@ -2504,15 +3005,18 @@ class CBinDiff:
     return ret
 
   def functions_exists(self, name1, name2):
+    """
+    Check if the given functions exist and return their respective rows.
+    """
     l = []
     cur = self.db_cursor()
     try:
       sql = """select * from (
-               select 'main' db_name, * from main.functions where name = ?
-                union
-               select 'diff' db_name, * from diff.functions where name = ?
-               ) order by db_name desc
-            """
+         select 'main' db_name, * from main.functions where name = ?
+        union
+         select 'diff' db_name, * from diff.functions where name = ?
+         ) order by db_name desc
+      """
       cur.execute(sql, (name1, name2))
       rows = cur.fetchall()
       ret = False
@@ -2534,7 +3038,9 @@ class CBinDiff:
 
     return main_asm, diff_asm
 
-  def find_one_match_diffing(self, input_main_row, input_diff_row, field_name, item, heur, iteration, dones):
+  def find_one_match_diffing(
+    self, input_main_row, input_diff_row, field_name, heur, iteration, dones
+  ):
     """
     Diff the lines for the field @field_name and find matches of function names
     (only function names for now) to find new matches candidates.
@@ -2544,7 +3050,7 @@ class CBinDiff:
     df = unified_diff(main_lines, diff_lines, lineterm="")
 
     minus = []
-    plus  = []
+    plus = []
 
     for row in df:
       if len(row) == 0:
@@ -2566,7 +3072,7 @@ class CBinDiff:
           for i in range(size):
             name1 = matches1[i][0]
             name2 = matches2[i][0]
-            key = "%s-%s" % (name1, name2)
+            key = f"{name1}-{name2}"
             if key in dones:
               continue
             dones.add(key)
@@ -2577,7 +3083,7 @@ class CBinDiff:
 
             size = len(dones)
             if size > 0 and size % 10000 == 0:
-              log("%d callee matches processed so far..." % size)
+              log(f"{size} callee matches processed so far...")
 
             exists, l = self.functions_exists(name1, name2)
             if exists:
@@ -2587,7 +3093,9 @@ class CBinDiff:
               max_nodes = max(main_row["nodes"], diff_row["nodes"])
 
               # If the number of basic blocks differ in more than 75% ignore...
-              if ((min_nodes * 100) / max_nodes) < config.DIFFING_MATCHES_MAX_DIFFERENT_BBLOCKS_PERCENT:
+              if (
+                (min_nodes * 100) / max_nodes
+              ) < config.DIFFING_MATCHES_MAX_DIFFERENT_BBLOCKS_PERCENT:
                 continue
 
               # There is a high risk of false positives with small functions,
@@ -2611,7 +3119,7 @@ class CBinDiff:
 
               should_add = True
               if self.hooks is not None:
-                if 'on_match' in dir(self.hooks):
+                if "on_match" in dir(self.hooks):
                   desc = heur
                   ea = main_row["address"]
                   ea2 = diff_row["address"]
@@ -2628,17 +3136,42 @@ class CBinDiff:
                   md1 = main_row["md_index"]
                   md2 = diff_row["md_index"]
 
-                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-                  d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+                  d1 = {
+                    "ea": ea,
+                    "bb": bb1,
+                    "name": name1,
+                    "ast": ast1,
+                    "pseudo": pseudo1,
+                    "asm": asm1,
+                    "md": md1,
+                  }
+                  d2 = {
+                    "ea": ea2,
+                    "bb": bb2,
+                    "name": name2,
+                    "ast": ast2,
+                    "pseudo": pseudo2,
+                    "asm": asm2,
+                    "md": md2,
+                  }
                   should_add, r = self.hooks.on_match(d1, d2, desc, r)
 
               if should_add:
-                heur_text = "%s (iteration #%d)" % (heur, iteration)
+                heur_text = f"{heur} (iteration #{iteration})"
                 ea1 = main_row["address"]
                 ea2 = diff_row["address"]
                 bb1 = int(main_row["nodes"])
                 bb2 = int(diff_row["nodes"])
-                new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+                new_item = [
+                  ea1,
+                  name1,
+                  ea2,
+                  name2,
+                  heur_text,
+                  r,
+                  bb1,
+                  bb2,
+                ]
                 self.add_match(name1, name2, r, new_item, chooser)
 
     return dones
@@ -2649,7 +3182,7 @@ class CBinDiff:
 
     NOTE: Should this algorithm be parallelized?
     """
-    log_refresh("Finding with heuristic '%s'" % heur)
+    log_refresh(f"Finding with heuristic '{heur}'")
     db = self.db_cursor()
     try:
       iteration = 1
@@ -2657,12 +3190,16 @@ class CBinDiff:
       # Should I let it run for some more iterations? There is a small chance of
       # hitting an infinite loop, so I'm hardcoding an upper limit.
       while iteration <= 3:
-        old_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
+        old_total = len(self.all_matches["best"]) + len(
+          self.all_matches["partial"]
+        )
 
         for key in ["best", "partial"]:
-          l = sorted(self.all_matches[key], key=lambda x: float(x[5]), reverse=True)
+          l = sorted(
+            self.all_matches[key], key=lambda x: float(x[5]), reverse=True
+          )
           for match in l:
-            match_key = "%s-%s" % (match[1], match[3])
+            match_key = f"{match[1]}-{match[3]}"
             if match_key in dones:
               continue
             dones.add(match_key)
@@ -2675,31 +3212,44 @@ class CBinDiff:
               if diff_row[field_name] is None:
                 continue
 
-              dones = self.find_one_match_diffing(main_row, diff_row, field_name, item, heur, iteration, dones)
+              dones = self.find_one_match_diffing(
+                main_row, diff_row, field_name, heur, iteration, dones
+              )
 
         self.cleanup_matches()
         self.show_summary()
 
-        new_total = len(self.all_matches["best"]) + len(self.all_matches["partial"])
+        new_total = len(self.all_matches["best"]) + len(
+          self.all_matches["partial"]
+        )
         if new_total == old_total:
           break
 
-        log("New iteration with heuristic '%s'..." % heur)
+        log(f"New iteration with heuristic '{heur}'...")
         iteration += 1
     finally:
       db.close()
 
   def find_matches_diffing_assembly(self):
+    """
+    Try finding new matches by diffing assembly.
+    """
     heur = "Callee found diffing matches assembly"
     field_name = "assembly"
     self.find_matches_diffing_internal(heur, field_name)
 
   def find_matches_diffing_pseudo(self):
+    """
+    Try finding new matches by diffing pseudo-codes.
+    """
     heur = "Callee found diffing matches pseudo-code"
     field_name = "pseudocode"
     self.find_matches_diffing_internal(heur, field_name)
 
   def find_matches_diffing(self):
+    """
+    Find new matches by diffing the previously found matches.
+    """
     # First, remove duplicates, etc... just to be sure
     self.cleanup_matches()
 
@@ -2716,10 +3266,10 @@ class CBinDiff:
     """
     cur = self.db_cursor()
     sql = """select *
-               from {db}.functions
-              where address > ?
-                and address < ?
-              order by address desc"""
+         from {db}.functions
+        where address > ?
+        and address < ?
+        order by address desc"""
     try:
       heur_text = "Local affinity"
 
@@ -2737,7 +3287,6 @@ class CBinDiff:
         # Check again the same number of maximum hardcoded functions that we'll
         # consider for this heuristic...
         if size > 0 and size <= config.MAX_FUNCTIONS_PER_GAP:
-
           local_main_matched = set()
           main_score = {}
           local_diff_matched = set()
@@ -2749,9 +3298,13 @@ class CBinDiff:
             for diff_row in diff_rows:
               name1 = main_row["name"]
               name2 = diff_row["name"]
-              if name1.startswith("nullsub_") or name2.startswith("nullsub_"):
+              if name1.startswith("nullsub_") or name2.startswith(
+                "nullsub_"
+              ):
                 continue
-              if not name1.startswith("sub_") and not name2.startswith("sub_"):
+              if not name1.startswith("sub_") and not name2.startswith(
+                "sub_"
+              ):
                 continue
 
               pseudocode_lines1 = main_row["pseudocode_lines"]
@@ -2779,7 +3332,7 @@ class CBinDiff:
 
               should_add = True
               if self.hooks is not None:
-                if 'on_match' in dir(self.hooks):
+                if "on_match" in dir(self.hooks):
                   desc = heur_text
                   ea = main_row["address"]
                   ea2 = diff_row["address"]
@@ -2796,8 +3349,24 @@ class CBinDiff:
                   md1 = main_row["md_index"]
                   md2 = diff_row["md_index"]
 
-                  d1 = {"ea": ea, "bb": bb1, "name": name1, "ast": ast1, "pseudo": pseudo1, "asm": asm1, "md": md1}
-                  d2 = {"ea": ea2, "bb": bb2, "name": name2, "ast": ast2, "pseudo": pseudo2, "asm": asm2, "md": md2}
+                  d1 = {
+                    "ea": ea,
+                    "bb": bb1,
+                    "name": name1,
+                    "ast": ast1,
+                    "pseudo": pseudo1,
+                    "asm": asm1,
+                    "md": md1,
+                  }
+                  d2 = {
+                    "ea": ea2,
+                    "bb": bb2,
+                    "name": name2,
+                    "ast": ast2,
+                    "pseudo": pseudo2,
+                    "asm": asm2,
+                    "md": md2,
+                  }
                   should_add, r = self.hooks.on_match(d1, d2, desc, r)
 
               if should_add:
@@ -2807,7 +3376,16 @@ class CBinDiff:
                 name2 = diff_row["name"]
                 bb1 = int(main_row["nodes"])
                 bb2 = int(diff_row["nodes"])
-                new_item = [ea1, name1, ea2, name2, heur_text, r, bb1, bb2]
+                new_item = [
+                  ea1,
+                  name1,
+                  ea2,
+                  name2,
+                  heur_text,
+                  r,
+                  bb1,
+                  bb2,
+                ]
                 self.add_match(name1, name2, r, new_item, chooser)
 
                 local_main_matched.add(name1)
@@ -2824,13 +3402,13 @@ class CBinDiff:
 
     So, let's suppose the following example:
 
-      Bin1    Bin2    Matched?
-      ---     ---     ---
-      F1      F1'     Yes
-      F2      F2'     No
-      F3      F3'     No
-      F4      F4'     Yes
-    
+      Bin1  Bin2  Matched?
+      ---   ---   ---
+      F1    F1'   Yes
+      F2    F2'   No
+      F3    F3'   No
+      F4    F4'   Yes
+
     Considering how compilers & linkers (in general) work, chances are very high
     that functions F2 and F3 correspond to F2' and F3', so we try to find those
     functions that should correspond to the gap between unmatched functions and
@@ -2848,7 +3426,7 @@ class CBinDiff:
       if i == 0 or i == size:
         continue
 
-      prev = tmp_matches[i-1]
+      prev = tmp_matches[i - 1]
       prev_ea1 = prev[0]
       prev_ea2 = prev[2]
       curr_ea1 = match[0]
@@ -2869,8 +3447,10 @@ class CBinDiff:
     try:
       cur.execute("select value from diff.version")
     except:
-      log("Error: %s " % sys.exc_info()[1])
-      log("The selected file does not look like a valid Diaphora exported database!")
+      log(f"Error: {sys.exc_info()[1]}")
+      log(
+        "The selected file does not look like a valid Diaphora exported database!"
+      )
       cur.close()
       return False
 
@@ -2880,7 +3460,9 @@ class CBinDiff:
       return False
 
     if row["value"] != VERSION_VALUE:
-      log("WARNING: The database is from a different version (current %s, database %s)!" % (VERSION_VALUE, row[0]))
+      log(
+        f"WARNING: The database is from a different version (current {VERSION_VALUE}, database {row[0]})!"
+      )
 
     try:
       t0 = time.monotonic()
@@ -2955,7 +3537,7 @@ class CBinDiff:
         self.find_unmatched()
 
         if self.hooks is not None:
-          if 'on_finish' in dir(self.hooks):
+          if "on_finish" in dir(self.hooks):
             self.hooks.on_finish()
 
         best = len(self.best_chooser.items)
@@ -2964,27 +3546,37 @@ class CBinDiff:
         multi = len(self.multimatch_chooser.items)
         total = best + partial + unreliable
         percent = ((best + partial + unreliable) * 100) / self.total_functions1
-        log("Final results: Best %d, Partial %d, Unreliable %d, Multimatches %d" % (best, partial, unreliable, multi))
-        log("Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1))
+        log(
+          f"Final results: Best {best}, Partial {partial}, Unreliable {unreliable}, Multimatches {multi}"
+        )
+        log(
+          "Matched %1.2f%% of main binary functions (%d out of %d)"
+          % (percent, total, self.total_functions1)
+        )
 
         final_t = time.monotonic() - t0
-        log("Done, time taken: {}.".format(datetime.timedelta(seconds=final_t)))
+        log(f"Done, time taken: {datetime.timedelta(seconds=final_t)}.")
 
     finally:
       cur.close()
     return True
 
+
 if __name__ == "__main__":
   version_info = sys.version_info
   if version_info[0] == 2:
-    log("WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3.")
-    log("TIP: There is a fork that contains backward compatibility, check the github's page.")
+    log(
+      "WARNING: You are using Python 2 instead of Python 3. The main branch of Diaphora works exclusively with Python 3."
+    )
+    log(
+      "TIP: There is a fork that contains backward compatibility, check the github's page."
+    )
 
   do_diff = True
-  debug_refresh("DIAPHORA_AUTO_DIFF=%s" % os.getenv("DIAPHORA_AUTO_DIFF"))
-  debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
-  debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
-  debug_refresh("DIAPHORA_DIFF_OUT=%s" % os.getenv("DIAPHORA_DIFF_OUT"))
+  debug_refresh(f'DIAPHORA_AUTO_DIFF={os.getenv("DIAPHORA_AUTO_DIFF")}')
+  debug_refresh(f'DIAPHORA_DB1={os.getenv("DIAPHORA_DB1")}')
+  debug_refresh(f'DIAPHORA_DB2={os.getenv("DIAPHORA_DB2")}')
+  debug_refresh(f'DIAPHORA_DIFF_OUT={os.getenv("DIAPHORA_DIFF_OUT")}')
   if os.getenv("DIAPHORA_AUTO_DIFF") is not None:
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
@@ -2997,13 +3589,15 @@ if __name__ == "__main__":
     diff_out = os.getenv("DIAPHORA_DIFF_OUT")
     if diff_out is None:
       raise Exception("No output file for diff specified!")
-  elif is_ida:
+  elif IS_IDA:
     diaphora_dir = os.path.dirname(__file__)
     script = os.path.join(diaphora_dir, "diaphora_ida.py")
     buf = None
     with open(script, "rb") as f:
       buf = f.read()
-    exec(compile(buf, script, 'exec'))
+
+    # pylint: disable-next=exec-used
+    exec(compile(buf, script, "exec"))
     do_diff = False
   else:
     import argparse
@@ -3019,18 +3613,20 @@ if __name__ == "__main__":
       diff_out = args.outfile
     else:
       diff_out = "{}_vs_{}.diaphora".format(
-              os.path.basename(os.path.splitext(db1)[0]),
-              os.path.basename(os.path.splitext(db2)[0]))
+        os.path.basename(os.path.splitext(db1)[0]),
+        os.path.basename(os.path.splitext(db2)[0]),
+      )
 
   if do_diff:
     bd = CBinDiff(db1)
-    if not is_ida:
+    if not IS_IDA:
       bd.ignore_all_names = False
-    
+
     bd.db = sqlite3_connect(db1)
     if os.getenv("DIAPHORA_PROFILE") is not None:
       log("*** Profiling export ***")
       import cProfile
+
       profiler = cProfile.Profile()
       profiler.runcall(bd.diff, db2)
       exported = True
