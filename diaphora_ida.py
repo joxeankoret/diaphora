@@ -23,15 +23,17 @@ import json
 import decimal
 import difflib
 import sqlite3
+import datetime
 import traceback
 
 from hashlib import md5
 
 # pylint: disable=wildcard-import
+# pylint: disable=unused-wildcard-import
 from idc import *
 from idaapi import *
 from idautils import *
-
+# pylint: enable=unused-wildcard-import
 # pylint: enable=wildcard-import
 
 import idaapi
@@ -67,6 +69,7 @@ except ImportError:
   print(f"Error loading IDAMagicStrings.py: {str(sys.exc_info()[1])}")
   HAS_GET_SOURCE_STRINGS = False
 
+# pylint: disable-next=wrong-import-order
 from PyQt5 import QtWidgets
 
 #-------------------------------------------------------------------------------
@@ -111,6 +114,7 @@ LITTLE_ORANGE = 0x026AFD
 #
 # pylint: disable=missing-class-docstring
 # pylint: disable=missing-function-docstring
+# pylint: disable=protected-access
 
 #-------------------------------------------------------------------------------
 def log(message):
@@ -159,7 +163,6 @@ def show_choosers():
   """
   Show the non empty choosers.
   """
-  global g_bindiff
   if g_bindiff is not None:
     g_bindiff.show_choosers(False)
 
@@ -169,7 +172,6 @@ def save_results():
   """
   Show the dialogue to save the diffing results.
   """
-  global g_bindiff
   if g_bindiff is not None:
     filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
     if filename is not None:
@@ -319,7 +321,8 @@ class CDiaphoraChooser(diaphora.CChooser, Choose):
 
   def AddCommand(self, menu_name, shortcut=None):
     if menu_name is not None:
-      action_name = "Diaphora:%s" % menu_name.replace(" ", "")
+      tmp = menu_name.replace(" ", "")
+      action_name = f"Diaphora:{tmp}"
     else:
       action_name = None
     self.actions.append([len(self.actions), action_name, menu_name, shortcut])
@@ -523,12 +526,14 @@ class CIDAChooser(CDiaphoraChooser):
         for item in self.items:
           ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
           if not set_color(ea, CIC_FUNC, color):
+            # pylint: disable-next=consider-using-f-string
             print("Error setting color for %x" % ea)
         self.Refresh()
     elif cmd_id == self.cmd_unhighlight_functions:
       for item in self.items:
         ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
         if not set_color(ea, CIC_FUNC, 0xFFFFFF):
+          # pylint: disable-next=consider-using-f-string
           print("Error setting color for %x" % ea)
       self.Refresh()
     elif cmd_id == self.cmd_diff_graph:
@@ -537,6 +542,7 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
+      # pylint: disable-next=consider-using-f-string
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_diff_graph_microcode:
@@ -545,6 +551,7 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
+      # pylint: disable-next=consider-using-f-string
       log("Diff microcode graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff_microcode(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_view_callgraph_context:
@@ -553,6 +560,7 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
+      # pylint: disable-next=consider-using-f-string
       log("Showing call graph context for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.show_callgraph_context(name1, name2)
     elif cmd_id == self.cmd_save_results:
@@ -666,6 +674,7 @@ class CIDAChooser(CDiaphoraChooser):
         red = int(164 * (1 - ratio))
         green = int(128 * ratio)
         blue = int(255 * (1 - ratio))
+        # pylint: disable-next=consider-using-f-string
         color = int("0x%02x%02x%02x" % (blue, green, red), 16)
       return [color, 0]
     return [0xFFFFFF, 0]
@@ -1010,7 +1019,9 @@ class CPrinter_t(hr.vd_printer_t):
   def get_mc(self):
     return self.mc
 
-  def _print(self, indent, line):
+  # pylint: disable-next=arguments-differ
+  # pylint: disable-next=unexpected-keyword-arg
+  def _print(self, _, line):
     self.mc.append(line)
     return 1
 
@@ -1114,6 +1125,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     """
     callgraph_primes = 1
     callgraph_all_primes = {}
+    # pylint: disable-next=consider-using-f-string
     log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
@@ -2163,6 +2175,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       traceback.print_exc()
 
   def do_decompile(self, f):
+    # pylint: disable-next=unexpected-keyword-arg
     return decompile(f, flags=DECOMP_NO_WAIT)
 
   def get_plain_microcode_line(self, color_line):
@@ -2335,6 +2348,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if ret:
           t = ret
       except:
+        # pylint: disable-next=consider-using-f-string
         log("Cannot decompile 0x%x: %s" % (ea, str(sys.exc_info()[1])))
     return t
 
@@ -2695,6 +2709,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     f = int(ea)
     func = get_func(f)
     if not func:
+      # pylint: disable-next=consider-using-f-string
       log("Cannot get a function object for 0x%x" % f)
       return False
 
@@ -2762,6 +2777,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     current_head = BADADDR
     for block in flow:
       if block.end_ea == 0 or block.end_ea == BADADDR:
+        # pylint: disable-next=consider-using-f-string
         print(("0x%08x: Skipping bad basic block" % f))
         continue
 
@@ -2788,6 +2804,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
             assembly[block_ea] = [[current_head - image_base, disasm]]
           else:
             assembly[block_ea] = [
+              # pylint: disable-next=consider-using-f-string
               [current_head - image_base, "loc_%x:" % current_head],
               [current_head - image_base, disasm],
             ]
@@ -2797,6 +2814,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
         curr_bytes = get_bytes(current_head, decoded_size, False)
         if curr_bytes is None or len(curr_bytes) != decoded_size:
+          # pylint: disable-next=consider-using-f-string
           log("Failed to read %d bytes at [%08x]" % (decoded_size, current_head))
           continue
 
@@ -2942,6 +2960,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       clean_assembly = self.get_cmp_asm_lines(asm)
     except:
       clean_assembly = ""
+      # pylint: disable-next=consider-using-f-string
       print("Error getting assembly for 0x%x" % f)
 
     cc = edges - nodes + 2
@@ -2950,6 +2969,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     try:
       prime = str(self.primes[cc])
     except:
+      # pylint: disable-next=consider-using-f-string
       log("Cyclomatic complexity too big: 0x%x -> %d" % (f, cc))
       prime = 0
 
@@ -3215,10 +3235,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # condition.
     local_types = idc.get_ordinal_qty()
     if (local_types & 0x80000000) != 0:
-      log(
-        "warning: get_ordinal_qty returned a negative number (0x%x)!"
-        % local_types
-      )
+      # pylint: disable-next=consider-using-f-string
+      message = "warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types
+      log(message)
       return
 
     for i in range(local_types):
@@ -3282,8 +3301,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       row = rows[0]
       version = row["version"]
       if version != diaphora.VERSION_VALUE:
-        msg = "The version of the diff results is %s and current version is %s, there can be some incompatibilities."
-        Warning(msg % (version, diaphora.VERSION_VALUE))
+        message = f"The version of the diff results is {version} and current version is {diaphora.VERSION_VALUE}, there can be some incompatibilities."
+        Warning(message)
 
       self.reinit(main_db, diff_db)
 
@@ -3365,7 +3384,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       main_db = row["main_db"]
       diff_db = row["diff_db"]
       if not os.path.exists(main_db):
-        log("Primary database %s not found." % main_db)
+        log(f"Primary database {main_db} not found.")
         main_db = ask_file(0, main_db, "Select the primary database path")
         if main_db is None:
           return False
@@ -3455,8 +3474,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
 #-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
+  # pylint: disable-next=global-statement
   global g_bindiff
-
   total_functions = len(list(Functions()))
   if get_idb_path() == "" or total_functions == 0:
     warning(
@@ -3492,7 +3511,7 @@ def _diff_or_export(use_ui, **options):
 
   export = True
   if os.path.exists(opts.file_out):
-    crash_file = "%s-crash" % opts.file_out
+    crash_file = f"{opts.file_out}-crash"
     resume_crashed = False
     crashed_before = False
     if os.path.exists(crash_file):
@@ -3524,7 +3543,7 @@ def _diff_or_export(use_ui, **options):
 
       if not resume_crashed:
         remove_file(opts.file_out)
-        log("Database %s removed" % repr(opts.file_out))
+        log(f"Database {repr(opts.file_out)} removed")
         if os.path.exists(crash_file):
           os.remove(crash_file)
 
@@ -3553,6 +3572,7 @@ def _diff_or_export(use_ui, **options):
       exported = False
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling export ***")
+        # pylint: disable-next=import-outside-toplevel
         import cProfile
 
         profiler = cProfile.Profile()
@@ -3564,24 +3584,19 @@ def _diff_or_export(use_ui, **options):
           bd.export()
           exported = True
         except KeyboardInterrupt:
-          log(
-            "Aborted by user, removing crash file %s-crash..."
-            % opts.file_out
-          )
-          os.remove("%s-crash" % opts.file_out)
+          log(f"Aborted by user, removing crash file {opts.file_out}-crash...")
+          os.remove(f"{opts.file_out}-crash")
 
       if exported:
         final_t = time.monotonic() - t0
-        log(
-          "Database exported, time taken: {}.".format(
-            datetime.timedelta(seconds=final_t)
-          )
-        )
+        # pylint: disable-next=consider-using-f-string
+        log(f"Database exported, time taken: {datetime.timedelta(seconds=final_t)}.")
         hide_wait_box()
 
     if opts.file_in != "":
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling diff ***")
+        # pylint: disable-next=import-outside-toplevel
         import cProfile
 
         profiler = cProfile.Profile()
@@ -3590,7 +3605,7 @@ def _diff_or_export(use_ui, **options):
       else:
         bd.diff(opts.file_in)
   except:
-    print(("Error: %s" % sys.exc_info()[1]))
+    print((f"Error: {sys.exc_info()[1]}"))
     traceback.print_exc()
   finally:
     hide_wait_box()
@@ -3599,7 +3614,7 @@ def _diff_or_export(use_ui, **options):
 
 
 #-------------------------------------------------------------------------------
-def _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo):
+def _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd = CIDABinDiff(db1)
   bd.db = diaphora.sqlite3_connect(db1)
   bd.load_results(diff_db)
@@ -3782,6 +3797,9 @@ except:
 
 
 #-------------------------------------------------------------------------------
+# pylint: disable=super-init-not-called
+# pylint: disable=non-parent-init-called
+# pylint: disable=arguments-differ
 class CAstVisitor(CAstVisitorInherits):
   def __init__(self, cfunc):
     self.primes = primesbelow(4096)
@@ -3804,6 +3822,9 @@ class CAstVisitor(CAstVisitorInherits):
       traceback.print_exc()
     return 0
 
+# pylint: enable=arguments-differ
+# pylint: enable=non-parent-init-called
+# pylint: enable=super-init-not-called
 
 #-------------------------------------------------------------------------------
 def is_ida_file(filename):
@@ -3848,14 +3869,16 @@ def remove_file(filename):
           "compilation_unit_functions",
         ]
         for func in funcs:
-          db.execute("drop table if exists %s" % func)
+          db.execute(f"drop table if exists {func}")
       finally:
         cur.close()
 
 
 #-------------------------------------------------------------------------------
 def main():
+  # pylint: disable-next=global-statement
   global g_bindiff
+
   # EXPORT
   if os.getenv("DIAPHORA_AUTO") is not None:
     file_out = os.getenv("DIAPHORA_EXPORT_FILE")
@@ -3873,7 +3896,7 @@ def main():
         g_bindiff = None
 
       remove_file(file_out)
-      log("Database %s removed" % repr(file_out))
+      log(f"Database {repr(file_out)} removed")
 
     bd = CIDABinDiff(file_out)
     project_script = os.getenv("DIAPHORA_PROJECT_SCRIPT")
@@ -3893,34 +3916,33 @@ def main():
     bd.export_microcode = bd.get_value_for(
       "self.export_microcode", bd.export_microcode
     )
-    to_ea = bd.get_value_for("to_address", None)
-    if to_ea is not None:
-      bd.max_ea = int(to_ea, 16)
+
+    _to_ea = bd.get_value_for("to_address", None)
+    if _to_ea is not None:
+      bd.max_ea = int(_to_ea, 16)
 
     try:
       bd.export()
     except KeyboardInterrupt:
-      log("Aborted by user, removing crash file %s-crash..." % file_out)
-      os.remove("%s-crash" % file_out)
+      log(f"Aborted by user, removing crash file {file_out}-crash...")
+      os.remove(f"{file_out}-crash")
 
     idaapi.qexit(0)
+
   # DIFF-SHOW
   elif os.getenv("DIAPHORA_AUTO_HTML") is not None:
     debug_refresh("Handling DIAPHORA_AUTO_HTML")
-    debug_refresh("DIAPHORA_AUTO_HTML=%s" % os.getenv("DIAPHORA_AUTO_HTML"))
-    debug_refresh("DIAPHORA_DB1=%s" % os.getenv("DIAPHORA_DB1"))
-    debug_refresh("DIAPHORA_DB2=%s" % os.getenv("DIAPHORA_DB2"))
-    debug_refresh("DIAPHORA_DIFF=%s" % os.getenv("DIAPHORA_DIFF"))
-    debug_refresh("DIAPHORA_EA1=%s" % os.getenv("DIAPHORA_EA1"))
-    debug_refresh("DIAPHORA_EA2=%s" % os.getenv("DIAPHORA_EA2"))
-    debug_refresh("DIAPHORA_HTML_ASM=%s" % os.getenv("DIAPHORA_HTML_ASM"))
-    debug_refresh("DIAPHORA_HTML_PSEUDO=%s" % os.getenv("DIAPHORA_HTML_PSEUDO"))
+    debug_refresh(f'DIAPHORA_AUTO_HTML={os.getenv("DIAPHORA_AUTO_HTML")}')
+    debug_refresh(f'DIAPHORA_DB1={os.getenv("DIAPHORA_DB1")}')
+    debug_refresh(f'DIAPHORA_DB2={os.getenv("DIAPHORA_DB2")}')
+    debug_refresh(f'DIAPHORA_DIFF={os.getenv("DIAPHORA_DIFF")}')
+    debug_refresh(f'DIAPHORA_EA1={os.getenv("DIAPHORA_EA1")}')
+    debug_refresh(f'DIAPHORA_EA2={os.getenv("DIAPHORA_EA2")}')
+    debug_refresh(f'DIAPHORA_HTML_ASM={os.getenv("DIAPHORA_HTML_ASM")}')
+    debug_refresh(f'DIAPHORA_HTML_PSEUDO={os.getenv("DIAPHORA_HTML_PSEUDO")}')
     db1 = os.getenv("DIAPHORA_DB1")
     if db1 is None:
       raise Exception("No database file specified!")
-    db2 = os.getenv("DIAPHORA_DB2")
-    if db2 is None:
-      raise Exception("No database file to diff against specified!")
     diff_db = os.getenv("DIAPHORA_DIFF")
     if diff_db is None:
       raise Exception("No diff database file for diff specified!")
@@ -3936,7 +3958,7 @@ def main():
     html_pseudo = os.getenv("DIAPHORA_HTML_PSEUDO")
     if html_pseudo is None:
       raise Exception("No html output file for pseudo specified!")
-    _generate_html(db1, db2, diff_db, ea1, ea2, html_asm, html_pseudo)
+    _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo)
     idaapi.qexit(0)
   else:
     _diff_or_export(True)

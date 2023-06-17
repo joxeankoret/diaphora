@@ -1,4 +1,3 @@
-
 """
 Behold, Diaphora 3.0 configuration options ahead!
 

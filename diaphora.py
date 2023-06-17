@@ -1792,10 +1792,8 @@ class CBinDiff:
     log(f"Current results: Best {best}, Partial {partial}, Unreliable {unreliable}")
 
     # pylint: disable-next=consider-using-f-string
-    log(
-      "Matched %1.2f%% of main binary functions (%d out of %d)"
-      % (percent, total, self.total_functions1)
-    )
+    message = "Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1)
+    log(message)
 
   def ast_ratio(self, ast1, ast2):
     """
@@ -1827,6 +1825,7 @@ class CBinDiff:
     md2 = float(md2)
 
     fratio = quick_ratio
+    # pylint: disable-next=consider-using-f-string
     decimal_values = "{0:.%s}" % config.DECIMAL_VALUES
     if self.relaxed_ratio:
       fratio = real_quick_ratio
@@ -1968,6 +1967,7 @@ class CBinDiff:
     if ratio is None:
       r = self.check_ratio(main_d, diff_d)
       if debug:
+        # pylint: disable-next=consider-using-f-string
         msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
         logging.debug(msg)
     else:
@@ -2039,6 +2039,7 @@ class CBinDiff:
         done = False
 
       if done:
+        # pylint: disable-next=consider-using-f-string
         matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
         self.add_match(name1, name2, r, item, chooser)
       else:
@@ -2051,6 +2052,7 @@ class CBinDiff:
         ):
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
+          # pylint: disable-next=consider-using-f-string
           matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
 
         if chooser is not None:
@@ -3549,10 +3551,10 @@ class CBinDiff:
         log(
           f"Final results: Best {best}, Partial {partial}, Unreliable {unreliable}, Multimatches {multi}"
         )
-        log(
-          "Matched %1.2f%% of main binary functions (%d out of %d)"
-          % (percent, total, self.total_functions1)
-        )
+
+        # pylint: disable-next=consider-using-f-string
+        message = "Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1)
+        log(message)
 
         final_t = time.monotonic() - t0
         log(f"Done, time taken: {datetime.timedelta(seconds=final_t)}.")
@@ -3612,10 +3614,9 @@ if __name__ == "__main__":
     if args.outfile:
       diff_out = args.outfile
     else:
-      diff_out = "{}_vs_{}.diaphora".format(
-        os.path.basename(os.path.splitext(db1)[0]),
-        os.path.basename(os.path.splitext(db2)[0]),
-      )
+      path1 = os.path.basename(os.path.splitext(db1)[0])
+      path2 = os.path.basename(os.path.splitext(db2)[0])
+      diff_out = f"{path1}_vs_{path2}.diaphora"
 
   if do_diff:
     bd = CBinDiff(db1)
