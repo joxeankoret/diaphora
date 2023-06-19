@@ -2,7 +2,7 @@
 Behold, Diaphora 3.0 configuration options ahead!
 
 NOTES: This configuration file is a normal python script, therefore, you're free
-to add you own code here.
+to add your own code here.
 """
 
 ################################################################################
