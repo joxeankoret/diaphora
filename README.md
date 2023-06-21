@@ -1,18 +1,12 @@
 # Diaphora
 
-Diaphora (διαφορά, Greek for 'difference') version 2.0 is the most advanced program diffing tool, working as an IDA plugin, available as of today (2023). It was released first during SyScan 2015 and is actively maintained.
+Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
-Diaphora supports IDA 6.9 to 8.2, but the main branch has support only for IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested). If you are looking for an IDA >= 7.4 port with support for Python 2.X, check [this issue](https://github.com/joxeankoret/diaphora/issues/197).
-
-Support for Ghidra is in development, but it will take very long. Support for Binary Ninja is also planned but will probably come after Ghidra's port. If you are looking for Radare2 support, you can [check this very old fork](https://github.com/radare/diaphora).
-
-For more details, please check the tutorial in the "doc" directory.
-
-NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
+Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
 
 ## Unique Features
 
-Diaphora has many of the most common program diffing (bindiffing) techniques you might expect, like:
+Diaphora has many of the most common program diffing (bindiffing) features you might expect, like:
 
  * Diffing assembler.
  * Diffing control flow graphs.
@@ -25,6 +19,8 @@ Diaphora has many of the most common program diffing (bindiffing) techniques you
 
 However, Diaphora has also many features that are unique, not available in any other public tool. The following is a non extensive list of unique features:
 
+ * Support for compilation units (finding and diffing compilation units).
+ * Microcode support.
  * Parallel diffing.
  * Pseudo-code based heuristics.
  * Pseudo-code patches generation.
@@ -32,18 +28,6 @@ However, Diaphora has also many features that are unique, not available in any o
  * Diffing pseudo-codes (with syntax highlighting!).
  * Scripting support (for both the exporting and diffing processes).
  * ...
-
-It's also actively maintained, and the following is a list of the features that are 'in the making':
-
- * Support for compilation units (finding and diffing compilation units).
- * Direct integration with [Pigaios](https://github.com/joxeankoret/pigaios).
- * 'Machine Learning' based techniques so reverse engineers can teach Diaphora what is a good match or a bad one, and how to search for more.
-
-## Python 2.7 and IDA versions 6.95 to 7.3
-
-TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [this branch](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
-
-Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in Github will only run in IDA 7.4 and Python 3.X. I've tried to make it compatible but it caused the code to be horrible and unmaintainable. As so, I've decided that it was best to drop support for Python 2.X and IDA versions <= 7.3 and focus in Python 3.X and IDA versions >= 7.4.
 
 ## Donations
 
