@@ -9,7 +9,7 @@ Diaphora has many of the most common program diffing (bindiffing) features you m
  * Diffing assembler.
  * Diffing control flow graphs.
  * Porting symbol names and comments.
- * Addig manual matches.
+ * Adding manual matches.
  * Similarity ratio calculation.
  * Batch automation.
  * Call graph matching calculation.
@@ -17,12 +17,12 @@ Diaphora has many of the most common program diffing (bindiffing) features you m
 
 However, Diaphora has also many features that are unique, not available in any other public tool. The following is a non extensive list of unique features:
 
+ * Ability to port structs, enums, unions and typedefs.
  * Support for compilation units (finding and diffing compilation units).
  * Microcode support.
  * Parallel diffing.
  * Pseudo-code based heuristics.
  * Pseudo-code patches generation.
- * Ability to port structs, enums and typedefs.
  * Diffing pseudo-codes (with syntax highlighting!).
  * Scripting support (for both the exporting and diffing processes).
  * ...
