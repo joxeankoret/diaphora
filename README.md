@@ -1,5 +1,3 @@
-![imagen](https://github.com/joxeankoret/diaphora/assets/2945834/4a494d41-4ece-4150-85c2-3f0858366788)# Diaphora
-
 Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
 Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
@@ -69,7 +67,7 @@ Diffing assembly, pseudo-code and microcode:
 
 ![Assembly, pseudo-code and microcode](https://files.mastodon.social/media_attachments/files/110/102/237/646/074/440/original/4a816df5069691c3.png)
 
-Diffing CVE-2023-21768 with Diaphora 3.0
+Diffing CVE-2023-21768 with Diaphora 3.0:
 
 ![Diffing CVE-2023-21768 with #Diaphora 3.0](https://files.mastodon.social/media_attachments/files/110/066/930/153/215/408/original/86b06ae90d57d5a1.png)
 
