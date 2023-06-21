@@ -382,7 +382,7 @@ HEURISTICS.append({
                 from main.compilation_units mcu,
                   main.compilation_unit_functions mcuf,
                   main.functions f,
-                    diff.compilation_units dcu,
+                  diff.compilation_units dcu,
                   diff.compilation_unit_functions dcuf,
                   diff.functions df
               where dcu.pseudocode_primes = mcu.pseudocode_primes
