@@ -1,0 +1,433 @@
+Possible file format: ELF64 for x86-64 (Executable) (/home/joxean/ida83/loaders/elf64.so)
+
+  bytes   pages size description
+--------- ----- ---- --------------------------------------------
+   524288    64 8192 allocating memory for b-tree...
+   499712    61 8192 allocating memory for virtual array...
+   262144    32 8192 allocating memory for name pointers...
+-----------------------------------------------------------------
+  1286144            total memory allocated
+
+Loading file '/home/joxean/Documents/research/diaphora/public/tester/samples/ls' into database...
+Detected file format: ELF64 for x86-64 (Executable)
+Loading processor module /home/joxean/ida83/procs/pc64.so for metapc...Initializing processor module metapc...OK
+Autoanalysis subsystem has been initialized.
+  0. Creating a new segment  (0000000000400000-000000000041DA64) ... ... OK
+  1. Creating a new segment  (000000000061DE00-000000000061F368) ... ... OK
+Assuming __fastcall calling convention by default
+Type library 'gnulnx_x64' loaded. Applying types...
+Types applied to 0 names.
+  2. Creating a new segment  (00000000004022B8-00000000004022D2) ... ... OK
+  3. Creating a new segment  (00000000004022D2-000000000041DA64) ... ... OK
+  4. Creating a new segment  (00000000004022E0-00000000004029F0) ... ... OK
+  5. Creating a new segment  (00000000004029F0-000000000041DA64) ... ... OK
+  6. Creating a new segment  (00000000004029F0-00000000004029F8) ... ... OK
+     Deleting segment        (00000000004029F8-000000000041DA64) ...
+  6. Creating a new segment  (00000000004029F8-000000000041DA64) ... ... OK
+  7. Creating a new segment  (0000000000402A00-0000000000413C59) ... ... OK
+  8. Creating a new segment  (0000000000413C59-000000000041DA64) ... ... OK
+  9. Creating a new segment  (0000000000413C5C-0000000000413C65) ... ... OK
+ 10. Creating a new segment  (0000000000413C65-000000000041DA64) ... ... OK
+ 11. Creating a new segment  (0000000000413C80-000000000041A5F4) ... ... OK
+ 12. Creating a new segment  (000000000041A5F4-000000000041DA64) ... ... OK
+ 13. Creating a new segment  (000000000041A5F4-000000000041ADF8) ... ... OK
+     Deleting segment        (000000000041ADF8-000000000041DA64) ...
+ 13. Creating a new segment  (000000000041ADF8-000000000041DA64) ... ... OK
+     Deleting segment        (000000000041ADF8-000000000041DA64) ...
+ 13. Creating a new segment  (000000000041ADF8-000000000041DA64) ... ... OK
+ 14. Creating a new segment  (000000000061DE00-000000000061DE08) ... ... OK
+     Deleting segment        (000000000061DE08-000000000061F368) ...
+ 14. Creating a new segment  (000000000061DE08-000000000061F368) ... ... OK
+ 15. Creating a new segment  (000000000061DE08-000000000061DE10) ... ... OK
+     Deleting segment        (000000000061DE10-000000000061F368) ...
+ 15. Creating a new segment  (000000000061DE10-000000000061F368) ... ... OK
+ 16. Creating a new segment  (000000000061DE10-000000000061DE18) ... ... OK
+     Deleting segment        (000000000061DE18-000000000061F368) ...
+ 16. Creating a new segment  (000000000061DE18-000000000061F368) ... ... OK
+ 17. Creating a new segment  (000000000061DFF8-000000000061E000) ... ... OK
+ 18. Creating a new segment  (000000000061E000-000000000061F368) ... ... OK
+ 19. Creating a new segment  (000000000061E000-000000000061E398) ... ... OK
+     Deleting segment        (000000000061E398-000000000061F368) ...
+ 19. Creating a new segment  (000000000061E398-000000000061F368) ... ... OK
+ 20. Creating a new segment  (000000000061E3A0-000000000061E600) ... ... OK
+ 21. Creating a new segment  (000000000061E600-000000000061F368) ... ... OK
+     Deleting segment        (000000000061E600-000000000061F368) ...
+ 21. Creating a new segment  (000000000061E600-000000000061F368) ... ... OK
+ 22. Creating a new segment  (000000000061F368-000000000061F369) ... ... OK
+ 23. Creating a new segment  (000000000061F370-000000000061F710) ... ... OK
+Processing relocations...
+DWARF: Looking for GNU DWARF file at "/usr/lib/debug/.build-id/d0/bc0fb9b3f60f72bbad3c5a1d24c9e2a1fde775.debug"... no.
+DWARF: Looking for GNU DWARF file at "/home/joxean/Documents/research/diaphora/public/tester/samples/bc0fb9b3f60f72bbad3c5a1d24c9e2a1fde775.debug"... no.
+DWARF: Looking for GNU DWARF file at "/home/joxean/Documents/research/diaphora/public/tester/samples/.debug/bc0fb9b3f60f72bbad3c5a1d24c9e2a1fde775.debug"... no.
+DWARF: Looking for GNU DWARF file at "/usr/lib/debug/home/joxean/Documents/research/diaphora/public/tester/samples/bc0fb9b3f60f72bbad3c5a1d24c9e2a1fde775.debug"... no.
+Marking typical code sequences...
+Flushing buffers, please wait...ok
+File '/home/joxean/Documents/research/diaphora/public/tester/samples/ls' has been successfully loaded into the database.
+Hex-Rays Decompiler plugin has been loaded (v8.3.0.230608)
+  License: 55-38CF-8D64-AA Joxean Koret (1 user)
+  The hotkeys are F5: decompile, Ctrl-F5: decompile all.
+
+  Please check the Edit/Plugins menu for more information.
+Hex-rays version 8.3.0.230608 has been detected, gooMBA plugin ready to use
+IDA is analysing the input file...
+You may start to explore the input file right now.
+Propagating type information...
+Function argument information has been propagated
+The initial autoanalysis has been finished.
+[Patching] Loaded v0.1.2 - (c) Markus Gaasedelen - 2022
+[Diaphora: Wed Jun 21 11:25:42 2023] Creating crash file /home/joxean/Documents/research/diaphora/public/tester/samples/ls.sqlite-crash...
+[Diaphora: Wed Jun 21 11:25:42 2023] Exporting range 0x00000000 - 0x0061f710
+[autohidden] The decompiler assumes that the segment '.got' is read-only because of its NAME.
+All data references to the segment will be replaced by constant values.
+This may lead to drastic changes in the decompiler output.
+If the segment is not read-only, please change the segment NAME.
+
+In general, the decompiler checks the segment permissions, class, and name
+to determine if it is read-only.
+ -> OK
+4029F0: using guessed type __int64 _gmon_start__(void);
+4029F0: using guessed type __int64 _gmon_start__(void);
+[autohidden] The decompiler assumes that the segment '.got.plt' is read-only because of its NAME.
+All data references to the segment will be replaced by constant values.
+This may lead to drastic changes in the decompiler output.
+If the segment is not read-only, please change the segment NAME.
+
+In general, the decompiler checks the segment permissions, class, and name
+to determine if it is read-only.
+ -> OK
+4022E0: using guessed type __int64 sub_4022E0();
+4022E0: using guessed type __int64 sub_4022E0();
+[autohidden] The decompiler assumes that the segment '.rodata' is read-only because of its NAME.
+All data references to the segment will be replaced by constant values.
+This may lead to drastic changes in the decompiler output.
+If the segment is not read-only, please change the segment NAME.
+
+In general, the decompiler checks the segment permissions, class, and name
+to determine if it is read-only.
+ -> OK
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+404B00: using guessed type __int64 __fastcall sub_404B00(_QWORD, _QWORD, _QWORD, _QWORD);
+404D60: using guessed type __int64 __fastcall sub_404D60(_QWORD);
+404DB0: using guessed type __int64 __fastcall sub_404DB0(_QWORD);
+404EE0: using guessed type __int64 __fastcall sub_404EE0(_QWORD, _QWORD);
+404F90: using guessed type __int64 __fastcall sub_404F90(_QWORD, _QWORD);
+4053F0: using guessed type __int64 __fastcall sub_4053F0(_QWORD, _QWORD, _QWORD, _QWORD);
+405780: using guessed type __int64 __fastcall sub_405780(_QWORD, _QWORD);
+405970: using guessed type __int64 __fastcall sub_405970(_QWORD, _QWORD, _QWORD);
+406370: using guessed type __int64 __fastcall sub_406370(_QWORD, _QWORD);
+4063C0: using guessed type __int64 sub_4063C0(void);
+407790: using guessed type __int64 sub_407790(void);
+409F70: using guessed type __int64 __fastcall sub_409F70(_QWORD, _QWORD, _QWORD, _QWORD);
+40A0A0: using guessed type __int64 __fastcall sub_40A0A0(_QWORD, _QWORD, _QWORD);
+40A240: using guessed type __int64 __fastcall sub_40A240(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40AD20: using guessed type __int64 __fastcall sub_40AD20(_QWORD);
+40B150: using guessed type __int64 __fastcall sub_40B150(_QWORD, _QWORD);
+40B5B0: using guessed type __int64 __fastcall sub_40B5B0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40BD50: using guessed type __int64 __fastcall sub_40BD50(_QWORD, _QWORD);
+40BDB0: using guessed type __int64 __fastcall sub_40BDB0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40DB00: using guessed type __int64 __fastcall sub_40DB00(_QWORD);
+40EC90: using guessed type __int64 __fastcall sub_40EC90(_QWORD);
+40ECA0: using guessed type __int64 __fastcall sub_40ECA0(_QWORD, _QWORD);
+40ECB0: using guessed type __int64 __fastcall sub_40ECB0(_QWORD, _QWORD, _QWORD);
+40F1C0: using guessed type __int64 __fastcall sub_40F1C0(_QWORD, _QWORD, _QWORD);
+40F3E0: using guessed type __int64 __fastcall sub_40F3E0(_QWORD);
+4114B0: using guessed type __int64 sub_4114B0(_DWORD, _DWORD, _DWORD, _DWORD, _DWORD, _DWORD, ...);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4117E0: using guessed type void __noreturn sub_4117E0(void);
+411F00: using guessed type void __fastcall __noreturn sub_411F00(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+412750: using guessed type __int64 __fastcall obstack_begin(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+412790: using guessed type __int64 __fastcall obstack_newchunk(_QWORD, _QWORD);
+413C30: using guessed type __int64 __fastcall sub_413C30(_QWORD);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+404B00: using guessed type __int64 __fastcall sub_404B00(_QWORD, _QWORD, _QWORD, _QWORD);
+404D60: using guessed type __int64 __fastcall sub_404D60(_QWORD);
+404DB0: using guessed type __int64 __fastcall sub_404DB0(_QWORD);
+404EE0: using guessed type __int64 __fastcall sub_404EE0(_QWORD, _QWORD);
+404F90: using guessed type __int64 __fastcall sub_404F90(_QWORD, _QWORD);
+4053F0: using guessed type __int64 __fastcall sub_4053F0(_QWORD, _QWORD, _QWORD, _QWORD);
+405780: using guessed type __int64 __fastcall sub_405780(_QWORD, _QWORD);
+405970: using guessed type __int64 __fastcall sub_405970(_QWORD, _QWORD, _QWORD);
+406370: using guessed type __int64 __fastcall sub_406370(_QWORD, _QWORD);
+4063C0: using guessed type __int64 sub_4063C0(void);
+407790: using guessed type __int64 sub_407790(void);
+409F70: using guessed type __int64 __fastcall sub_409F70(_QWORD, _QWORD, _QWORD, _QWORD);
+40A0A0: using guessed type __int64 __fastcall sub_40A0A0(_QWORD, _QWORD, _QWORD);
+40A240: using guessed type __int64 __fastcall sub_40A240(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40AD20: using guessed type __int64 __fastcall sub_40AD20(_QWORD);
+40B150: using guessed type __int64 __fastcall sub_40B150(_QWORD, _QWORD);
+40B5B0: using guessed type __int64 __fastcall sub_40B5B0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40BD50: using guessed type __int64 __fastcall sub_40BD50(_QWORD, _QWORD);
+40BDB0: using guessed type __int64 __fastcall sub_40BDB0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40DB00: using guessed type __int64 __fastcall sub_40DB00(_QWORD);
+40EC90: using guessed type __int64 __fastcall sub_40EC90(_QWORD);
+40ECA0: using guessed type __int64 __fastcall sub_40ECA0(_QWORD, _QWORD);
+40ECB0: using guessed type __int64 __fastcall sub_40ECB0(_QWORD, _QWORD, _QWORD);
+40F1C0: using guessed type __int64 __fastcall sub_40F1C0(_QWORD, _QWORD, _QWORD);
+40F3E0: using guessed type __int64 __fastcall sub_40F3E0(_QWORD);
+4114B0: using guessed type __int64 sub_4114B0(_DWORD, _DWORD, _DWORD, _DWORD, _DWORD, _DWORD, ...);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4117E0: using guessed type void __noreturn sub_4117E0(void);
+411F00: using guessed type void __fastcall __noreturn sub_411F00(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+412750: using guessed type __int64 __fastcall obstack_begin(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+412790: using guessed type __int64 __fastcall obstack_newchunk(_QWORD, _QWORD);
+413C30: using guessed type __int64 __fastcall sub_413C30(_QWORD);
+4049A6: positive sp value 8 has been found
+4049A6: positive sp value 8 has been found
+4049D0: using guessed type __int64 sub_4049D0();
+4049D0: using guessed type __int64 sub_4049D0();
+404A10: using guessed type __int64 sub_404A10();
+404A10: using guessed type __int64 sub_404A10();
+4049D0: using guessed type __int64 sub_4049D0(void);
+404A50: using guessed type __int64 sub_404A50();
+4049D0: using guessed type __int64 sub_4049D0(void);
+404A50: using guessed type __int64 sub_404A50();
+404A70: using guessed type __int64 sub_404A70();
+404A70: using guessed type __int64 sub_404A70();
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+40DAF0: using guessed type __int64 __fastcall sub_40DAF0(_QWORD, _QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+40DAF0: using guessed type __int64 __fastcall sub_40DAF0(_QWORD, _QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+40A4A0: using guessed type __int64 __fastcall sub_40A4A0(_QWORD);
+40A780: using guessed type __int64 __fastcall sub_40A780(_QWORD, _QWORD, _QWORD);
+40A4A0: using guessed type __int64 __fastcall sub_40A4A0(_QWORD);
+40A780: using guessed type __int64 __fastcall sub_40A780(_QWORD, _QWORD, _QWORD);
+40EC90: using guessed type __int64 __fastcall sub_40EC90(_QWORD);
+40ED50: using guessed type __int64 __fastcall sub_40ED50(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40EC90: using guessed type __int64 __fastcall sub_40EC90(_QWORD);
+40ED50: using guessed type __int64 __fastcall sub_40ED50(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+40CDF0: using guessed type __int64 sub_40CDF0(void);
+40CDF0: using guessed type __int64 sub_40CDF0(void);
+405950: using guessed type __int64 sub_405950();
+405950: using guessed type __int64 sub_405950();
+40F0A0: using guessed type __int64 __fastcall sub_40F0A0(_QWORD, _QWORD);
+40F0A0: using guessed type __int64 __fastcall sub_40F0A0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+406370: using guessed type __int64 __fastcall sub_406370(_QWORD, _QWORD);
+406370: using guessed type __int64 __fastcall sub_406370(_QWORD, _QWORD);
+412790: using guessed type __int64 __fastcall obstack_newchunk(_QWORD, _QWORD);
+412790: using guessed type __int64 __fastcall obstack_newchunk(_QWORD, _QWORD);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+402360: using guessed type __int64 __fastcall __mempcpy_chk(_QWORD, _QWORD, _QWORD, _QWORD);
+410FE0: using guessed type __int64 __fastcall sub_410FE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+402360: using guessed type __int64 __fastcall __mempcpy_chk(_QWORD, _QWORD, _QWORD, _QWORD);
+410FE0: using guessed type __int64 __fastcall sub_410FE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40A770: using guessed type __int64 __fastcall sub_40A770(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40CF90: using guessed type __int64 __fastcall sub_40CF90(_QWORD);
+40D130: using guessed type __int64 __fastcall sub_40D130(_QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40A770: using guessed type __int64 __fastcall sub_40A770(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40CF90: using guessed type __int64 __fastcall sub_40CF90(_QWORD);
+40D130: using guessed type __int64 __fastcall sub_40D130(_QWORD, _QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40CDF0: using guessed type __int64 sub_40CDF0(void);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40CDF0: using guessed type __int64 sub_40CDF0(void);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40A3D0: using guessed type __int64 __fastcall sub_40A3D0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40CF90: using guessed type __int64 __fastcall sub_40CF90(_QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+40F1C0: using guessed type __int64 __fastcall sub_40F1C0(_QWORD, _QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4125B0: using guessed type __int64 __fastcall sub_4125B0(_QWORD, _QWORD);
+4125D0: using guessed type __int64 __fastcall sub_4125D0(_QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+40A3D0: using guessed type __int64 __fastcall sub_40A3D0(_QWORD, _QWORD);
+40BFE0: using guessed type __int64 __fastcall sub_40BFE0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+40CF90: using guessed type __int64 __fastcall sub_40CF90(_QWORD);
+40D1E0: using guessed type __int64 __fastcall sub_40D1E0(_QWORD, _QWORD);
+40F1C0: using guessed type __int64 __fastcall sub_40F1C0(_QWORD, _QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4125B0: using guessed type __int64 __fastcall sub_4125B0(_QWORD, _QWORD);
+4125D0: using guessed type __int64 __fastcall sub_4125D0(_QWORD, _QWORD);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+409F60: using guessed type void __noreturn sub_409F60();
+409F60: using guessed type void __noreturn sub_409F60();
+40EFE0: using guessed type __int64 __fastcall sub_40EFE0(_QWORD, _QWORD, _QWORD);
+40F3C0: using guessed type __int64 __fastcall sub_40F3C0(_QWORD, _QWORD);
+40EFE0: using guessed type __int64 __fastcall sub_40EFE0(_QWORD, _QWORD, _QWORD);
+40F3C0: using guessed type __int64 __fastcall sub_40F3C0(_QWORD, _QWORD);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+40F3E0: using guessed type __int64 __fastcall sub_40F3E0(_QWORD);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+40F3E0: using guessed type __int64 __fastcall sub_40F3E0(_QWORD);
+40A320: using guessed type __int64 sub_40A320();
+40F190: using guessed type __int64 sub_40F190(void);
+40A320: using guessed type __int64 sub_40A320();
+40F190: using guessed type __int64 sub_40F190(void);
+40A4A0: using guessed type __int64 __fastcall sub_40A4A0(_QWORD);
+40A4A0: using guessed type __int64 __fastcall sub_40A4A0(_QWORD);
+412EF0: using guessed type __int64 __fastcall sub_412EF0(_QWORD);
+412EF0: using guessed type __int64 __fastcall sub_412EF0(_QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+4026E0: using guessed type __int64 __fastcall __memcpy_chk(_QWORD, _QWORD, _QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+4026E0: using guessed type __int64 __fastcall __memcpy_chk(_QWORD, _QWORD, _QWORD, _QWORD);
+4029E0: using guessed type __int64 __sprintf_chk(_QWORD, _QWORD, _QWORD, const char *, ...);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+412FA0: using guessed type __int64 sub_412FA0(void);
+412FA0: using guessed type __int64 sub_412FA0(void);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+411630: using guessed type __int64 __fastcall sub_411630(_QWORD, _QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+4115E0: using guessed type __int64 __fastcall sub_4115E0(_QWORD);
+412DA0: using guessed type __int64 __fastcall sub_412DA0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+412DA0: using guessed type __int64 __fastcall sub_412DA0(_QWORD, _QWORD, _QWORD, _QWORD, _QWORD, _QWORD);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+402850: using guessed type __int64 __printf_chk(_QWORD, const char *, ...);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+4117E0: using guessed type void __fastcall __noreturn sub_4117E0(_QWORD, _QWORD, _QWORD);
+402920: using guessed type __int64 __fastcall freecon(_QWORD, _QWORD);
+402920: using guessed type __int64 __fastcall freecon(_QWORD, _QWORD);
+402720: using guessed type __int64 getfilecon(void);
+402720: using guessed type __int64 getfilecon(void);
+402690: using guessed type __int64 lgetfilecon(void);
+402690: using guessed type __int64 lgetfilecon(void);
+402580: using guessed type __int64 fgetfilecon(void);
+402580: using guessed type __int64 fgetfilecon(void);
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+412610: using guessed type void __noreturn sub_412610();
+402960: using guessed type __int64 __fprintf_chk(_QWORD, _QWORD, const char *, ...);
+412610: using guessed type void __noreturn sub_412610();
+413B9C: using guessed type __int64 __fastcall sub_413B9C(_QWORD);
+413B9C: using guessed type __int64 __fastcall sub_413B9C(_QWORD);
+413470: using guessed type __int64 __fastcall sub_413470(_QWORD, _QWORD, _QWORD);
+413470: using guessed type __int64 __fastcall sub_413470(_QWORD, _QWORD, _QWORD);
+[Diaphora: Wed Jun 21 11:25:57 2023] Finding compilation units...
+Programming languages found:
+
+  C/C++      100.000000%
+
+[Diaphora: Wed Jun 21 11:25:57 2023] Creating indices...
+[Diaphora: Wed Jun 21 11:25:57 2023] Removing crash file /home/joxean/Documents/research/diaphora/public/tester/samples/ls.sqlite-crash...
+Flushing buffers, please wait...ok
+[Patching] Unloading v0.1.2...
+Unloading IDP module /home/joxean/ida83/procs/pc64.so...[Diaphora: Wed Jun 21 11:26:15 2023] Diffing...
+[Diaphora: Wed Jun 21 11:26:15 2023] Call graphs from both programs differ in 39.62264150943396%
+[Diaphora: Wed Jun 21 11:26:15 2023] Finding equal matches...
+[Diaphora: Wed Jun 21 11:26:15 2023] Checking 'dirty' heuristics...
+[Diaphora: Wed Jun 21 11:26:15 2023] Finding with heuristic 'Perfect match, same name'
+[Diaphora: Wed Jun 21 11:26:15 2023] Finding best matches...
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same RVA and hash'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same order and hash'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Function Hash'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Bytes hash'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same address and mnemonics'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same cleaned assembly'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same cleaned microcode'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same cleaned pseudo-code'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same address, nodes, edges and mnemonics'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same RVA'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Equal assembly or pseudo-code'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Microcode mnemonics small primes product'
+[Diaphora: Wed Jun 21 11:26:15 2023] Current results: Best 130, Partial 9, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:15 2023] Matched 43.71% of main binary functions (139 out of 318)
+[Diaphora: Wed Jun 21 11:26:15 2023] Finding partial matches
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same named compilation unit function match'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same anonymous compilation unit function match'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same compilation unit'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same KOKA hash and constants'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same KOKA hash and MD-Index'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same constants'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same rare KOKA hash'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same rare MD Index'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same address and rare constant'
+[Diaphora: Wed Jun 21 11:26:15 2023] [Single thread] Finding with heuristic 'Same rare constant'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same MD Index and constants'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Import names hash'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Mnemonics and names'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Pseudo-code fuzzy hash'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Similar pseudo-code and names'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Mnemonics small-primes-product'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same nodes, edges, loops and strongly connected components'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same low complexity, prototype and names'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same low complexity and names'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Switch structures'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Pseudo-code fuzzy (normal)'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Pseudo-code fuzzy (mixed)'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Pseudo-code fuzzy (reverse)'
+[Diaphora: Wed Jun 21 11:26:18 2023] Skipping unreliable heuristic 'Pseudo-code fuzzy AST hash'
+[Diaphora: Wed Jun 21 11:26:18 2023] Skipping unreliable heuristic 'Partial pseudo-code fuzzy hash (normal)'
+[Diaphora: Wed Jun 21 11:26:18 2023] Skipping unreliable heuristic 'Partial pseudo-code fuzzy hash (reverse)'
+[Diaphora: Wed Jun 21 11:26:18 2023] Skipping unreliable heuristic 'Partial pseudo-code fuzzy hash (mixed)'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same rare assembly instruction'
+[Diaphora: Wed Jun 21 11:26:18 2023] [Single thread] Finding with heuristic 'Same rare basic block mnemonics list'
+[Diaphora: Wed Jun 21 11:26:18 2023] Skipping unreliable heuristic 'Loop count'
+[Diaphora: Wed Jun 21 11:26:18 2023] Current results: Best 132, Partial 67, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:18 2023] Matched 62.58% of main binary functions (199 out of 318)
+[Diaphora: Wed Jun 21 11:26:18 2023] Finding with heuristic 'Small names difference'
+[Diaphora: Wed Jun 21 11:26:18 2023] Finding with heuristic 'Callee found diffing matches assembly'
+[Diaphora: Wed Jun 21 11:26:18 2023] Current results: Best 132, Partial 75, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:18 2023] Matched 65.09% of main binary functions (207 out of 318)
+[Diaphora: Wed Jun 21 11:26:18 2023] New iteration with heuristic 'Callee found diffing matches assembly'...
+[Diaphora: Wed Jun 21 11:26:18 2023] Current results: Best 132, Partial 75, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:18 2023] Matched 65.09% of main binary functions (207 out of 318)
+[Diaphora: Wed Jun 21 11:26:18 2023] Finding with heuristic 'Callee found diffing matches pseudo-code'
+[Diaphora: Wed Jun 21 11:26:19 2023] Current results: Best 132, Partial 78, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:19 2023] Matched 66.04% of main binary functions (210 out of 318)
+[Diaphora: Wed Jun 21 11:26:19 2023] New iteration with heuristic 'Callee found diffing matches pseudo-code'...
+[Diaphora: Wed Jun 21 11:26:19 2023] Current results: Best 132, Partial 78, Unreliable 0
+[Diaphora: Wed Jun 21 11:26:19 2023] Matched 66.04% of main binary functions (210 out of 318)
+[Diaphora: Wed Jun 21 11:26:19 2023] Finding locally affine functions
+[Diaphora: Wed Jun 21 11:26:19 2023] Finding unmatched functions
+[Diaphora: Wed Jun 21 11:26:19 2023] Final results: Best 132, Partial 101, Unreliable 0, Multimatches 3
+[Diaphora: Wed Jun 21 11:26:19 2023] Matched 73.27% of main binary functions (233 out of 318)
+[Diaphora: Wed Jun 21 11:26:19 2023] Done, time taken: 0:00:03.668151.
+[Diaphora: Wed Jun 21 11:26:19 2023] Previous diff results 'samples/ls-vs-ls-old.db' removed.
+[Diaphora: Wed Jun 21 11:26:19 2023] Diffing results saved in file 'samples/ls-vs-ls-old.db'.
