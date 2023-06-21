@@ -1,23 +1,15 @@
-# Diaphora
+Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
-Diaphora (διαφορά, Greek for 'difference') version 2.0 is the most advanced program diffing tool, working as an IDA plugin, available as of today (2023). It was released first during SyScan 2015 and is actively maintained.
-
-Diaphora supports IDA 6.9 to 8.2, but the main branch has support only for IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested). If you are looking for an IDA >= 7.4 port with support for Python 2.X, check [this issue](https://github.com/joxeankoret/diaphora/issues/197).
-
-Support for Ghidra is in development, but it will take very long. Support for Binary Ninja is also planned but will probably come after Ghidra's port. If you are looking for Radare2 support, you can [check this very old fork](https://github.com/radare/diaphora).
-
-For more details, please check the tutorial in the "doc" directory.
-
-NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
+Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
 
 ## Unique Features
 
-Diaphora has many of the most common program diffing (bindiffing) techniques you might expect, like:
+Diaphora has many of the most common program diffing (bindiffing) features you might expect, like:
 
  * Diffing assembler.
  * Diffing control flow graphs.
  * Porting symbol names and comments.
- * Addig manual matches.
+ * Adding manual matches.
  * Similarity ratio calculation.
  * Batch automation.
  * Call graph matching calculation.
@@ -25,25 +17,15 @@ Diaphora has many of the most common program diffing (bindiffing) techniques you
 
 However, Diaphora has also many features that are unique, not available in any other public tool. The following is a non extensive list of unique features:
 
+ * Ability to port structs, enums, unions and typedefs.
+ * Support for compilation units (finding and diffing compilation units).
+ * Microcode support.
  * Parallel diffing.
  * Pseudo-code based heuristics.
  * Pseudo-code patches generation.
- * Ability to port structs, enums and typedefs.
  * Diffing pseudo-codes (with syntax highlighting!).
  * Scripting support (for both the exporting and diffing processes).
  * ...
-
-It's also actively maintained, and the following is a list of the features that are 'in the making':
-
- * Support for compilation units (finding and diffing compilation units).
- * Direct integration with [Pigaios](https://github.com/joxeankoret/pigaios).
- * 'Machine Learning' based techniques so reverse engineers can teach Diaphora what is a good match or a bad one, and how to search for more.
-
-## Python 2.7 and IDA versions 6.95 to 7.3
-
-TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [this branch](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
-
-Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in Github will only run in IDA 7.4 and Python 3.X. I've tried to make it compatible but it caused the code to be horrible and unmaintainable. As so, I've decided that it was best to drop support for Python 2.X and IDA versions <= 7.3 and focus in Python 3.X and IDA versions >= 7.4.
 
 ## Donations
 
@@ -64,6 +46,30 @@ Commercial licenses of Diaphora are available. Please contact admin@joxeankoret.
 You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/doc/diaphora_help.pdf
 
 ## Screenshots
+
+Diaphora finding the exact function where a vulnerability was patched in CVE-2020-1350:
+
+![CVE-2020-1350](https://files.mastodon.social/media_attachments/files/110/313/141/968/158/099/original/607189c509ec1cc4.png)
+
+Diaphora, again, finding the exact function where CVE-2023-28231 was fixed:
+
+![CVE-2023-28231](https://files.mastodon.social/media_attachments/files/110/313/148/945/529/051/original/28e032f21be414a3.png)
+
+CVE-2023-28231. As explained in a blog from ZDI, the vulnerability was fixed by checking that the number of relay forward messages in "ProcessRelayForwardMessage()" is not bigger or equal than 32 (0x20), as shown in the following pseudo-code diffing:
+
+![CVE-2023-28231](https://files.mastodon.social/media_attachments/files/110/300/368/934/189/808/original/fe3392db2b8234e9.png)
+
+Diaphora doing Hex-Ray's microcode diffing:
+
+![Diffing microcode in a graph](https://files.mastodon.social/media_attachments/files/110/157/157/910/926/533/original/6c5975e15c378cb5.png)
+
+Diffing assembly, pseudo-code and microcode:
+
+![Assembly, pseudo-code and microcode](https://files.mastodon.social/media_attachments/files/110/102/237/646/074/440/original/4a816df5069691c3.png)
+
+Diffing CVE-2023-21768 with Diaphora 3.0:
+
+![Diffing CVE-2023-21768 with #Diaphora 3.0](https://files.mastodon.social/media_attachments/files/110/066/930/153/215/408/original/86b06ae90d57d5a1.png)
 
 This is a screenshot of Diaphora diffing the PEGASUS iOS kernel Vulnerability fixed in iOS 9.3.5:
 
