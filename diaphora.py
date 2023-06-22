@@ -52,10 +52,9 @@ from diaphora_heuristics import (
   get_query_fields,
 )
 
-import database
+import db_support
+from db_support import schema
 
-
-from database import schema
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (
   FACTORS_CACHE,
@@ -74,7 +73,7 @@ except ImportError:
 
 importlib.reload(config)
 importlib.reload(diaphora_heuristics)
-importlib.reload(database)
+importlib.reload(db_support)
 importlib.reload(schema)
 
 if hasattr(sys, "set_int_max_str_digits"):
