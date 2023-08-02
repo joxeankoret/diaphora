@@ -1033,7 +1033,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
   def __init__(self, db_name):
     diaphora.CBinDiff.__init__(self, db_name, chooser=CIDAChooser)
-    self.decompiler_available = True
+    self.decompiler_available = config.EXPORTING_USE_DECOMPILER
     self.names = dict(Names())
     self.min_ea = get_inf_attr(INF_MIN_EA)
     self.max_ea = get_inf_attr(INF_MAX_EA)

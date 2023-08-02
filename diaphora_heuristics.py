@@ -291,8 +291,8 @@ HEURISTICS.append({
         from functions f,
              diff.functions df
        where f.microcode_spp = df.microcode_spp
-         and f.microcode_spp != 0
-         and df.microcode_spp != 0
+         and f.microcode_spp != 1
+         and df.microcode_spp != 1
          and f.instructions > 5 and df.instructions > 5
          and f.nodes > 2 and df.nodes > 2
          and f.name not like 'nullsub%'
