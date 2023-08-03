@@ -72,6 +72,9 @@ class CVulnerabilityPatches:
       # Get the decompiled code for both and do a typical 'diff' of both
       pseudo1 = func1["pseudo"]
       pseudo2 = func2["pseudo"]
+      if pseudo1 is None or pseudo2 is None:
+        return True, ratio
+
       lines = ndiff(pseudo1.split("\n"), pseudo2.split("\n"))
       bcontinue = True
       for line in lines:
