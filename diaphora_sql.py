@@ -1,4 +1,6 @@
-from typing import Any, Callable, List
+from typing import Any, Callable, Dict, List
+
+import diaphora_config as config
 
 NATIVE = "native"
 MICROCODE = "microcode"
@@ -7,7 +9,20 @@ MICROCODE = "microcode"
 class InsertInto:
     """All queries related to the export of information on individual functions
     """
-    def __execute(
+    __next_entry: Dict[str, int]
+    __first_entry: int
+    __step: int
+
+    def __init__(self) -> None:
+        if config.PARALLEL_EXPORT and config.WORKER_ID < config.NUMBER_OF_WORKERS:
+            self.__next_entry = {}
+            self.__first_entry = config.WORKER_ID
+            self.__step = config.NUMBER_OF_WORKERS
+            self.__execute = self.__parallel_execute
+        else:
+            self.__execute = self.__sequential_execute
+
+    def __sequential_execute(
         self,
         cur_execute: Callable[[str, List[Any]], None],
         table: str,
@@ -19,6 +34,24 @@ class InsertInto:
             f"insert into {table} ({column_names}) values ({column_defaults})",
             column_values,
         )
+
+    def __parallel_execute(
+        self,
+        cur_execute: Callable[[str, List[Any]], None],
+        table: str,
+        column_names: str,
+        column_defaults: str,
+        column_values: List[Any],
+    ) -> None:
+        next_entry = self.__next_entry.get(table, self.__first_entry)
+        column_names = "rowid, " + column_names
+        column_defaults = "?, " + column_defaults
+        column_values = [next_entry] + list(column_values)
+        cur_execute(
+            f"insert into {table} ({column_names}) values ({column_defaults})",
+            column_values,
+        )
+        self.__next_entry[table] = next_entry + self.__step
 
     def main_instructions(
         self,

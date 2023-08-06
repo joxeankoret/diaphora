@@ -32,9 +32,11 @@ import importlib
 import threading
 import traceback
 
+from base64 import b64decode
 from io import StringIO
 from threading import Thread, Lock
 from multiprocessing import cpu_count
+from multiprocessing.managers import BaseManager
 from difflib import SequenceMatcher, unified_diff
 
 import diaphora_config as config
@@ -68,15 +70,18 @@ from jkutils.factor import (
 try:
   # pylint: disable-next=unused-import
   import idaapi
+  import ida_pro
+  from idc import ARGV
 
   IS_IDA = True
 except ImportError:
   IS_IDA = False
 
-importlib.reload(config)
-importlib.reload(diaphora_heuristics)
-importlib.reload(db_support)
-importlib.reload(schema)
+if config.PARALLEL_EXPORT is False:
+  importlib.reload(config)
+  importlib.reload(diaphora_heuristics)
+  importlib.reload(db_support)
+  importlib.reload(schema)
 
 if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
@@ -3528,6 +3533,25 @@ class CBinDiff:
       cur.close()
     return True
 
+class QueueManager(BaseManager):
+  pass
+
+def init_parallel_export() -> None:
+  config.PARALLEL_EXPORT = True
+  config.WORKER_ID = int(ARGV[1])
+  config.NUMBER_OF_WORKERS = int(ARGV[2])
+  if config.WORKER_ID == config.NUMBER_OF_WORKERS:
+    # finalizing, no need to initilize queues
+    return
+
+  port = int(ARGV[3])
+  authkey = b64decode(ARGV[4].encode("ASCII"))
+  QueueManager.register('get_job_queue')
+  QueueManager.register('get_report_queue')
+  m = QueueManager(address=('localhost', port), authkey=authkey)
+  m.connect()
+  config.PARALLEL_JOB_QUEUE = m.get_job_queue()
+  config.PARALLEL_REPORT_QUEUE = m.get_report_queue()
 
 if __name__ == "__main__":
   version_info = sys.version_info
@@ -3563,9 +3587,18 @@ if __name__ == "__main__":
     with open(script, "rb") as f:
       buf = f.read()
 
+    if len(ARGV) == 5:
+      init_parallel_export()
+
     # pylint: disable-next=exec-used
     exec(compile(buf, script, "exec"))
     do_diff = False
+
+    if config.PARALLEL_EXPORT is True:
+      # Report and close IDA for current worker in parallel export
+      config.PARALLEL_REPORT_QUEUE.put((config.WORKER_ID, -1))
+      ida_pro.qexit(0)
+
   else:
     import argparse
 
