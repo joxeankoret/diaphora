@@ -1124,6 +1124,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
     func_list = set(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
+    log_step = (total_funcs + 127) // 128  # log every `log_step` functions
     self._funcs_cache = {}
     t = time.monotonic()
 
@@ -1148,7 +1149,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         raise Exception("Canceled.")
 
       i += 1
-      if (total_funcs >= 100) and i % (int(total_funcs / 100)) == 0 or i == 1:
+      if (i-1) % log_step == 0:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
         elapsed = time.monotonic() - t
         remaining = (elapsed / i) * (total_funcs - i)
@@ -1157,9 +1158,8 @@ class CIDABinDiff(diaphora.CBinDiff):
         h, m = divmod(m, 60)
         m_elapsed, s_elapsed = divmod(elapsed, 60)
         h_elapsed, m_elapsed = divmod(m_elapsed, 60)
-        replace_wait_box(
-          line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s)
-        )
+        message = line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s)
+        replace_wait_box(message)
 
       self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
