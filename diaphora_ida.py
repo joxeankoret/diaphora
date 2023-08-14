@@ -27,6 +27,7 @@ import datetime
 import traceback
 
 from hashlib import md5
+from typing import Iterable, Set, Tuple
 
 # pylint: disable=wildcard-import
 # pylint: disable=unused-wildcard-import
@@ -1076,78 +1077,73 @@ class CIDABinDiff(diaphora.CBinDiff):
     hide_wait_box()
     return res
 
-  def get_last_crash_func(self):
-    """
-    Get the last inserted row before IDA or Diaphora crashed.
-    """
-    sql = "select address from functions order by id desc limit 1"
-    cur = self.db_cursor()
-    try:
-      cur.execute(sql)
-
-      row = cur.fetchone()
-      if not row:
-        return None
-
-      address = int(row[0])
-    finally:
-      cur.close()
-
-    return address
-
-  def recalculate_primes(self):
+  def init_primes(self) -> Tuple[int, int]:
     """
     Recalculate the primes assigned to a function.
     """
-    sql = "select primes_value from functions"
-
     callgraph_primes = 1
     callgraph_all_primes = {}
+
+    for _, prime, _ in self._funcs_cache.values():
+      callgraph_primes *= prime
+      try:
+        callgraph_all_primes[prime] += 1
+      except KeyError:
+        callgraph_all_primes[prime] = 1
+
+    return callgraph_primes, callgraph_all_primes
+
+  def restore_crashed_export(self):
+    """
+    Restore self._funcs_cache before resuming crashed export
+    """
+    sql = "select address, rowid, primes_value, pseudocode_primes from functions"
 
     cur = self.db_cursor()
     try:
       cur.execute(sql)
       for row in cur.fetchall():
-        ret = row[0]
-        callgraph_primes *= decimal.Decimal(row[0])
-        try:
-          callgraph_all_primes[ret] += 1
-        except KeyError:
-          callgraph_all_primes[ret] = 1
+        self._funcs_cache[int(row[0])] = [
+          row[1],
+          int(row[2]),
+          row[3] and int(row[3]),
+        ]
     finally:
       cur.close()
 
-    return callgraph_primes, callgraph_all_primes
+  def filter_functions(self, functions: Set[int]) -> Iterable[int]:
+    # filter functions to export
+    # Useful for parallel fork
+    return (functions - self._funcs_cache.keys())
 
   def do_export(self, crashed_before=False):
     """
     Internal use, export the database.
     """
-    callgraph_primes = 1
-    callgraph_all_primes = {}
     # pylint: disable-next=consider-using-f-string
     log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
-    func_list = list(Functions(self.min_ea, self.max_ea))
+    func_list = set(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
+    self._funcs_cache = {}
     t = time.monotonic()
 
     if crashed_before:
-      start_func = self.get_last_crash_func()
-      if start_func is None:
+      self.restore_crashed_export()
+      if not self._funcs_cache:
         warning(
           "Diaphora cannot resume the previous crashed session, the export process will start from scratch."
         )
         crashed_before = False
-      else:
-        callgraph_primes, callgraph_all_primes = self.recalculate_primes()
+
+    callgraph_primes, callgraph_all_primes = self.init_primes()
 
     self.db.commit()
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
-    i = 0
-    self._funcs_cache = {}
-    for func in func_list:
+
+    i = len(self._funcs_cache.keys() & func_list)
+    for func in self.filter_functions(func_list):
       if user_cancelled():
         raise Exception("Canceled.")
 
@@ -1164,16 +1160,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         replace_wait_box(
           line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s)
         )
-
-      if crashed_before:
-        rva = func - self.get_base_address()
-        if rva != start_func:
-          continue
-
-        # When we get to the last function that was previously exported, switch
-        # off the 'crash' flag and continue with the next row.
-        crashed_before = False
-        continue
 
       self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
