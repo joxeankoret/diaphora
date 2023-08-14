@@ -13,6 +13,7 @@ from multiprocessing.managers import BaseManager
 from pathlib import Path
 from queue import Queue
 from random import randrange
+from sqlite3 import Connection
 from time import time
 from typing import Optional, Tuple, cast
 
@@ -21,23 +22,25 @@ DIAPHORA = str(Path("diaphora.py").resolve())
 DIAPHORA_DIR = str(Path(".").resolve())
 
 ###############################################
-# Database merge taken from
+# Database merge adapted from
 # https://stackoverflow.com/a/68526717
 
 
-def merge_databases(db1: str, db2: str) -> None:
+def merge_databases(db1: str, db2: str, db_con: Optional[Connection]) -> Connection:
     print(f"Merging {db2} into {db1}")
-    con3 = sqlite3.connect(db1)
+    if db_con is None:
+        db_con = sqlite3.connect(db1)
 
-    con3.execute("ATTACH '" + db2 + "' as dba")
+    db_con.execute("ATTACH '" + db2 + "' as dba")
 
-    con3.execute("BEGIN")
-    for row in con3.execute("SELECT * FROM dba.sqlite_master WHERE type='table'"):
+    db_con.execute("BEGIN")
+    for row in db_con.execute("SELECT * FROM dba.sqlite_master WHERE type='table'"):
         combine = "INSERT OR IGNORE INTO " + row[1] + " SELECT * FROM dba." + row[1]
-        con3.execute(combine)
-    con3.commit()
-    con3.execute("detach database dba")
-    con3.close()
+        db_con.execute(combine)
+    db_con.commit()
+    db_con.execute("detach database dba")
+
+    return db_con
 
 
 ###############################################
@@ -110,6 +113,7 @@ def merge_while_exporting(
     ]
     remaining_workers = {i for i in range(number_of_workers)}
     main_worker: Optional[int] = None
+    db_con: Optional[Connection] = None
 
     while remaining_workers:
         worker_id, report = cast(Tuple[int, int], qm.get_report_queue().get())
@@ -120,11 +124,14 @@ def merge_while_exporting(
         if main_worker is None:
             main_worker = worker_id
         else:
-            merge_databases(db_files[main_worker], db_files[worker_id])
+            db_con = merge_databases(db_files[main_worker], db_files[worker_id], db_con)
         remaining_workers.discard(worker_id)
 
     # merge into last worker db
     assert main_worker is not None
+
+    if db_con is not None:
+        db_con.close()
 
     return Path(db_files[main_worker]), main_worker
 
