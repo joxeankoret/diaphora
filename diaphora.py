@@ -2470,6 +2470,8 @@ class CBinDiff:
     self.unmatched_second = self.chooser("Unmatched in secondary", self, False)
     self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
 
+    self.interesting_matches = None
+
   def save_results(self, filename):
     """
     Save all the results (best, partial, unreliable, multimatches and unmatched)
@@ -2554,6 +2556,23 @@ class CBinDiff:
       row = cur.fetchone()
     except:
       log(f"ERROR at get_function_row: {str(sys.exc_info()[1])}")
+    finally:
+      cur.close()
+    return row
+
+  def get_function_row_by_ea(self, ea, db_name="main"):
+    """
+    Get the full table row for the given function with name @name in the database
+    @db_name.
+    """
+    row = None
+    cur = self.db_cursor()
+    try:
+      sql = f"select * from {db_name}.functions where address = ?"
+      cur.execute(sql, [str(ea)])
+      row = cur.fetchone()
+    except:
+      log(f"ERROR at get_function_row_by_ea: {str(sys.exc_info()[1])}")
     finally:
       cur.close()
     return row

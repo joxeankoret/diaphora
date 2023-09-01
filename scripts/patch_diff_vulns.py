@@ -36,6 +36,7 @@ class CVulnerabilityPatches:
 
     # This is the chooser we're going to create
     self.chooser = self.diaphora.chooser("Interesting matches", self.diaphora)
+    self.diaphora.interesting_matches = self.chooser
 
   def before_export_function(self, ea, func_name):
     return True

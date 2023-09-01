@@ -585,7 +585,7 @@ class CIDAChooser(CDiaphoraChooser):
     """
     cur = self.bindiff.db_cursor()
     try:
-      cur.execute("select cast(id as text), name from diff.functions order by id")
+      cur.execute("select cast(id as text), name, address from diff.functions order by id")
       rows = list(cur.fetchall())
       rows = list(map(list, rows))
     finally:
@@ -593,12 +593,20 @@ class CIDAChooser(CDiaphoraChooser):
 
     return rows
 
-  def add_manual_match_internal(self, name1, name2):
+  def add_manual_match_internal(self, ea1, ea2):
     """
     Internal function, add a manual match directly to the partial chooser.
     """
-    main_row = self.bindiff.get_function_row(name1)
-    diff_row = self.bindiff.get_function_row(name2, "diff")
+    main_row = self.bindiff.get_function_row_by_ea(ea1)
+    if main_row is None:
+      warning("Can't find the local function!")
+      return
+
+    diff_row = self.bindiff.get_function_row_by_ea(ea2, "diff")
+    if diff_row is None:
+      warning("Can't find the foreign function!")
+      return
+
     ratio = self.bindiff.compare_function_rows(main_row, diff_row)
 
     ea1 = main_row["address"]
@@ -608,6 +616,15 @@ class CIDAChooser(CDiaphoraChooser):
     desc = "Manual match"
     bb1 = main_row["nodes"]
     bb2 = diff_row["nodes"]
+
+    if name1 in self.bindiff.matched_primary or name2 in self.bindiff.matched_secondary:
+      line = (
+        "Either the local function or the foreign function is already matched!\n"
+        + "Please remove the previously assigned match before adding a manual match."
+      )
+      warning(line)
+      return
+
     self.bindiff.partial_chooser.add_item(
       diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2)
     )
@@ -628,21 +645,10 @@ class CIDAChooser(CDiaphoraChooser):
       diff_chooser.items = diff_funcs
       ret = diff_chooser.Show(modal=True)
       if ret > -1:
-        name1 = get_func_name(f.start_ea)
-        name2 = diff_funcs[ret][1]
-
-        if (
-          name1 in self.bindiff.matched_primary
-          or name2 in self.bindiff.matched_secondary
-        ):
-          line = (
-            f"Either the local function {repr(name1)} or the foreign function {repr(name2)} are already matched.\n"
-            + "Please remove the previously assigned match before adding a manual match."
-          )
-          warning(line)
-        else:
-          log(f"Adding manual match between {name1} and {name2}")
-          self.add_manual_match_internal(name1, name2)
+        ea1 = f.start_ea
+        ea2 = int(diff_funcs[ret][2])
+        log("Adding manual match between 0x%08x and 0x%08x" % (ea1, ea2))
+        self.add_manual_match_internal(ea1, ea2)
 
   def OnSelectionChange(self, sel):
     self.selected_items = sel
@@ -692,13 +698,9 @@ class CBinDiffExporterSetup(Form):
   Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
   If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are exporting the first database.
 
-  SQLite databases:
-  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}>
-  <#Select the SQLite database to diff against             #SQLite database to diff against:{iFileOpen}>
-
-  Export filter limits:
-  <#Minimum address to find functions to export#From address:{iMinEA}>
-  <#Maximum address to find functions to export#To address  :{iMaxEA}>
+  SQLite databases:                                                                                                                                     Export filter limits:
+  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
+  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
 
   Export options:
   <Use the decompiler if available:{rUseDecompiler}>
@@ -722,8 +724,8 @@ class CBinDiffExporterSetup(Form):
   NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
 """
     args = {
-      "iFileSave": Form.FileInput(save=True, hlp="SQLite database (*.sqlite)"),
-      "iFileOpen": Form.FileInput(open=True, hlp="SQLite database (*.sqlite)"),
+      "iFileSave": Form.FileInput(save=True, swidth=40, hlp="SQLite database (*.sqlite)"),
+      "iFileOpen": Form.FileInput(open=True, swidth=40, hlp="SQLite database (*.sqlite)"),
       "iMinEA": Form.NumericInput(tp=Form.FT_HEX, swidth=22),
       "iMaxEA": Form.NumericInput(tp=Form.FT_HEX, swidth=22),
       "cGroupExport": Form.ChkGroupControl(
@@ -1057,6 +1059,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.unreliable_chooser,
       self.unmatched_primary,
       self.unmatched_second,
+      self.interesting_matches,
     ]
 
     for chooser in CHOOSERS:
