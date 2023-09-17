@@ -1844,7 +1844,16 @@ class CIDABinDiff(diaphora.CBinDiff):
       if cfunc is not None:
         tl = idaapi.treeloc_t()
         tl.ea = ea1
-        tl.itp = mitp
+        #
+        # We might have a pseudo-code comment without item_preciser_t information
+        # (it's None). In such cases, simply don't assign anything to the member
+        # treeloc_t.itp or it will trigger an error.
+        #
+        # Fix for issue #269.
+        #
+        if mitp is not None:
+          tl.itp = mitp
+
         comment = mcmt
         cfunc.set_user_cmt(tl, comment)
         cfunc.save_user_cmts()
