@@ -18,6 +18,7 @@ Diaphora has many of the most common program diffing (bindiffing) features you m
 However, Diaphora has also many features that are unique, not available in any other public tool. The following is a non extensive list of unique features:
 
  * Ability to port structs, enums, unions and typedefs.
+ * Potentially fixed vulnerabilities detection for patch diffing sessions.
  * Support for compilation units (finding and diffing compilation units).
  * Microcode support.
  * Parallel diffing.
