@@ -647,6 +647,7 @@ class CIDAChooser(CDiaphoraChooser):
       if ret > -1:
         ea1 = f.start_ea
         ea2 = int(diff_funcs[ret][2])
+        # pylint: disable-next=consider-using-f-string
         log("Adding manual match between 0x%08x and 0x%08x" % (ea1, ea2))
         self.add_manual_match_internal(ea1, ea2)
 
@@ -1045,6 +1046,12 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.project_script = None
     self.hooks = None
 
+  def clear_pseudo_fields(self):
+    self.pseudo = {}
+    self.pseudo_hash = {}
+    self.pseudo_comments = {}
+    self.microcode = {}
+
   def refresh(self):
     idaapi.request_refresh(0xFFFFFFFF)
 
@@ -1180,6 +1187,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
       self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
+      self.clear_pseudo_fields()
       if props is False:
         continue
 
