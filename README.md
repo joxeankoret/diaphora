@@ -32,7 +32,7 @@ However, Diaphora has also many features that are unique, not available in any o
 
 You can help (or thank) the author of Diaphora by making a donation. If you feel like doing so you can use one of the following links:
 
- * [![Liberapay](https://img.shields.io/liberapay/receives/joxeankoret.svg?logo=liberapay)](https://liberapay.com/Diaphora/donate)
+ * [![Liberapay](https://img.shields.io/liberapay/receives/diaphora.svg?logo=liberapay)](https://liberapay.com/Diaphora/donate)
  * [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
 
 ## License
