@@ -41,9 +41,17 @@ Versions of Diaphora prior to 1.2.4, including version 1.2.4, are licensed under
 
 For 99.99% of users, the license change doesn't affect them at all. If your company needs a different licensing model, check the next section...
 
+## Support
+
+Feel free to open issues in Github if you have any problem or need help. If you prefer to chat interactivelly, you can use the following Discord channel: https://discord.gg/eShrEj5D
+
+## Commercial Support and Consultancy
+
+Commercial support and consultancy is offered for legal companies. If you need support or consultancy for problems you have with your target, to develop products based on Diaphora, to use Diaphora internally interacting with your own tools, for plagiarism detection projects, etc... you can contact me at admin@joxeankoret.com for more details.
+
 ## Licensing
 
-Commercial licenses of Diaphora are available. Please contact admin@joxeankoret.com for more details.
+If your company does not allow using the AGPL license, you can get a commercial licenses of Diaphora to use it in your company, or to use it as a particular in any company you work (similar concept as IDA's named licenses). For more details, please contact me at admin@joxeankoret.com for more details.
 
 ## Documentation
 
