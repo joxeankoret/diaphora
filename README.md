@@ -43,7 +43,7 @@ For 99.99% of users, the license change doesn't affect them at all. If your comp
 
 ## Support
 
-Feel free to open issues in Github if you have any problem or need help. If you prefer to chat interactivelly, you can use the following Discord channel: https://discord.gg/eShrEj5D
+Feel free to open issues in Github if you have any problem or need help. If you prefer to chat interactivelly, you can use the following Discord channel: https://discord.gg/atg34w2xjV
 
 ## Commercial Support and Consultancy
 
