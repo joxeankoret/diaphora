@@ -1,53 +1,41 @@
 # Diaphora
 
-Diaphora (διαφορά, Greek for 'difference') version 2.0 is the most advanced program diffing tool, working as an IDA plugin, available as of today (2019). It was released first during SyScan 2015 and is actively maintained.
+Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
-Diaphora supports IDA 6.9 to 7.6, but the main branch has support only for IDA >= 7.4 because the code only runs in Python 3.X.
+Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
 
-Support for Ghidra is in development, but it will take very long. Support for Binary Ninja is also planned but will probably come after Ghidra's port. If you are looking for Radare2 support, you can [check this very old fork](https://github.com/radare/diaphora).
+## Unique Features
 
-For more details, please check the tutorial in the "doc" directory.
-
-NOTE: If you're looking for a tool for diffing or matching functions between binaries and source codes, you might want to take a look to [Pigaios](https://github.com/joxeankoret/pigaios).
-
-## Features
-
-Diaphora has many of the most common program diffing (bindiffing) techniques you might expect, like:
+Diaphora has many of the most common program diffing (bindiffing) features you might expect, like:
 
  * Diffing assembler.
  * Diffing control flow graphs.
  * Porting symbol names and comments.
- * Addig manual matches.
+ * Adding manual matches.
  * Similarity ratio calculation.
  * Batch automation.
  * Call graph matching calculation.
  * Dozens of heuristics based on graph theory, assembler, bytes, functions' features, etc...
 
-But Diaphora has also many features that are *unique*, and not available in any other public tool. The following is a non extensive list of unique features:
+However, Diaphora has also many features that are unique, not available in any other public tool. The following is a non extensive list of unique features:
 
+ * Ability to port structs, enums, unions and typedefs.
+ * Potentially fixed vulnerabilities detection for patch diffing sessions.
+ * Support for compilation units (finding and diffing compilation units).
+ * Microcode support.
  * Parallel diffing.
  * Pseudo-code based heuristics.
  * Pseudo-code patches generation.
- * Ability to port structs, enums and typedefs.
  * Diffing pseudo-codes (with syntax highlighting!).
  * Scripting support (for both the exporting and diffing processes).
  * ...
 
-It's also actively maintained, and the following is a list of the features that are 'in the making':
-
- * Support for compilation units (finding and diffing compilation units).
- * Direct integration with [Pigaios](https://github.com/joxeankoret/pigaios).
- * 'Machine Learning' based techniques so reverse engineers can teach Diaphora what is a good match or a bad one, and how to search for more.
-
-## Python 2.7 and IDA versions 6.95 to 7.3
-
-TLDR: if you're looking for a version of Diaphora supporting Python 2.X and IDA versions 6.95 to 7.3, [check this release](https://github.com/joxeankoret/diaphora/releases/tag/1.2.4) or [the branch 1.2](https://github.com/joxeankoret/diaphora/tree/diaphora-1.2).
-
-Since IDA 7.4, Diaphora will only support Python 3.X. It means that the code in Github will only run in IDA 7.4 and Python 3.X. I've tried to make it compatible but it caused the code to be horrible and unmaintainable. As so, I've decided that it was best to drop support for Python 2.X and IDA versions <= 7.3 and focus in Python 3.X and IDA versions >= 7.4.
-
 ## Donations
 
-You can help (or thank) the author of Diaphora by making a donation, if you feel like doing so: [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
+You can help (or thank) the author of Diaphora by making a donation. If you feel like doing so you can use one of the following links:
+
+ * [![Liberapay](https://img.shields.io/liberapay/receives/diaphora.svg?logo=liberapay)](https://liberapay.com/Diaphora/donate)
+ * [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
 
 ## License
 
@@ -55,15 +43,47 @@ Versions of Diaphora prior to 1.2.4, including version 1.2.4, are licensed under
 
 For 99.99% of users, the license change doesn't affect them at all. If your company needs a different licensing model, check the next section...
 
+## Support
+
+Feel free to open issues in Github if you have any problem or need help. If you prefer to chat interactivelly, you can use the following Discord channel: https://discord.gg/eShrEj5D
+
+## Commercial Support and Consultancy
+
+Commercial support and consultancy is offered for legal companies. If you need support or consultancy for problems you have with your target, to develop products based on Diaphora, to use Diaphora internally interacting with your own tools, for plagiarism detection projects, etc... you can contact me at admin@joxeankoret.com for more details.
+
 ## Licensing
 
-Commercial licenses of Diaphora are available. Please contact admin@joxeankoret.com for more details.
+If your company does not allow using the AGPL license, you can get a commercial licenses of Diaphora to use it in your company, or to use it as a particular in any company you work (similar concept as IDA's named licenses). For more details, please contact me at admin@joxeankoret.com for more details.
 
 ## Documentation
 
 You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/doc/diaphora_help.pdf
 
 ## Screenshots
+
+Diaphora finding the exact function where a vulnerability was patched in CVE-2020-1350:
+
+![CVE-2020-1350](https://files.mastodon.social/media_attachments/files/110/313/141/968/158/099/original/607189c509ec1cc4.png)
+
+Diaphora, again, finding the exact function where CVE-2023-28231 was fixed:
+
+![CVE-2023-28231](https://files.mastodon.social/media_attachments/files/110/313/148/945/529/051/original/28e032f21be414a3.png)
+
+CVE-2023-28231. As explained in a blog from ZDI, the vulnerability was fixed by checking that the number of relay forward messages in "ProcessRelayForwardMessage()" is not bigger or equal than 32 (0x20), as shown in the following pseudo-code diffing:
+
+![CVE-2023-28231](https://files.mastodon.social/media_attachments/files/110/300/368/934/189/808/original/fe3392db2b8234e9.png)
+
+Diaphora doing Hex-Ray's microcode diffing:
+
+![Diffing microcode in a graph](https://files.mastodon.social/media_attachments/files/110/157/157/910/926/533/original/6c5975e15c378cb5.png)
+
+Diffing assembly, pseudo-code and microcode:
+
+![Assembly, pseudo-code and microcode](https://files.mastodon.social/media_attachments/files/110/102/237/646/074/440/original/4a816df5069691c3.png)
+
+Diffing CVE-2023-21768 with Diaphora 3.0:
+
+![Diffing CVE-2023-21768 with #Diaphora 3.0](https://files.mastodon.social/media_attachments/files/110/066/930/153/215/408/original/86b06ae90d57d5a1.png)
 
 This is a screenshot of Diaphora diffing the PEGASUS iOS kernel Vulnerability fixed in iOS 9.3.5:
 
