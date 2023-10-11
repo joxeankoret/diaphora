@@ -1,3 +1,9 @@
+# δiaphora
+
+<p align='center'>
+<img src="https://github.com/joxeankoret/diaphora/assets/2945834/3f1e9cf4-98d7-4d9a-b7d3-0a7354053b4e" width="10%">
+</p>
+
 Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
 Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
