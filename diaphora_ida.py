@@ -27,6 +27,7 @@ import datetime
 import traceback
 
 from hashlib import md5
+from typing import Iterable, Set, Tuple
 
 # pylint: disable=wildcard-import
 # pylint: disable=unused-wildcard-import
@@ -1086,83 +1087,107 @@ class CIDABinDiff(diaphora.CBinDiff):
     hide_wait_box()
     return res
 
-  def get_last_crash_func(self):
-    """
-    Get the last inserted row before IDA or Diaphora crashed.
-    """
-    sql = "select address from functions order by id desc limit 1"
-    cur = self.db_cursor()
-    try:
-      cur.execute(sql)
-
-      row = cur.fetchone()
-      if not row:
-        return None
-
-      address = int(row[0])
-    finally:
-      cur.close()
-
-    return address
-
-  def recalculate_primes(self):
+  def init_primes(self) -> Tuple[int, int]:
     """
     Recalculate the primes assigned to a function.
     """
-    sql = "select primes_value from functions"
-
     callgraph_primes = 1
     callgraph_all_primes = {}
+
+    for _, prime, _ in self._funcs_cache.values():
+      callgraph_primes *= prime
+      try:
+        callgraph_all_primes[prime] += 1
+      except KeyError:
+        callgraph_all_primes[prime] = 1
+
+    return callgraph_primes, callgraph_all_primes
+
+  def restore_crashed_export(self):
+    """
+    Restore self._funcs_cache before resuming crashed export
+    """
+    sql = "select address, rowid, primes_value, pseudocode_primes from functions"
 
     cur = self.db_cursor()
     try:
       cur.execute(sql)
       for row in cur.fetchall():
-        ret = row[0]
-        callgraph_primes *= decimal.Decimal(row[0])
-        try:
-          callgraph_all_primes[ret] += 1
-        except KeyError:
-          callgraph_all_primes[ret] = 1
+        self._funcs_cache[int(row[0])] = [
+          row[1],
+          int(row[2]),
+          row[3] and int(row[3]),
+        ]
     finally:
       cur.close()
 
-    return callgraph_primes, callgraph_all_primes
+  def filter_functions(self, functions: Set[int]) -> Iterable[int]:
+    # filter functions to export
+    # Useful for parallel fork
+    if not config.PARALLEL_EXPORT:
+      result = (functions - self._funcs_cache.keys())
+      yield from result
+      return
+
+    if config.WORKER_ID == config.NUMBER_OF_WORKERS:
+      return
+
+    job_id, nbr_of_jobs = config.PARALLEL_JOB_QUEUE.get()
+    number_of_functions_per_job = (len(functions) + nbr_of_jobs-1)//nbr_of_jobs
+
+    sorted_functions_list = sorted(functions)
+    while job_id >=0:
+      print(f"[{config.WORKER_ID}/{config.NUMBER_OF_WORKERS}] processing job {job_id}")
+      first_function = job_id * number_of_functions_per_job
+      last_function = (job_id + 1) * number_of_functions_per_job
+      if job_id + 1 == nbr_of_jobs:
+        # make sure last job analyze last function
+        last_function += 1
+
+      for func in sorted_functions_list[first_function:last_function]:
+        if func not in self._funcs_cache:
+          yield func
+
+      # Report and wait for next job
+      config.PARALLEL_REPORT_QUEUE.put((config.WORKER_ID, job_id))
+      job_id, _ = config.PARALLEL_JOB_QUEUE.get()
+
+    print(f"[{config.WORKER_ID}/{config.NUMBER_OF_WORKERS}] done")
 
   def do_export(self, crashed_before=False):
     """
     Internal use, export the database.
     """
-    callgraph_primes = 1
-    callgraph_all_primes = {}
     # pylint: disable-next=consider-using-f-string
     log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
-    func_list = list(Functions(self.min_ea, self.max_ea))
+    func_list = set(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
+    log_step = (total_funcs + 127) // 128  # log every `log_step` functions
+    self._funcs_cache = {}
     t = time.monotonic()
 
     if crashed_before:
-      start_func = self.get_last_crash_func()
-      if start_func is None:
+      self.restore_crashed_export()
+      if not self._funcs_cache:
         warning(
           "Diaphora cannot resume the previous crashed session, the export process will start from scratch."
         )
         crashed_before = False
-      else:
-        callgraph_primes, callgraph_all_primes = self.recalculate_primes()
+
+    callgraph_primes, callgraph_all_primes = self.init_primes()
 
     self.db.commit()
     self.db.execute("PRAGMA synchronous = OFF")
     self.db.execute("PRAGMA journal_mode = MEMORY")
     self.db.execute("BEGIN transaction")
-    i = 0
-    self._funcs_cache = {}
-    for func in func_list:
+
+    i = len(self._funcs_cache.keys() & func_list)
+    for func in self.filter_functions(func_list):
       if user_cancelled():
         raise Exception("Canceled.")
 
       i += 1
-      if (total_funcs >= 100) and i % (int(total_funcs / 100)) == 0 or i == 1:
+      if (i-1) % log_step == 0:
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
         elapsed = time.monotonic() - t
         remaining = (elapsed / i) * (total_funcs - i)
@@ -1171,19 +1196,11 @@ class CIDABinDiff(diaphora.CBinDiff):
         h, m = divmod(m, 60)
         m_elapsed, s_elapsed = divmod(elapsed, 60)
         h_elapsed, m_elapsed = divmod(m_elapsed, 60)
-        replace_wait_box(
-          line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s)
-        )
-
-      if crashed_before:
-        rva = func - self.get_base_address()
-        if rva != start_func:
-          continue
-
-        # When we get to the last function that was previously exported, switch
-        # off the 'crash' flag and continue with the next row.
-        crashed_before = False
-        continue
+        message = line % (i, total_funcs, h_elapsed, m_elapsed, s_elapsed, h, m, s)
+        if config.PARALLEL_EXPORT:
+          print(message)
+        else:
+          replace_wait_box(message)
 
       self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
@@ -1209,6 +1226,9 @@ class CIDABinDiff(diaphora.CBinDiff):
         self.db.execute("PRAGMA synchronous = OFF")
         self.db.execute("PRAGMA journal_mode = MEMORY")
         self.db.execute("BEGIN transaction")
+
+    if config.PARALLEL_EXPORT and config.WORKER_ID < config.NUMBER_OF_WORKERS:
+      return
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(
@@ -3981,7 +4001,7 @@ def main():
     _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo)
     idaapi.qexit(0)
   else:
-    _diff_or_export(True)
+    _diff_or_export(not config.PARALLEL_EXPORT)
 
 
 if __name__ == "__main__":

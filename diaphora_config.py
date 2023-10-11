@@ -8,6 +8,8 @@ to add your own code here.
 ################################################################################
 # Imports required by the configuration file
 import os
+from queue import Queue
+from typing import Optional, Tuple
 
 CONFIGURATION_FILE_PATH = os.path.realpath(__file__)
 CONFIGURATION_DIRECTORY = os.path.dirname(CONFIGURATION_FILE_PATH)
@@ -164,3 +166,10 @@ RUN_DEFAULT_SCRIPTS = True
 
 # Where is the default patch diffing script?
 DEFAULT_SCRIPT_PATCH_DIFF = os.path.join(CONFIGURATION_DIRECTORY, "scripts/patch_diff_vulns.py")
+
+# Parallel Export
+PARALLEL_EXPORT: bool = False  # default to sequential export
+PARALLEL_JOB_QUEUE: Optional[Queue[Tuple[int, int]]] = None
+PARALLEL_REPORT_QUEUE: Optional[Queue[Tuple[int, int]]] = None
+WORKER_ID: int = 0  # ID of current worker
+NUMBER_OF_WORKERS: int = 1
