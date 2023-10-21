@@ -443,6 +443,7 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_diff_graph = self.AddCommand("Diff assembly in a graph")
       self.cmd_diff_graph_microcode = self.AddCommand("Diff microcode in a graph")
       self.cmd_diff_external = self.AddCommand("Diff using an external tool")
+      self.cmd_diff_asm_patch = self.AddCommand("Show assembly patch")
       self.cmd_diff_c_patch = self.AddCommand("Show pseudo-code patch")
       self.cmd_view_callgraph_context = self.AddCommand(
         "Show callers and callees graph"
@@ -510,6 +511,8 @@ class CIDAChooser(CDiaphoraChooser):
       self.bindiff.show_pseudo_diff(self.items[n])
     elif cmd_id == self.cmd_diff_c_patch:
       self.bindiff.show_pseudo_diff(self.items[n], html=False)
+    elif cmd_id == self.cmd_diff_asm_patch:
+      self.bindiff.show_asm_diff(self.items[n], html=False)
     elif cmd_id == self.cmd_diff_asm:
       self.bindiff.show_asm_diff(self.items[n])
     elif cmd_id == self.cmd_diff_microcode:
@@ -1129,6 +1132,12 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return callgraph_primes, callgraph_all_primes
 
+  def commit_and_start_transaction(self):
+    self.db.commit()
+    self.db.execute("PRAGMA synchronous = OFF")
+    self.db.execute("PRAGMA journal_mode = MEMORY")
+    self.db.execute("BEGIN transaction")
+
   def do_export(self, crashed_before=False):
     """
     Internal use, export the database.
@@ -1151,10 +1160,8 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         callgraph_primes, callgraph_all_primes = self.recalculate_primes()
 
-    self.db.commit()
-    self.db.execute("PRAGMA synchronous = OFF")
-    self.db.execute("PRAGMA journal_mode = MEMORY")
-    self.db.execute("BEGIN transaction")
+    self.commit_and_start_transaction()
+
     i = 0
     self._funcs_cache = {}
     for func in func_list:
@@ -1185,7 +1192,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         crashed_before = False
         continue
 
-      self.microcode_ins_list = self.get_microcode_instructions()
       props = self.read_function(func)
       self.clear_pseudo_fields()
       if props is False:
@@ -1197,18 +1203,14 @@ class CIDABinDiff(diaphora.CBinDiff):
         callgraph_all_primes[ret] += 1
       except KeyError:
         callgraph_all_primes[ret] = 1
+      
       self.save_function(props)
 
       # Try to fix bug #30 and, also, try to speed up operations as doing a
       # commit every 10 functions, as before, is overkill.
-      if (
-        total_funcs > config.EXPORTING_FUNCTIONS_TO_COMMIT
-        and i % (total_funcs / 10) == 0
-      ):
-        self.db.commit()
-        self.db.execute("PRAGMA synchronous = OFF")
-        self.db.execute("PRAGMA journal_mode = MEMORY")
-        self.db.execute("BEGIN transaction")
+      if total_funcs > config.EXPORTING_FUNCTIONS_TO_COMMIT:
+        if i % (total_funcs / 10) == 0:
+          self.commit_and_start_transaction()
 
     md5sum = GetInputFileMD5()
     self.save_callgraph(
@@ -1367,7 +1369,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_til()
     self.import_definitions()
 
-  def generate_asm_diff_internal(self, ea1, ea2, field, title_fmt, error_func=log):
+  def generate_asm_diff_internal(self, ea1, ea2, field, title_fmt, html=True, error_func=log):
     """
     Internal use, generate a HTML table with the assembly differences.
     """
@@ -1406,9 +1408,19 @@ class CIDABinDiff(diaphora.CBinDiff):
         fmt.noclasses = True
         fmt.linenos = False
         fmt.nobackground = True
-        src = html_diff.make_file(
-          buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer()
-        )
+        if not html:
+          uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
+          tmp = []
+          for line in uni_diff:
+            tmp.append(line.strip("\n"))
+          tmp = tmp[2:]
+          buf = "\n".join(tmp)
+
+          src = highlight(buf, DiffLexer(), fmt)
+        else:
+          src = html_diff.make_file(
+            buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer()
+          )
 
         title = title_fmt % (row1["name"], row2["name"])
         res = (src, title)
@@ -1417,9 +1429,9 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return res
 
-  def generate_asm_diff(self, ea1, ea2, error_func=log):
+  def generate_asm_diff(self, ea1, ea2, html=True, error_func=log):
     return self.generate_asm_diff_internal(
-      ea1, ea2, "assembly", "Diff assembly %s - %s", error_func
+      ea1, ea2, "assembly", "Diff assembly %s - %s", html, error_func
     )
 
   def generate_microcode_diff(self, ea1, ea2, error_func=log):
@@ -1427,8 +1439,8 @@ class CIDABinDiff(diaphora.CBinDiff):
       ea1, ea2, "microcode", "Diff microcode %s - %s", error_func
     )
 
-  def show_asm_diff(self, item):
-    res = self.generate_asm_diff(item[1], item[3], error_func=warning)
+  def show_asm_diff(self, item, html=True):
+    res = self.generate_asm_diff(item[1], item[3], html=html, error_func=warning)
     if res:
       (src, title) = res
       cdiffer = CHtmlViewer()
@@ -1539,11 +1551,12 @@ class CIDABinDiff(diaphora.CBinDiff):
       sql = """select *
         from (
         select prototype, pseudocode, name, 1
-        from functions
+         from functions
         where address = ?
           and pseudocode is not null
-    union select prototype, pseudocode, name, 2
-        from diff.functions
+    union
+       select prototype, pseudocode, name, 2
+         from diff.functions
         where address = ?
           and pseudocode is not null)
         order by 4 asc"""
@@ -1646,14 +1659,15 @@ class CIDABinDiff(diaphora.CBinDiff):
       sql = """select *
         from (
         select prototype, assembly, name, 1
-        from functions
-        where address = ?
-          and assembly is not null
-    union select prototype, assembly, name, 2
-        from diff.functions
-        where address = ?
-          and assembly is not null)
-        order by 4 asc"""
+          from functions
+         where address = ?
+           and assembly is not null
+    union
+        select prototype, assembly, name, 2
+          from diff.functions
+         where address = ?
+           and assembly is not null)
+         order by 4 asc"""
       ea1 = str(int(item[1], 16))
       ea2 = str(int(item[3], 16))
       cur.execute(sql, (ea1, ea2))
@@ -1694,11 +1708,12 @@ class CIDABinDiff(diaphora.CBinDiff):
       sql = """select *
         from (
         select prototype, pseudocode, address, 1
-        from functions
+         from functions
         where address = ?
           and pseudocode is not null
-    union select prototype, pseudocode, address, 2
-        from diff.functions
+    union
+       select prototype, pseudocode, address, 2
+         from diff.functions
         where address = ?
           and pseudocode is not null)
         order by 4 asc"""
@@ -2044,7 +2059,7 @@ class CIDABinDiff(diaphora.CBinDiff):
           # We have 'something' to import, let's diff the assembly...
           sql = """select *
            from (
-           select assembly, assembly_addrs, 1
+          select assembly, assembly_addrs, 1
            from functions
           where address = ?
             and assembly is not null
@@ -2718,7 +2733,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     to make a bit smaller. Feel free to do the same...
     """
     name, true_name, demangle_named_name = self.get_function_names(ea)
-
     # Call hooks immediately after we have a proper function name
     if self.hooks is not None:
       if "before_export_function" in dir(self.hooks):
@@ -2733,6 +2747,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       log("Cannot get a function object for 0x%x" % f)
       return False
 
+    export_time = time.monotonic()
     flow = FlowChart(func)
     size = 0
 
@@ -2787,7 +2802,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     constants = []
 
     # The callees will be calculated later
-    callees = list()
+    callees = []
     callers = self.extract_function_callers(f)
 
     mnemonics_spp = 1
@@ -2798,7 +2813,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     for block in flow:
       if block.end_ea == 0 or block.end_ea == BADADDR:
         # pylint: disable-next=consider-using-f-string
-        print(("0x%08x: Skipping bad basic block" % f))
+        print("0x%08x: Skipping bad basic block" % f)
         continue
 
       nodes += 1
@@ -2858,9 +2873,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
             if pos > -1:
               tmp_name = tmp_name[:pos]
 
-          if not tmp_name.startswith("sub_") and not tmp_name.startswith(
-            "nullsub_"
-          ):
+          if not tmp_name.startswith("sub_") and not tmp_name.startswith("nullsub_"):
             names.add(tmp_name)
 
         # Calculate the callees
@@ -3008,6 +3021,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     ) = self.extract_function_pseudocode_features(f)
     microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
     microcode_bblocks, microcode_bbrelations = self.get_microcode(func, ea)
+
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
     md_index = self.extract_function_mdindex(
@@ -3023,6 +3037,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # It's better to have names sorted
     names = list(names)
     names.sort()
+
+    export_time = time.monotonic() - export_time
+    export_time = str(export_time)
 
     props_list = (
       name,
@@ -3072,6 +3089,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       microcode,
       clean_microcode,
       microcode_spp,
+      export_time,
       microcode_bblocks,
       microcode_bbrelations,
       callers,
@@ -3098,7 +3116,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # Next, using IDAMagicStrings, try to guess file names using some heuristics
     func_modules = {}
     if HAS_GET_SOURCE_STRINGS:
-      d, _ = get_source_strings()
+      d, _ = get_source_strings(4, [0, 1])
 
       # First, put names found with IDAMagicStrings to anonymous modules found
       # with LFA
@@ -3112,6 +3130,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
               if func_ea >= module.start and func_ea <= module.end:
                 if module.name == "":
                   module.name = mod_name
+                  break
 
       #
       # Next sub-step: find the limits of modules with the same name that appear
@@ -3156,27 +3175,35 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
           new_modules.append(d)
 
     for module in new_modules:
-      local_primes = 1
-      pseudo_primes = 1
-      total_funcs = 0
-      for func in Functions(module["start"], module["end"]):
-        if func in self._funcs_cache:
-          total_funcs += 1
-          _, primes_value, pseudocode_primes = self._funcs_cache[func]
-          if pseudocode_primes is not None:
-            pseudo_primes *= int(pseudocode_primes)
-          if primes_value is not None:
-            local_primes *= int(primes_value)
+      module["total"] = 0
+      module["primes"] = 1
+      module["pseudo_primes"] = 1
 
-      module["total"] = str(total_funcs)
-      module["primes"] = str(local_primes)
-      module["pseudo_primes"] = str(pseudo_primes)
+    iterations = 1
+    for func, item in self._funcs_cache.items():
+      if iterations % 1000 == 0:
+        log_refresh("Calculating modules weights...")
+
+      for module in new_modules:
+        if module["start"] <= func <= module["end"]:
+          _, primes_value, pseudocode_primes = item
+          module["total"] += 1
+          if primes_value is not None:
+            module["primes"] *= int(primes_value)
+          if pseudocode_primes is not None:
+            module["pseudo_primes"] *= int(pseudocode_primes)
+
+    for module in new_modules:
+      module["total"] = str(module["total"])
+      module["primes"] = str(module["primes"])
+      module["pseudo_primes"] = str(module["pseudo_primes"])
 
     return new_modules
 
   def save_compilation_units(self):
     log("Finding compilation units...")
     lfa_modules = self.get_modules_using_lfa()
+    log("Done finding compilation units, saving them...")
 
     sql1 = """insert into compilation_units (name, start_ea, end_ea)
                   values (?, ?, ?)"""
@@ -3201,14 +3228,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         cur.execute(sql1, vals)
         cu_id = cur.lastrowid
 
-        for func in Functions(module["start"], module["end"]):
-          # Some functions (like thunk ones) might be ignored when exporting
-          if func in self._funcs_cache:
-            func_id, _, _ = self._funcs_cache[func]
-            if func_id not in dones:
-              dones.add(func_id)
-              cur.execute(sql2, (cu_id, func_id))
-              cur.execute(sql4, (module_name, func_id))
+        for values in self._funcs_cache.values():
+          func_id = values[0]
+          if func_id not in dones:
+            dones.add(func_id)
+            cur.execute(sql2, (cu_id, func_id))
+            cur.execute(sql4, (module_name, func_id))
 
         cur.execute(
           sql3,

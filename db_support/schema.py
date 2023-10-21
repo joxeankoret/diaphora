@@ -114,7 +114,8 @@ TABLES = [
                           userdata text,
                           microcode text,
                           clean_microcode text,
-                          microcode_spp text) """,
+                          microcode_spp text,
+                          export_time real) """,
   """ create table if not exists program (
                   id integer primary key,
                   callgraph_primes text,

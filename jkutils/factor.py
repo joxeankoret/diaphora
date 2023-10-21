@@ -14,8 +14,12 @@ import decimal
 
 #-----------------------------------------------------------------------
 def primesbelow(N):
-  # http://stackoverflow.com/questions/2068372/fastest-way-to-list-all-primes-below-n-in-python/3035188#3035188
-  #""" Input N>=6, Returns a list of primes, 2 <= p < N """
+  """
+  Input N>=6, Returns a list of primes, 2 <= p < N
+
+  Shamelessly reaped off from here:
+  http://stackoverflow.com/questions/2068372/fastest-way-to-list-all-primes-below-n-in-python/3035188#3035188
+  """
   correction = N % 6 > 1
   N = {0:N, 1:N-1, 2:N+4, 3:N+3, 4:N+2, 5:N+1}[N%6]
   sieve = [True] * (N // 3)
@@ -31,7 +35,11 @@ def primesbelow(N):
 smallprimeset = set(primesbelow(100000))
 _smallprimeset = 100000
 def isprime(n, precision=7):
-  # http://en.wikipedia.org/wiki/Miller-Rabin_primality_test#Algorithm_and_running_time
+  """
+  Check if the given number is a prime
+
+  http://en.wikipedia.org/wiki/Miller-Rabin_primality_test#Algorithm_and_running_time
+  """
   if n == 1 or n % 2 == 0:
     return False
   elif n < 1:
@@ -46,37 +54,48 @@ def isprime(n, precision=7):
     d //= 2
     s += 1
 
-  for repeat in range(precision):
+  for _ in range(precision):
     a = random.randrange(2, n - 2)
     x = pow(a, d, n)
 
-    if x == 1 or x == n - 1: continue
+    if x == 1 or x == n - 1:
+      continue
 
-    for r in range(s - 1):
+    for _ in range(s - 1):
       x = pow(x, 2, n)
-      if x == 1: return False
-      if x == n - 1: break
-    else: return False
+      if x == 1:
+        return False
+      if x == n - 1:
+        break
+    else:
+      return False
 
   return True
 
 #-----------------------------------------------------------------------
-# https://comeoncodeon.wordpress.com/2010/09/18/pollard-rho-brent-integer-factorization/
 def pollard_brent(n):
-  if n % 2 == 0: return 2
-  if n % 3 == 0: return 3
+  """
+  Copied from the following URL:
+
+  https://comeoncodeon.wordpress.com/2010/09/18/pollard-rho-brent-integer-factorization/
+  """
+  if n % 2 == 0:
+    return 2
+
+  if n % 3 == 0:
+    return 3
 
   y, c, m = random.randint(1, n-1), random.randint(1, n-1), random.randint(1, n-1)
   g, r, q = 1, 1, 1
   while g == 1:
     x = y
-    for i in range(r):
+    for _ in range(r):
       y = (pow(y, 2, n) + c) % n
 
     k = 0
     while k < r and g==1:
       ys = y
-      for i in range(min(m, r-k)):
+      for _ in range(min(m, r-k)):
         y = (pow(y, 2, n) + c) % n
         q = q * abs(x-y) % n
       g = gcd(q, n)
@@ -94,18 +113,25 @@ def pollard_brent(n):
 #-----------------------------------------------------------------------
 smallprimes = primesbelow(10000) # might seem low, but 10000*10000 = 100000000, so this will fully factor every composite < 100000000
 def primefactors(n, sort=False):
+  """
+  Factor primes
+  """
   factors = []
 
   limit = int(n ** decimal.Decimal(.5)) + 1
   for checker in smallprimes:
-    if checker > limit: break
+    if checker > limit:
+      break
+
     while n % checker == 0:
       factors.append(checker)
       n //= checker
       limit = int(n ** decimal.Decimal(.5)) + 1
-      if checker > limit: break
+      if checker > limit:
+        break
 
-  if n < 2: return factors
+  if n < 2:
+    return factors
 
   while n > 1:
     if isprime(n):
@@ -115,12 +141,16 @@ def primefactors(n, sort=False):
     factors.extend(primefactors(factor)) # recurse to factor the not necessarily prime factor returned by pollard-brent
     n //= factor
 
-  if sort: factors.sort()
+  if sort:
+    factors.sort()
 
   return factors
 
 #-----------------------------------------------------------------------
 def factorization(n):
+  """
+  Factorize primes
+  """
   factors = {}
   for p1 in primefactors(n):
     try:
@@ -132,10 +162,16 @@ def factorization(n):
 #-----------------------------------------------------------------------
 totients = {}
 def totient(n):
-  if n == 0: return 1
+  """
+  Get the totient
+  """
+  if n == 0:
+    return 1
 
-  try: return totients[n]
-  except KeyError: pass
+  try:
+    return totients[n]
+  except KeyError:
+    pass
 
   tot = 1
   for p, exp in list(factorization(n).items()):
@@ -146,17 +182,28 @@ def totient(n):
 
 #-----------------------------------------------------------------------
 def gcd(a, b):
-  if a == b: return a
-  while b > 0: a, b = b, a % b
+  """
+  Simple Greatest Common Divisor (GCD) implementation
+  """
+  if a == b:
+    return a
+  while b > 0:
+    a, b = b, a % b
   return a
 
 #-----------------------------------------------------------------------
 def lcm(a, b):
+  """
+  Simple Least Common Multiple (LCM) implementation
+  """
   return abs(a * b) // gcd(a, b)
 
 #-----------------------------------------------------------------------
 FACTORS_CACHE = {}
 def _difference(num1, num2):
+  """
+  Get the difference between 2 sets of primes
+  """
   nums = [num1,
           num2]
   s = []
@@ -191,12 +238,12 @@ def difference(num1, num2):
     exists in one group but does in the other, the total value of the prime
     number is added as differences. If a primer number exists in both groups
     the values difference is added. """
-  diffs, s = _difference(num1, num2)
+  diffs, _ = _difference(num1, num2)
   return sum(diffs.values())
 
 #-----------------------------------------------------------------------
 def difference_ratio(num1, num2):
-  """ Same as differene but getting a ratio of the changes. """
+  """ Same as difference but getting a ratio of the changes. """
   diffs, s = _difference(num1, num2)
   total = max(sum(s[0].values()), sum(s[1].values()))
   return 1 - (sum(diffs.values()) *1. / total)
@@ -207,7 +254,8 @@ def difference_matrix(samples, debug=True):
   diff_matrix = {}
   for x in samples:
     if debug:
-      print("Calculating difference matrix for %s" % x)
+      print(f"Calculating difference matrix for {x}")
+
     if x not in diff_matrix:
       diff_matrix[x] = {}
     for y in samples:

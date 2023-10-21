@@ -80,7 +80,7 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "3.0.0"
+VERSION_VALUE = "3.1.1"
 COPYRIGHT_VALUE = "Copyright(c) 2015-2023 Joxean Koret"
 
 ITEM_MAIN_EA = 0
@@ -388,6 +388,7 @@ class CBinDiff:
     self.last_diff_db = None
     self.re_cache = {}
     self._funcs_cache = {}
+    self.ratios_cache = {}
     self.items_lock = Lock()
 
     self.is_symbols_stripped = False
@@ -397,6 +398,9 @@ class CBinDiff:
     self.unmatched_primary = None
     self.unmatched_second = None
     self.do_continue = None
+
+    # How much do call graphs from both binaries differ?
+    self.percent = 0
 
     ####################################################################
     # LIMITS
@@ -621,7 +625,7 @@ class CBinDiff:
       row = cur.fetchone()
       ret = row["total"] == 1
       if not ret:
-        sql = "select count(*) total from (select * from functions except select * from diff.functions) x"
+        sql = "select count(*) total from (select id, address, size, nodes, edges from functions except select id, address, size, nodes, edges from diff.functions) x"
         cur.execute(sql)
         row = cur.fetchone()
         ret = row["total"] == 0
@@ -738,26 +742,28 @@ class CBinDiff:
       bb_ids[ins_ea] = last_bb_id
 
       # Insert relations between basic blocks and instructions
+      insert_args = []
       for instruction in bb_data[key]:
         ins_id = instructions_ids[instruction[0]]
-        cur_execute(sql2, (last_bb_id, ins_id))
+        insert_args.append([last_bb_id, ins_id])
+      cur.executemany(sql2, insert_args)
 
     # Insert relations between basic blocks
     sql = "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
+    insert_args = []
     for key in bb_relations:
       for bb in bb_relations[key]:
         bb = str(bb)
         key = str(key)
-        try:
-          cur_execute(sql, (bb_ids[key], bb_ids[bb]))
-        except:
-          # key doesnt exist because it doesnt have forward references to any bb
-          log(f"Error: {str(sys.exc_info()[1])}")
+        insert_args.append([bb_ids[key], bb_ids[bb]])
+    cur.executemany(sql, insert_args)
 
     # And finally insert the functions to basic blocks relations
+    insert_args = []
     sql = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'native')"
     for key, bb_id in bb_ids.items():
-      cur_execute(sql, (func_id, bb_id))
+      insert_args.append([func_id, bb_id])
+    cur.executemany(sql, insert_args)
 
   def save_microcode_instructions(
     self, func_id, cur, cur_execute, microcode_bblocks, microcode_bbrelations
@@ -785,6 +791,7 @@ class CBinDiff:
       # Add the function -> basic block relation
       cur_execute(sql_func_blocks, (func_id, bblock_id))
 
+      insert_args = []
       for line in microcode_bblocks[key]["lines"]:
         if line["mnemonic"] is not None:
           address = self.get_valid_prop(line["address"])
@@ -808,12 +815,14 @@ class CBinDiff:
           line["instruction_id"] = inst_id
 
           # Add the microcode instrution to the current basic block
-          cur_execute(sql_bbinst, (bblock_id, inst_id))
+          insert_args.append([bblock_id, inst_id])
+      cur.executemany(sql_bbinst, insert_args)
 
       # Incrase the current basic block number
       num += 1
 
     # And, finally, insert the relationships between basic blocks
+    insert_args = []
     for node in microcode_bbrelations:
       parent_id = microcode_bblocks[node]["bblock_id"]
       for children in microcode_bbrelations[node]:
@@ -821,7 +830,8 @@ class CBinDiff:
         # with them, just ignore...
         if children in microcode_bblocks:
           child_id = microcode_bblocks[children]["bblock_id"]
-          cur_execute(sql_bbrelations, [parent_id, child_id])
+          insert_args.append([parent_id, child_id])
+    cur.executemany(sql_bbrelations, insert_args)
 
   def get_function_from_dictionary(self, d):
     """
@@ -877,6 +887,7 @@ class CBinDiff:
       d["microcode_spp"],
       d["microcode_bblocks"],
       d["microcode_bbrelations"],
+      d["export_time"],
       d["callers"],
       d["callees"],
       d["basic_blocks_data"],
@@ -937,6 +948,7 @@ class CBinDiff:
       microcode,
       clean_microcode,
       microcode_spp,
+      export_time,
       microcode_bblocks,
       microcode_bbrelations,
       callers,
@@ -997,6 +1009,7 @@ class CBinDiff:
       microcode_bblocks=microcode_bblocks,
       microcode_bbrelations=microcode_bbrelations,
       microcode_spp=microcode_spp,
+      export_time=export_time,
       userdata=userdata,
     )
     return d
@@ -1057,10 +1070,10 @@ class CBinDiff:
                     function_hash, bytes_sum, md_index, constants,
                     constants_count, segment_rva, assembly_addrs, kgh_hash,
                     source_file, userdata, microcode, clean_microcode,
-                    microcode_spp)
+                    microcode_spp, export_time)
                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
       try:
         cur.execute(sql, new_props)
@@ -1078,14 +1091,17 @@ class CBinDiff:
       # Phase 2: Save the callers and callees of the function
       callers, callees = props[len(props) - 4:len(props) - 2]
       sql = "insert into callgraph (func_id, address, type) values (?, ?, ?)"
+      insert_args = []
       for caller in callers:
-        cur.execute(sql, (func_id, str(caller), "caller"))
+        insert_args.append([func_id, str(caller), "caller"])
 
       for callee in callees:
-        cur.execute(sql, (func_id, str(callee), "callee"))
+        insert_args.append([func_id, str(callee), "caller"])      
+      cur.executemany(sql, insert_args)
 
       # Phase 3: Insert the constants of the function
       sql = "insert into constants (func_id, constant) values (?, ?)"
+      insert_args = []
       props_dict = self.create_function_dictionary(props)
       for constant in props_dict["constants"]:
         should_add = False
@@ -1096,7 +1112,8 @@ class CBinDiff:
           constant = str(constant)
 
         if should_add:
-          cur.execute(sql, (func_id, constant))
+          insert_args.append([func_id, constant])
+      cur.executemany(sql, insert_args)
 
       # Phase 4: Save the basic blocks relationships
       if not self.function_summaries_only:
@@ -1437,6 +1454,8 @@ class CBinDiff:
     else:
       log(f"Call graphs from both programs differ in {percent}%")
 
+    self.percent = percent
+
   def add_match(self, name1, name2, ratio, item, chooser):
     """
     Add a single match to the internal lists before really adding them to the
@@ -1527,7 +1546,12 @@ class CBinDiff:
       self.total_functions1 = rows[0]["total"]
       self.total_functions2 = rows[1]["total"]
 
-      sql = "select address ea, mangled_function, nodes from (select * from functions intersect select * from diff.functions) x"
+      sql = """select address ea, mangled_function, nodes
+                 from (select id, address, mangled_function, nodes
+                         from functions
+                    intersect
+                       select id, address, mangled_function, nodes
+                         from diff.functions) x"""
       cur.execute(sql)
       rows = cur.fetchall()
       if len(rows) > 0:
@@ -1721,6 +1745,7 @@ class CBinDiff:
     ea_ratios = {}
     for key, items in self.all_matches.items():
       d[key] = []
+
       l_items = sorted(items, key=lambda x: float(x[5]), reverse=True)
       for item in l_items:
         # An example item:
@@ -1750,7 +1775,7 @@ class CBinDiff:
 
         d[key].append(item)
 
-    # Update know the dict of matched functions for both databases
+    # Update now the dict of matched functions for both databases
     self.matched_primary = {}
     self.matched_secondary = {}
     for key, l_items in d.items():
@@ -1807,6 +1832,13 @@ class CBinDiff:
     Compare two functions and generate a similarity ratio from 0.0 to 1.0 where
     1.0 would be the best possible match and 0.0 would be the worst one.
     """
+
+    ea1 = main_d["ea"]
+    ea2 = diff_d["ea"]
+    key = f"{ea1}-{ea2}"
+    if key in self.ratios_cache:
+      return self.ratios_cache[key]
+
     ast1 = main_d["ast"]
     ast2 = diff_d["ast"]
     pseudo1 = main_d["pseudo"]
@@ -1841,6 +1873,7 @@ class CBinDiff:
       ast_done = True
       v3 = self.ast_ratio(ast1, ast2)
       if v3 == 1.0:
+        self.ratios_cache[key] = 1.0
         return v3
 
     v1 = 0
@@ -1862,6 +1895,7 @@ class CBinDiff:
           if fratio == real_quick_ratio:
             v1 = quick_ratio(clean_pseudo1, clean_pseudo2)
             if v1 == 1.0:
+              self.ratios_cache[key] = 1.0
               return 1.0
 
     v2 = fratio(clean_asm1, clean_asm2)
@@ -1872,18 +1906,21 @@ class CBinDiff:
       if fratio == real_quick_ratio:
         v2 = quick_ratio(clean_asm1, clean_asm2)
         if v2 == 1.0:
+          self.ratios_cache[key] = 1.0
           return 1.0
 
     if self.relaxed_ratio and not ast_done:
       v3 = fratio(ast1, ast2)
       v3 = float(decimal_values.format(v3))
       if v3 == 1:
+        self.ratios_cache[key] = 1.0
         return 1.0
 
     v4 = 0.0
     if md1 == md2 and md1 > 0.0:
       # A MD-Index >= 10.0 is somehow rare
       if self.relaxed_ratio and md1 > config.MINIMUM_RARE_MD_INDEX:
+        self.ratios_cache[key] = 1.0
         return 1.0
       v4 = min((v1 + v2 + v3 + 3.0) / 5, 1.0)
 
@@ -1892,6 +1929,7 @@ class CBinDiff:
       v5 = fratio(clean_micro1, clean_micro2)
       v5 = float(decimal_values.format(v5))
       if v5 == 1:
+        self.ratios_cache[key] = 1.0
         return 1.0
 
     r = max(v1, v2, v3, v4, v5)
@@ -1908,6 +1946,7 @@ class CBinDiff:
       if r + score < 1.0:
         r += score
 
+    self.ratios_cache[key] = r
     return r
 
   def all_functions_matched(self):
@@ -1983,6 +2022,16 @@ class CBinDiff:
 
     return should_add, r
 
+  def continue_getting_sql_rows(self, i):
+    """
+    Determine if more rows should be read at the given stage
+    """
+    if self.sql_max_processed_rows:
+      return True
+    if self.sql_max_processed_rows != 0 and i < self.sql_max_processed_rows:
+      return True
+    return False
+
   def add_matches_internal(
     self, cur, best, partial, val=None, unreliable=None, debug=False
   ):
@@ -1994,9 +2043,7 @@ class CBinDiff:
     matches = []
     cur_thread = threading.current_thread()
     t = time.monotonic()
-    while self.sql_max_processed_rows == 0 or (
-      self.sql_max_processed_rows != 0 and i < self.sql_max_processed_rows
-    ):
+    while self.continue_getting_sql_rows(i):
       if time.monotonic() - t > self.timeout or cur_thread.timeout:
         log("Timeout")
         break
@@ -2340,24 +2387,28 @@ class CBinDiff:
     cur.execute(sql)
     rows = cur.fetchall()
     if len(rows) > 0:
+      sql = "insert into unmatched(address,main) values(?,?)"
+      insert_args = []
       for row in rows:
         name = row["name"]
         if name not in self.matched_primary:
           ea = row[1]
-          sql = "insert into unmatched(address,main) values(?,?)"
-          cur.execute(sql, (ea, 1))
+          insert_args.append([ea, 1])
+      cur.executemany(sql, insert_args)
 
     # Find functions not matched in the secondary database
     sql = "select name, address from diff.functions"
     cur.execute(sql)
     rows = cur.fetchall()
     if len(rows) > 0:
+      sql = "insert into unmatched(address,main) values(?,?)"
+      insert_args = []
       for row in rows:
         name = row["name"]
         if name not in self.matched_secondary:
           ea = row[1]
-          sql = "insert into unmatched(address,main) values(?,?)"
-          cur.execute(sql, (ea, 0))
+          insert_args.append([ea, 0])
+      cur.executemany(sql, insert_args)
 
     if self.slow_heuristics:
       heur = "Brute forcing (MD-Index and KOKA hash)"
@@ -2620,9 +2671,9 @@ class CBinDiff:
 
     try:
       sql = """select count(0)
-         from main.functions f,
-            diff.functions df
-        where f.address = df.address """
+                 from main.functions f,
+                      diff.functions df
+                where f.address = df.address """
       cur.execute(sql)
       row = cur.fetchone()
       matches = row[0]
@@ -2643,7 +2694,7 @@ class CBinDiff:
           + get_query_fields(heur)
           + """
       from functions f,
-         diff.functions df
+           diff.functions df
      where f.address = df.address"""
         )
         log_refresh(f"Finding via {repr(heur)}")
@@ -2668,9 +2719,9 @@ class CBinDiff:
 
     try:
       sql = """select count(0)
-         from main.functions f,
-            diff.functions df
-        where f.mangled_function = df.mangled_function """
+                 from main.functions f,
+                      diff.functions df
+                where f.mangled_function = df.mangled_function """
       cur.execute(sql)
       row = cur.fetchone()
       matches = row[0]
@@ -3196,6 +3247,23 @@ class CBinDiff:
 
     return dones
 
+  def get_sorted_results(self, category):
+    """
+    Get results for the given category sorted by ratio
+    """
+    l = sorted(
+          self.all_matches[category], key=lambda x: float(x[5]), reverse=True
+        )
+    return l
+
+  def get_total_matched_functions(self):
+    """
+    Return the total functions matched in the 'best' or 'partial' categories
+    """
+    return len(self.all_matches["best"]) + len(
+        self.all_matches["partial"]
+      )
+
   def find_matches_diffing_internal(self, heur, field_name):
     """
     Find funtions by diffing matches assembly or pseudo-codes.
@@ -3203,52 +3271,43 @@ class CBinDiff:
     NOTE: Should this algorithm be parallelized?
     """
     log_refresh(f"Finding with heuristic '{heur}'")
-    db = self.db_cursor()
-    try:
-      iteration = 1
-      dones = set()
-      # Should I let it run for some more iterations? There is a small chance of
-      # hitting an infinite loop, so I'm hardcoding an upper limit.
-      while iteration <= 3:
-        old_total = len(self.all_matches["best"]) + len(
-          self.all_matches["partial"]
-        )
 
-        for key in ["best", "partial"]:
-          l = sorted(
-            self.all_matches[key], key=lambda x: float(x[5]), reverse=True
-          )
-          for match in l:
-            match_key = f"{match[1]}-{match[3]}"
-            if match_key in dones:
+    iteration = 1
+    dones = set()
+    # Should I let it run for some more iterations? There is a small chance of
+    # hitting an infinite loop, so I'm hardcoding an upper limit.
+    while iteration <= 3:
+      old_total = self.get_total_matched_functions()
+
+      for key in ["best", "partial"]:
+        l = self.get_sorted_results(key)
+        for match in l:
+          match_key = f"{match[1]}-{match[3]}"
+          if match_key in dones:
+            continue
+          dones.add(match_key)
+
+          item = self.itemize_for_chooser(match)
+          main_row, diff_row = self.get_row_for_items(item)
+          if main_row is not None and diff_row is not None:
+            if main_row[field_name] is None:
               continue
-            dones.add(match_key)
+            if diff_row[field_name] is None:
+              continue
 
-            item = self.itemize_for_chooser(match)
-            main_row, diff_row = self.get_row_for_items(item)
-            if main_row is not None and diff_row is not None:
-              if main_row[field_name] is None:
-                continue
-              if diff_row[field_name] is None:
-                continue
+            dones = self.find_one_match_diffing(
+              main_row, diff_row, field_name, heur, iteration, dones
+            )
 
-              dones = self.find_one_match_diffing(
-                main_row, diff_row, field_name, heur, iteration, dones
-              )
+      self.cleanup_matches()
+      self.show_summary()
 
-        self.cleanup_matches()
-        self.show_summary()
+      new_total = self.get_total_matched_functions()
+      if new_total == old_total:
+        break
 
-        new_total = len(self.all_matches["best"]) + len(
-          self.all_matches["partial"]
-        )
-        if new_total == old_total:
-          break
-
-        log(f"New iteration with heuristic '{heur}'...")
-        iteration += 1
-    finally:
-      db.close()
+      log(f"New iteration with heuristic '{heur}'...")
+      iteration += 1
 
   def find_matches_diffing_assembly(self):
     """
@@ -3288,7 +3347,7 @@ class CBinDiff:
     sql = """select *
          from {db}.functions
         where address > ?
-        and address < ?
+          and address < ?
         order by address desc"""
     try:
       heur_text = "Local affinity"
@@ -3436,6 +3495,7 @@ class CBinDiff:
     MAX_FUNCTIONS_PER_GAP. We don't consider bigger gaps. For now.
     """
     self.cleanup_matches()
+    log_refresh("Finding locally affine functions")
 
     tmp_matches = list(self.all_matches["best"])
     tmp_matches.extend(list(self.all_matches["partial"]))
@@ -3456,10 +3516,148 @@ class CBinDiff:
       area2 = [prev_ea2, curr_ea2]
       self.find_functions_between(area1, area2)
 
+  def find_related_constants(self, main_row, diff_row):
+    """
+    Try to find matches finding cross references to constants from functions 
+    that we already matched with a good ratio.
+    """
+    heur = "Same constants related matches"
+    cur = self.db_cursor()
+    try:
+      main_consts = set(json.loads(main_row["constants"]))
+      diff_consts = set(json.loads(diff_row["constants"]))
+      
+      inter_consts = main_consts.intersection(diff_consts)
+      if len(inter_consts) > 0:
+        sql = (
+          """ select """
+          + get_query_fields(heur)
+          + """
+         from main.functions f,
+              diff.functions df,
+              main.constants mc,
+              diff.constants dc
+        where f.id = mc.func_id
+          and df.id = dc.func_id
+          and dc.constant = mc.constant
+          and mc.constant = ?
+          and abs(mc.constant) == 0 """
+        )
+        for constant in inter_consts:
+          cur.execute(sql, (str(constant),))
+          self.add_matches_internal(cur, best="best", partial="partial")
+    finally:
+      cur.close()
+
+  def find_related_compilation_unit(self):
+    """
+    Try to find new matches in potential, or existing, compilation units
+
+    The idea is the following: after we have a number of good matches, we find
+    the boundaries of the compilation units and the matched functions. If we've,
+    for example, a CU for binary A, no CU information for binary B, *BUT* we've
+    at least 2 matches from a single CU in binary A to 2 functions in binary B,
+    we can determine that everything between the matched functions in binary B
+    belong to the CU that we know about in binary A, therefore, we can try one
+    brute force approach of all functions in the CU from A to the functions in B
+    in that specific area.
+    """
+    self.cleanup_matches()
+
+    heur = "Related compilation unit"
+    log_refresh(f"Finding with heuristic '{heur}'")
+
+    l = self.get_sorted_results("best")
+    l.extend(self.get_sorted_results("partial"))
+
+    sql = """SELECT distinct cus.id cu_id, cus.name cu_name, cus.start_ea start_ea, cus.end_ea end_ea
+               FROM {db}.compilation_unit_functions cuf,
+                    {db}.compilation_units cus,
+                    {db}.functions f
+              WHERE f.id = cuf.func_id
+                AND cus.id = cuf.cu_id
+                AND f.name = ?"""
+    sql_main = sql.replace("{db}", "main")
+    sql_diff = sql.replace("{db}", "diff")
+
+    sql = f"""select f.address ea, f.name name1, df.address ea2, df.name name2,
+                    '{heur}' description,
+                    f.pseudocode pseudo1, df.pseudocode pseudo2,
+                    f.assembly asm1, df.assembly asm2,
+                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                    f.nodes bb1, df.nodes bb2,
+                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
+                    f.clean_assembly clean_asm1, df.clean_assembly clean_asm2,
+                    f.clean_pseudo clean_pseudo1, df.clean_pseudo clean_pseudo2,
+                    f.mangled_function mangled1, df.mangled_function mangled2,
+                    f.clean_microcode clean_micro1, df.clean_microcode clean_micro2
+               from functions f,
+                    diff.functions df
+              where cast(f.address as real)  between ? and ?
+                and cast(df.address as real) between ? and ? """
+
+    cur = self.db_cursor()
+    try:
+      for match in l:
+        ratio = match[5]
+        if ratio < config.RELATED_MATCHES_MIN_RATIO:
+          break
+
+        name1 = match[1]
+        name2 = match[3]
+        cur.execute(sql_main, (name1,))
+        main_row = cur.fetchone()
+
+        cur.execute(sql_diff, (name2,))
+        diff_row = cur.fetchone()
+
+        if main_row is None or diff_row is None:
+          continue
+
+        main_start_ea = float(main_row["start_ea"])
+        main_end_ea   = float(main_row["start_ea"])
+        diff_start_ea = float(diff_row["start_ea"])
+        diff_end_ea   = float(diff_row["start_ea"])
+        cur.execute(sql, (main_start_ea, main_end_ea, diff_start_ea, diff_end_ea))
+        self.add_matches_internal(cur, "best", "partial")
+    finally:
+      cur.close()
+
+  def find_related_matches(self):
+    """
+    Find matches from previous good matches using a number of heuristics.
+    """
+    self.cleanup_matches()
+
+    heur = "Related constants matches"
+    log_refresh(f"Finding with heuristic '{heur}'")
+    dones = set()
+
+    for key in ["best", "partial"]:
+      l = self.get_sorted_results(key)
+      for match in l:
+        match_key = f"{match[1]}-{match[3]}"
+        if match_key in dones:
+          continue
+        dones.add(match_key)
+
+        ratio = match[5]
+        if ratio < config.RELATED_MATCHES_MIN_RATIO:
+          break
+
+        item = self.itemize_for_chooser(match)
+        main_row, diff_row = self.get_row_for_items(item)
+        if main_row is None or diff_row is None:
+          continue
+
+        if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
+          self.find_related_constants(main_row, diff_row)
+
   def diff(self, db):
     """
     Diff the current two databases (main and diff).
     """
+    self.ratios_cache = {}
     self.last_diff_db = db
     cur = self.db_cursor()
     self.try_attach(cur, db)
@@ -3542,13 +3740,27 @@ class CBinDiff:
             log_refresh("Finding experimental matches")
             self.find_experimental_matches()
 
-          # Find new matches by diffing assembly and pseudo-code of previously
-          # found matches
-          self.find_matches_diffing()
+          while 1:
+            self.cleanup_matches()
+            old_total = self.get_total_matched_functions()
 
-          # Find new matches in the functions between matches
-          log_refresh("Finding locally affine functions")
-          self.find_locally_affine_functions()
+            # Find new matches by diffing assembly and pseudo-code of previously
+            # found matches
+            self.find_matches_diffing()
+
+            if self.slow_heuristics:
+              # Find new matches by digging from previous very good matches
+              self.find_related_matches()
+
+            self.find_related_compilation_unit()
+
+            # Find new matches in the functions between matches
+            self.find_locally_affine_functions()
+
+            self.cleanup_matches()
+            new_total = self.get_total_matched_functions()
+            if new_total <= old_total:
+              break
 
         self.final_pass()
 
@@ -3576,7 +3788,6 @@ class CBinDiff:
 
         final_t = time.monotonic() - t0
         log(f"Done, time taken: {datetime.timedelta(seconds=final_t)}.")
-
     finally:
       cur.close()
     return True
@@ -3643,7 +3854,7 @@ if __name__ == "__main__":
 
     bd.db = sqlite3_connect(db1)
     if os.getenv("DIAPHORA_PROFILE") is not None:
-      log("*** Profiling export ***")
+      log("*** Profiling ***")
       import cProfile
 
       profiler = cProfile.Profile()

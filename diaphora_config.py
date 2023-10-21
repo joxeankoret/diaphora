@@ -164,3 +164,5 @@ RUN_DEFAULT_SCRIPTS = True
 
 # Where is the default patch diffing script?
 DEFAULT_SCRIPT_PATCH_DIFF = os.path.join(CONFIGURATION_DIRECTORY, "scripts/patch_diff_vulns.py")
+
+RELATED_MATCHES_MIN_RATIO = 0.8

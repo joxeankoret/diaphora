@@ -99,6 +99,9 @@ def get_strings(strtypes = [0, 1]):
 
 #-------------------------------------------------------------------------------
 def get_lang(full_path):
+  """
+  Try to guess the programming language from the file extension.
+  """
   _, file_ext  = os.path.splitext(full_path.lower())
   file_ext = file_ext.strip(".")
   for key in LANGS:
@@ -108,6 +111,10 @@ def get_lang(full_path):
 
 #-------------------------------------------------------------------------------
 def add_source_file_to(d, src_langs, refs, full_path, s):
+  """
+  Add single source file to the given dictionary and try to guess which language
+  was that source file written in.
+  """
   if full_path not in d:
     d[full_path] = []
 
@@ -121,7 +128,10 @@ def add_source_file_to(d, src_langs, refs, full_path, s):
   return d, src_langs
 
 #-------------------------------------------------------------------------------
-def get_source_strings(min_len = 4, strtypes = [0, 1]):
+def get_source_strings(min_len, strtypes):
+  """
+  Find source code files from strings in the binary
+  """
   strings = get_strings(strtypes)
 
   # Search string references to source files
@@ -148,17 +158,18 @@ def get_source_strings(min_len = 4, strtypes = [0, 1]):
         if done:
           break
 
-        for head in list(Heads(block.start_ea, block.end_ea)):
-          full_path = get_sourcefile(head)
-          if full_path is not None:
-            total_files += 1
-            d, src_langs = add_source_file_to(d, src_langs, [head], full_path, "Symbol: %s" % full_path)
+        head = block.start_ea
+        full_path = get_sourcefile(head)
+        if full_path is not None:
+          total_files += 1
+          d, src_langs = add_source_file_to(d, src_langs, [head], full_path, f"Symbol: {full_path}")
 
   nltk_preprocess(strings)
   if len(d) > 0 and total_files > 0:
     print("Programming languages found:\n")
     for key in src_langs:
-      print("  %s %f%%" % (key.ljust(10), src_langs[key] * 100. / total_files))
+      percent = src_langs[key] * 100. / total_files
+      print(f"  {key.ljust(10)} {percent}%")
     print()
 
   return d, strings
@@ -202,7 +213,7 @@ class CBaseTreeViewer(PluginForm):
     self.tree.setColumnWidth(0, 100)
 
     if self.d is None:
-      self.d, self.s = get_source_strings()
+      self.d, self.s = get_source_strings(4, [0, 1])
     d = self.d
 
     # Create layout
@@ -273,7 +284,7 @@ class CSourceFilesChooser(CIDAMagicStringsChooser):
     self.items = []
     self.selected_items = []
 
-    d, s = get_source_strings()
+    d, s = get_source_strings(4, [0,1])
     keys = list(d.keys())
     keys.sort()
 

@@ -981,6 +981,23 @@ HEURISTICS.append({
   "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
 })
 
+NAME = "Similar export time"
+HEURISTICS.append({
+  "name":NAME,
+  "category":"Partial",
+  "ratio":HEUR_TYPE_RATIO_MAX,
+  "sql":"""select """ + get_query_fields(NAME) + """
+       from main.functions f,
+            diff.functions df
+      where round(f.export_time, 0) = round(df.export_time, 0)
+        and round(f.export_time, 0) >= 3
+        %POSTFIX%
+      order by f.source_file = df.source_file""",
+  "min":0.6,
+  "flags":[]
+})
+
+
 NAME = "Same graph"
 HEURISTICS.append({
   "name":NAME,
