@@ -3192,6 +3192,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
             module["primes"] *= int(primes_value)
           if pseudocode_primes is not None:
             module["pseudo_primes"] *= int(pseudocode_primes)
+          break
 
     for module in new_modules:
       module["total"] = str(module["total"])
@@ -3201,9 +3202,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     return new_modules
 
   def save_compilation_units(self):
-    log("Finding compilation units...")
     lfa_modules = self.get_modules_using_lfa()
-    log("Done finding compilation units, saving them...")
 
     sql1 = """insert into compilation_units (name, start_ea, end_ea)
                   values (?, ?, ?)"""
