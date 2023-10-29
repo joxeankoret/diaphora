@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="250"
+   height="225"
+   version="1.0"
+   id="svg8888"
+   sodipodi:docname="directed-graph.svg"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs8892">
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       height="1.0511987"
+       width="1.0460792"
+       y="-0.025599326"
+       x="-0.023039616"
+       inkscape:label="Outline"
+       id="filter13839">
+      <feGaussianBlur
+         in="SourceAlpha"
+         stdDeviation="1"
+         result="blur1"
+         id="feGaussianBlur13815" />
+      <feComposite
+         in="SourceGraphic"
+         in2="blur1"
+         operator="out"
+         result="composite1"
+         id="feComposite13817" />
+      <feColorMatrix
+         values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 100 -1 "
+         result="colormatrix1"
+         id="feColorMatrix13819" />
+      <feGaussianBlur
+         stdDeviation="0.4"
+         result="blur2"
+         id="feGaussianBlur13821" />
+      <feComposite
+         in="blur2"
+         in2="blur2"
+         operator="over"
+         result="composite2"
+         id="feComposite13823" />
+      <feColorMatrix
+         values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 50 -5 "
+         result="colormatrix2"
+         id="feColorMatrix13825" />
+      <feGaussianBlur
+         stdDeviation="1"
+         result="blur3"
+         id="feGaussianBlur13827" />
+      <feColorMatrix
+         values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 5 -1 "
+         result="colormatrix3"
+         id="feColorMatrix13829" />
+      <feFlood
+         flood-opacity="1"
+         flood-color="rgb(0,0,0)"
+         result="flood"
+         id="feFlood13831" />
+      <feComposite
+         in="flood"
+         in2="colormatrix3"
+         k2="1"
+         operator="in"
+         result="composite3"
+         id="feComposite13833" />
+      <feComposite
+         in="SourceGraphic"
+         in2="colormatrix3"
+         operator="out"
+         result="composite4"
+         id="feComposite13835" />
+      <feComposite
+         in="composite4"
+         in2="composite3"
+         k2="1"
+         k3="1"
+         operator="arithmetic"
+         result="composite5"
+         id="feComposite13837" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     id="namedview8890"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     showgrid="false"
+     width="256px"
+     showguides="false"
+     inkscape:zoom="5.6568543"
+     inkscape:cx="124.98112"
+     inkscape:cy="112.42998"
+     inkscape:window-width="3840"
+     inkscape:window-height="2087"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8888" />
+  <rect
+     style="fill:#c2dcb0;fill-opacity:1;stroke-width:0.798184;filter:url(#filter13839)"
+     id="rect11598"
+     width="250.00417"
+     height="225.00592"
+     x="0"
+     y="0" />
+  <g
+     transform="rotate(60,76.735216,111.47151)"
+     id="g8865">
+    <path
+       fill="none"
+       stroke="#000000"
+       stroke-width="5"
+       d="M 53.918417,30.25 H 182.96968"
+       id="path8862" />
+    <path
+       id="a"
+       fill="#000000"
+       fill-opacity="1"
+       fill-rule="evenodd"
+       stroke="none"
+       stroke-linecap="butt"
+       stroke-linejoin="miter"
+       stroke-opacity="1"
+       stroke-width="1"
+       d="M 196.87444,30.530121 175.42457,18.180403 v 24.733811 z" />
+  </g>
+  <g
+     transform="rotate(60,76.735216,111.47151)"
+     id="g8871">
+    <path
+       fill="none"
+       stroke="#000000"
+       stroke-width="5"
+       d="M 49.228763,61.218153 113.65969,172.81573"
+       id="path8867" />
+    <use
+       xlink:href="#a"
+       width="250"
+       height="225"
+       transform="rotate(-120,124.63107,84.398383)"
+       id="use8869"
+       x="0"
+       y="0" />
+  </g>
+  <g
+     transform="rotate(60,76.735216,111.47151)"
+     id="g8879">
+    <path
+       fill="none"
+       stroke="#000000"
+       stroke-width="5"
+       d="M 143.45526,161.53001 201.79466,60.483252"
+       id="path8873" />
+    <use
+       xlink:href="#a"
+       width="250"
+       height="225"
+       transform="rotate(-60,218.62571,29.701547)"
+       id="use8875"
+       x="0"
+       y="0" />
+    <use
+       xlink:href="#a"
+       width="250"
+       height="225"
+       transform="rotate(120,125.53083,84.408825)"
+       id="use8877"
+       x="0"
+       y="0" />
+  </g>
+  <g
+     transform="rotate(60,76.735216,111.47151)"
+     id="g8886">
+    <path
+       id="b"
+       fill="#007fff"
+       fill-opacity="1"
+       fill-rule="evenodd"
+       stroke="#000070"
+       stroke-dasharray="none"
+       stroke-dashoffset="0"
+       stroke-miterlimit="4"
+       stroke-opacity="1"
+       stroke-width="3.75002"
+       d="m 51.301509,30 a 19.301508,19.301508 0 1 1 -38.603016,0 19.301508,19.301508 0 1 1 38.603016,0 z" />
+    <use
+       xlink:href="#b"
+       width="250"
+       height="225"
+       transform="translate(186)"
+       id="use8882"
+       x="0"
+       y="0" />
+    <use
+       xlink:href="#b"
+       width="250"
+       height="225"
+       transform="translate(93,161)"
+       id="use8884"
+       x="0"
+       y="0" />
+  </g>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:96px;line-height:125%;font-family:msbm10;-inkscape-font-specification:msbm10;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+     x="98.304688"
+     y="162.41896"
+     id="text10556"><tspan
+       sodipodi:role="line"
+       id="tspan10554"
+       x="98.304688"
+       y="162.41896">δ</tspan></text>
+</svg>
