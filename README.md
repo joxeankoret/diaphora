@@ -1,3 +1,9 @@
+# δiaphora
+
+<p align='center'>
+<img src="https://github.com/joxeankoret/diaphora/assets/2945834/3f1e9cf4-98d7-4d9a-b7d3-0a7354053b4e" width="10%">
+</p>
+
 Diaphora (διαφορά, Greek for 'difference') version 3.0 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2023). It was released first during SyScan 2015 and has been actively maintained since this year: it has been ported to every single minor version of IDA since 6.8 to 8.3.
 
 Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
@@ -30,7 +36,10 @@ However, Diaphora has also many features that are unique, not available in any o
 
 ## Donations
 
-You can help (or thank) the author of Diaphora by making a donation, if you feel like doing so: [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
+You can help (or thank) the author of Diaphora by making a donation. If you feel like doing so you can use one of the following links:
+
+ * [![Liberapay](https://img.shields.io/liberapay/receives/diaphora.svg?logo=liberapay)](https://liberapay.com/Diaphora/donate)
+ * [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=68Z4H8SE7N64L)
 
 ## License
 
@@ -38,9 +47,17 @@ Versions of Diaphora prior to 1.2.4, including version 1.2.4, are licensed under
 
 For 99.99% of users, the license change doesn't affect them at all. If your company needs a different licensing model, check the next section...
 
+## Support
+
+Feel free to open issues in Github if you have any problem or need help. If you prefer to chat interactivelly, you can use the following Discord channel: https://discord.gg/atg34w2xjV
+
+## Commercial Support and Consultancy
+
+Commercial support and consultancy is offered for legal companies. If you need support or consultancy for problems you have with your target, to develop products based on Diaphora, to use Diaphora internally interacting with your own tools, for plagiarism detection projects, etc... you can contact me at admin@joxeankoret.com for more details.
+
 ## Licensing
 
-Commercial licenses of Diaphora are available. Please contact admin@joxeankoret.com for more details.
+If your company does not allow using the AGPL license, you can get a commercial licenses of Diaphora to use it in your company, or to use it as a particular in any company you work (similar concept as IDA's named licenses). For more details, please contact me at admin@joxeankoret.com for more details.
 
 ## Documentation
 
