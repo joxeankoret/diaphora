@@ -1096,7 +1096,7 @@ class CBinDiff:
         insert_args.append([func_id, str(caller), "caller"])
 
       for callee in callees:
-        insert_args.append([func_id, str(callee), "caller"])      
+        insert_args.append([func_id, str(callee), "callee"])      
       cur.executemany(sql, insert_args)
 
       # Phase 3: Insert the constants of the function
