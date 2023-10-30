@@ -64,6 +64,10 @@ union
 select 14, "Total Microcode Basic Blocks", count(*) from basic_blocks where asm_type = 'microcode'
 union
 select 15, "Total Microcode Instructions", count(*) from instructions where asm_type = 'microcode'
+union
+select 16, "Total Callers", count(*) from callgraph where type = 'caller'
+union
+select 17, "Total Callees", count(*) from callgraph where type = 'callee'
 """
 
 DIFF_QUERY = """
@@ -382,8 +386,13 @@ def main():
     elif arg in ["-s", "--slow"]:
       tester.slow = True
     else:
+      t = time.time()
+
       for step in steps:
         tester.test(arg, step)
+
+      final_time = time.time() - t
+      log(f"Done in {datetime.timedelta(seconds=final_time)}")
 
 if __name__ == "__main__":
   if len(sys.argv) == 1:
