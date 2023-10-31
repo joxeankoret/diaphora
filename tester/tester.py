@@ -267,7 +267,7 @@ class CDiaphoraTester:
       # For a reason beyond me, the very first test case might fail :shrug:
       ret = subprocess.call(cmd, shell=True)
       if ret != 0:
-        log(f"Error: Diffing returned exit code {ret}!")
+        log(f"Error: Diffing returned exit code {ret} for {filename}!")
         return False
     return self.check_diff(sample_cfg, output)
 
