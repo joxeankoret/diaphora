@@ -2701,6 +2701,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
               mnem = mnem[:pos]
             break
 
+        if mnem == "":
+          continue
+
         line = line[line.find(mnem):]
         ret.append(line)
         if mnem in self.microcode_ins_list:
