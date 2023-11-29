@@ -33,7 +33,7 @@ import threading
 import traceback
 
 from io import StringIO
-from threading import Thread, Lock
+from threading import Lock
 from multiprocessing import cpu_count
 from difflib import SequenceMatcher, unified_diff
 
@@ -55,6 +55,9 @@ from diaphora_heuristics import (
 import db_support
 from db_support import schema
 
+import jkutils.threads as jk_threads
+
+from jkutils.threads import threads_apply
 from jkutils.kfuzzy import CKoretFuzzyHashing
 from jkutils.factor import (
   FACTORS_CACHE,
@@ -72,9 +75,10 @@ except ImportError:
   IS_IDA = False
 
 importlib.reload(config)
-importlib.reload(diaphora_heuristics)
-importlib.reload(db_support)
 importlib.reload(schema)
+importlib.reload(jk_threads)
+importlib.reload(db_support)
+importlib.reload(diaphora_heuristics)
 
 if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
@@ -193,17 +197,7 @@ class CChooser:
     A single chooser item.
     """
 
-    def __init__(
-      self,
-      ea,
-      name,
-      ea2=None,
-      name2=None,
-      desc="100% equal",
-      ratio=0,
-      bb1=0,
-      bb2=0,
-    ):
+    def __init__(self, ea, name, ea2=None, name2=None, desc=None, ratio=0, bb1=0, bb2=0):
       self.ea = ea
       self.vfname = name
       self.ea2 = ea2
@@ -382,7 +376,6 @@ class CBinDiff:
 
     # Create the choosers
     self.chooser = chooser
-    # Create the choosers
     self.create_choosers()
 
     self.last_diff_db = None
@@ -480,9 +473,8 @@ class CBinDiff:
       log(f"Loading project specific Python script {self.project_script}")
       module = imp.load_source("diaphora_hooks", self.project_script)
     except:
-      print(
-        f"Error loading project specific Python script: {str(sys.exc_info()[1])}"
-      )
+      err = str(sys.exc_info()[1])
+      print(f"Error loading project specific Python script: {err}")
       return False
 
     if module is None:
@@ -491,16 +483,14 @@ class CBinDiff:
 
     keys = dir(module)
     if "HOOKS" not in keys:
-      log(
-        "Error: The project specific script doesn't export the HOOKS dictionary"
-      )
+      msg = "Error: The project specific script doesn't export the HOOKS dictionary"
+      log(msg)
       return False
 
     hooks = module.HOOKS
     if "DiaphoraHooks" not in hooks:
-      log(
-        "Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry."
-      )
+      msg = "Error: The project specific script exports the HOOK dictionary but it doesn't contain a 'DiaphoraHooks' entry."
+      log(msg)
       return False
 
     hook_class = hooks["DiaphoraHooks"]
@@ -625,7 +615,12 @@ class CBinDiff:
       row = cur.fetchone()
       ret = row["total"] == 1
       if not ret:
-        sql = "select count(*) total from (select id, address, size, nodes, edges from functions except select id, address, size, nodes, edges from diff.functions) x"
+        sql = """select count(*) total
+                   from (select id, address, size, nodes, edges
+                           from functions
+                         except
+                         select id, address, size, nodes, edges
+                           from diff.functions) x"""
         cur.execute(sql)
         row = cur.fetchone()
         ret = row["total"] == 0
@@ -1219,6 +1214,7 @@ class CBinDiff:
 
     return tmp
 
+  # XXX: FIXME: This function can be, surely, optimized
   def compare_graphs_pass(
     self, bblocks1, bblocks2, colours1, colours2, is_second=False
   ):
@@ -1316,13 +1312,14 @@ class CBinDiff:
     bb_relations = {}
 
     try:
-      sql = """ select bb.address bb_address, ins.address ins_address,
-            ins.mnemonic ins_mnem, ins.disasm ins_disasm
+      sql = f"""
+       select bb.address bb_address, ins.address ins_address,
+              ins.mnemonic ins_mnem, ins.disasm ins_disasm
          from {db}.function_bblocks fb,
-            {db}.bb_instructions bbins,
-            {db}.instructions ins,
-            {db}.basic_blocks bb,
-            {db}.functions f
+              {db}.bb_instructions bbins,
+              {db}.instructions ins,
+              {db}.basic_blocks bb,
+              {db}.functions f
         where ins.id = bbins.instruction_id
           and bbins.basic_block_id = bb.id
           and bb.id = fb.basic_block_id
@@ -1332,9 +1329,7 @@ class CBinDiff:
           and f.address = ?
           and bb.asm_type = ?
           and ins.address is not null
-        order by bb.address asc""".format(
-        db=db
-      )
+        order by bb.address asc"""
       cur.execute(sql, (str(ea1), asm_type))
       for row in result_iter(cur):
         bb_ea = str(int(row["bb_address"]))
@@ -1351,25 +1346,24 @@ class CBinDiff:
         except KeyError:
           bb_blocks[bb_ea] = [[ins_ea, mnem, dis]]
 
-      sql = """ select (select address
-              from {db}.basic_blocks
-             where id = bbr.parent_id) ea1,
-             (select address
-              from {db}.basic_blocks
-             where id = bbr.child_id) ea2
+      sql = f"""
+         select (select address
+                   from {db}.basic_blocks
+                  where id = bbr.parent_id) ea1,
+                (select address
+                   from {db}.basic_blocks
+                  where id = bbr.child_id) ea2
           from {db}.bb_relations bbr,
-             {db}.function_bblocks fbs,
-             {db}.basic_blocks bbs,
-             {db}.functions f
+               {db}.function_bblocks fbs,
+               {db}.basic_blocks bbs,
+               {db}.functions f
          where f.id = fbs.function_id
            and bbs.id = fbs.basic_block_id
            and fbs.basic_block_id = bbr.child_id
            and f.address = ?
            and fbs.asm_type = ?
            and bbs.asm_type = fbs.asm_type
-         order by 1 asc, 2 asc""".format(
-        db=db
-      )
+         order by 1 asc, 2 asc"""
       cur.execute(sql, (str(ea1), asm_type))
       rows = result_iter(cur)
 
@@ -1384,16 +1378,6 @@ class CBinDiff:
       cur.close()
 
     return bb_blocks, bb_relations
-
-  def delete_function(self, ea):
-    """
-    Delete the function at address @ea from the database
-    """
-    cur = self.db_cursor()
-    try:
-      cur.execute("delete from functions where address = ?", (str(ea),))
-    finally:
-      cur.close()
 
   def is_auto_generated(self, name):
     """
@@ -1434,9 +1418,9 @@ class CBinDiff:
           total = sum(cg_factors1.values())
           if total == 0 or diff == 0:
             return 0
-          else:
-            percent = diff * 100.0 / total
-            return percent
+
+          percent = diff * 100.0 / total
+          return percent
       else:
         raise Exception(f"Not enough rows in databases! Size is {len(rows)}")
     finally:
@@ -1489,15 +1473,9 @@ class CBinDiff:
     """
     Check if we have a best match for the given two functions (not for the pair).
     """
-    if (
-      name1 in self.matched_primary
-      and self.matched_primary[name1]["ratio"] == 1.0
-    ):
+    if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] == 1.0:
       return True
-    elif (
-      name2 in self.matched_secondary
-      and self.matched_secondary[name2]["ratio"] == 1.0
-    ):
+    if name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] == 1.0:
       return True
     return False
 
@@ -1506,15 +1484,9 @@ class CBinDiff:
     Check if there if we found a better match already for either @name1 or @name2.
     """
     ratio = float(ratio)
-    if (
-      name1 in self.matched_primary
-      and self.matched_primary[name1]["ratio"] > ratio
-    ):
+    if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] > ratio:
       return True
-    elif (
-      name2 in self.matched_secondary
-      and self.matched_secondary[name2]["ratio"] > ratio
-    ):
+    if name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio:
       return True
 
     # If we have a match by name, that's the best match
@@ -1565,15 +1537,17 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def run_heuristics_for_category(self, arg_category, total_cpus=None):
+  def get_threads_count(self):
+    """
+    Return the maximum number of threads to run simultaneously
+    """
+    return max(self.cpu_count, 1)
+
+  def run_heuristics_for_category(self, arg_category):
     """
     Run a total of @total_cpus threads running SQL heuristics for category @arg_category
     """
-    if total_cpus is None:
-      total_cpus = self.cpu_count
-
-    if total_cpus < 1:
-      total_cpus = 1
+    total_cpus = self.get_threads_count()
 
     mode = "[Parallel]"
     if total_cpus == 1:
@@ -1587,17 +1561,15 @@ class CBinDiff:
       if "get_queries_postfix" in dir(self.hooks):
         postfix = self.hooks.get_queries_postfix(arg_category, postfix)
 
-    threads_list = []
     heuristics = list(HEURISTICS)
     if self.hooks is not None:
       if "get_heuristics" in dir(self.hooks):
         heuristics = self.hooks.get_heuristics(arg_category, heuristics)
 
+    heuristic_functions = []
     for heur in heuristics:
-      if (
-        len(self.matched_primary) == self.total_functions1
-        or len(self.matched_secondary) == self.total_functions2
-      ):
+      if len(self.matched_primary) == self.total_functions1 or\
+         len(self.matched_secondary) == self.total_functions2:
         log("All functions matched in at least one database, finishing.")
         break
 
@@ -1640,98 +1612,31 @@ class CBinDiff:
           sql = self.hooks.on_launch_heuristic(name, sql)
 
       if ratio == HEUR_TYPE_NO_FPS:
-        t = Thread(target=self.add_matches_from_query, args=(sql, best))
+        function = self.add_matches_from_query
+        function_args = [sql, best]
       elif ratio == HEUR_TYPE_RATIO:
-        t = Thread(
-          target=self.add_matches_from_query_ratio, args=(sql, best, partial)
-        )
+        function = self.add_matches_from_query_ratio
+        function_args = [sql, best, partial]
       elif ratio == HEUR_TYPE_RATIO_MAX:
-        t = Thread(
-          target=self.add_matches_from_query_ratio_max,
-          args=(sql, best, partial, min_value),
-        )
+        function = self.add_matches_from_query_ratio_max
+        function_args = [sql, best, partial, min_value]
       elif ratio == HEUR_TYPE_RATIO_MAX_TRUSTED:
-        t = Thread(
-          target=self.add_matches_from_query_ratio_max_trusted,
-          args=(sql, min_value),
-        )
+        function = self.add_matches_from_query_ratio_max_trusted
+        function_args = [sql, min_value]
       else:
         traceback.print_exc()
         raise Exception("Invalid heuristic ratio calculation value!")
 
-      t.name = name
-      t.timeout = False
-      t.time = time.monotonic()
-      t.start()
-      threads_list.append(t)
+      heur_item = {"name":name, "target": function, "args":function_args}
+      heuristic_functions.append(heur_item)
 
-      if total_cpus == 1:
-        t.join()
-        threads_list = []
-
-      while len(threads_list) >= total_cpus:
-        for i, t in enumerate(threads_list):
-          if not t.is_alive():
-            debug_refresh(
-              f"[Parallel] Heuristic '{t.name}' took {time.monotonic() - t.time}..."
-            )
-            del threads_list[i]
-            debug_refresh(
-              f"[Parallel] Waiting for any of {len(threads_list)} thread(s) running to finish..."
-            )
-            break
-          else:
-            log_refresh(
-              f"[Parallel] {len(threads_list)} thread(s) running, waiting for at least one to finish...",
-              do_log=False,
-            )
-            t.join(0.1)
-            if IS_IDA:
-              self.refresh()
-
-    # XXX: FIXME: THIS CODE IS TERRIBLE, REFACTOR IT!!!
-    if len(threads_list) > 0:
-      log_refresh(
-        f"[Parallel] Waiting for remaining {len(threads_list)} thread(s) to finish...",
-        do_log=False,
-      )
-
-      do_cancel = False
-      times = 0
-      while len(threads_list) > 0 and not do_cancel:
-        times += 1
-        for i, t in enumerate(threads_list):
-          t.join(0.1)
-          if not t.is_alive():
-            debug_refresh(
-              f"[Parallel] Heuristic '{t.name}' took {time.monotonic() - t.time}..."
-            )
-            del threads_list[i]
-            debug_refresh(
-              f"[Parallel] Waiting for any of {len(threads_list)} thread(s) running to finish..."
-            )
-            break
-
-          t.join(0.1)
-          if time.monotonic() - t.time > config.SQL_TIMEOUT_LIMIT:
-            do_cancel = True
-            try:
-              log_refresh("Timeout, cancelling queries...")
-              t.timeout = True
-              self.get_db().interrupt()
-            except:
-              log(f"database.interrupt(): {str(sys.exc_info()[1])}")
-
-        if times % 50 == 0:
-          names = []
-          for x in threads_list:
-            names.append(x.name)
-
-          tmp_names = ", ".join(names)
-          log_refresh(
-            f"[Parallel] {len(threads_list)} thread(s) still running:\n{tmp_names}"
-          )
-          self.show_summary()
+    threads_apply(
+      threads     = total_cpus,
+      targets     = heuristic_functions,
+      wait_time   = config.THREADS_WAIT_TIME,
+      log_refresh = log_refresh,
+      timeout     = config.SQL_TIMEOUT_LIMIT
+    )
 
     self.cleanup_matches()
     self.show_summary()
