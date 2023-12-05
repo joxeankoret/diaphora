@@ -97,5 +97,13 @@ class CExampleDiaphoraHooks:
         return False, 0
 
     return True, ratio
+  
+  def on_special_heuristic(self, heuristic, iteration):
+    """
+    Enable/Disable a special @heuristic at the specified @iteration
+    """
+    if iteration > 1:
+      return False
+    return True
 
 HOOKS = {"DiaphoraHooks": CExampleDiaphoraHooks}

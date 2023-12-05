@@ -1611,6 +1611,9 @@ class CBinDiff:
         if "on_launch_heuristic" in dir(self.hooks):
           sql = self.hooks.on_launch_heuristic(name, sql)
 
+      if sql is None:
+        continue
+
       if ratio == HEUR_TYPE_NO_FPS:
         function = self.add_matches_from_query
         function_args = [sql, best]
@@ -3230,19 +3233,33 @@ class CBinDiff:
     field_name = "pseudocode"
     self.find_matches_diffing_internal(heur, field_name)
 
-  def find_matches_diffing(self):
+  def find_matches_diffing(self, iteration):
     """
     Find new matches by diffing the previously found matches.
     """
+
     # First, remove duplicates, etc... just to be sure
     self.cleanup_matches()
 
-    # If the processor is the same for both databases, diff assembler to find
-    # new matches
+    # Only if the processor is the same for both databases we diff assembly
     if self.is_same_processor:
-      self.find_matches_diffing_assembly()
+      heur = "Callee found diffing matches assembly"
+      enabled = True
+      if self.hooks is not None:
+        if "on_special_heuristic" in dir(self.hooks):
+          enabled = self.hooks.on_special_heuristic(heur, iteration)
 
-    self.find_matches_diffing_pseudo()
+      if enabled:
+        self.find_matches_diffing_assembly()
+
+    enabled = True
+    heur = "Callee found diffing matches pseudo-code"
+    if self.hooks is not None:
+      if "on_special_heuristic" in dir(self.hooks):
+        enabled = self.hooks.on_special_heuristic(heur, iteration)
+    
+    if enabled:
+      self.find_matches_diffing_pseudo()
 
   def find_functions_between(self, range1, range2):
     """
@@ -3379,7 +3396,7 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_locally_affine_functions(self):
+  def find_locally_affine_functions(self, iteration):
     """
     Try to find functions between the unmatched functions space inside two
     previously matched functions.
@@ -3399,6 +3416,14 @@ class CBinDiff:
     then brute force these subsets when they have a maximum hardcoded number of
     MAX_FUNCTIONS_PER_GAP. We don't consider bigger gaps. For now.
     """
+    heur = "Local affinity"
+    enabled = True
+    if self.hooks is not None:
+      if "on_special_heuristic" in dir(self.hooks):
+        enabled = self.hooks.on_special_heuristic(heur, iteration)
+        if not enabled:
+          return
+
     self.cleanup_matches()
     log_refresh("Finding locally affine functions")
 
@@ -3454,7 +3479,7 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_related_compilation_unit(self):
+  def find_related_compilation_unit(self, iteration):
     """
     Try to find new matches in potential, or existing, compilation units
 
@@ -3467,9 +3492,15 @@ class CBinDiff:
     brute force approach of all functions in the CU from A to the functions in B
     in that specific area.
     """
-    self.cleanup_matches()
-
     heur = "Related compilation unit"
+    enabled = True
+    if self.hooks is not None:
+      if "on_special_heuristic" in dir(self.hooks):
+        enabled = self.hooks.on_special_heuristic(heur, iteration)
+        if not enabled:
+          return
+
+    self.cleanup_matches()
     log_refresh(f"Finding with heuristic '{heur}'")
 
     l = self.get_sorted_results("best")
@@ -3528,13 +3559,20 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def find_related_matches(self):
+  def find_related_matches(self, iteration):
     """
     Find matches from previous good matches using a number of heuristics.
     """
+    heur = "Same constants related matches"
+    enabled = True
+    if self.hooks is not None:
+      if "on_special_heuristic" in dir(self.hooks):
+        enabled = self.hooks.on_special_heuristic(heur, iteration)
+        if not enabled:
+          return
+
     self.cleanup_matches()
 
-    heur = "Related constants matches"
     log_refresh(f"Finding with heuristic '{heur}'")
     dones = set()
 
@@ -3645,27 +3683,29 @@ class CBinDiff:
             log_refresh("Finding experimental matches")
             self.find_experimental_matches()
 
+          iteration = 0
           while 1:
             self.cleanup_matches()
             old_total = self.get_total_matched_functions()
 
             # Find new matches by diffing assembly and pseudo-code of previously
             # found matches
-            self.find_matches_diffing()
+            self.find_matches_diffing(iteration)
 
             if self.slow_heuristics:
               # Find new matches by digging from previous very good matches
-              self.find_related_matches()
+              self.find_related_matches(iteration)
 
-            self.find_related_compilation_unit()
+            self.find_related_compilation_unit(iteration)
 
             # Find new matches in the functions between matches
-            self.find_locally_affine_functions()
+            self.find_locally_affine_functions(iteration)
 
             self.cleanup_matches()
             new_total = self.get_total_matched_functions()
             if new_total <= old_total:
               break
+            iteration += 1
 
         self.final_pass()
 
