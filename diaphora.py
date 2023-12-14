@@ -1518,11 +1518,12 @@ class CBinDiff:
       self.total_functions1 = rows[0]["total"]
       self.total_functions2 = rows[1]["total"]
 
-      sql = """select address ea, mangled_function, nodes
-                 from (select id, address, mangled_function, nodes
+      fields = "id, address, mangled_function, nodes, edges, size"
+      sql = f"""select address ea, mangled_function, nodes
+                 from (select {fields}
                          from functions
                     intersect
-                       select id, address, mangled_function, nodes
+                       select {fields}
                          from diff.functions) x"""
       cur.execute(sql)
       rows = cur.fetchall()

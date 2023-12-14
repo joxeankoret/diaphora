@@ -22,7 +22,9 @@ PATTERNS = [
   "cpy", "printf", "strcat", "strncat", "gets", "mem", "system",
   "scanf", "alloc", "free", "strto",
   # Windows 'unsafe' APIs
-  "shellexecute", "winexec", "loadlibrary", "createprocess"
+  "ShellExecute", "WinExec", "LoadLibrary", "CreateProcess",
+  # Functions that may be interesting for Windows kernel drivers
+  "ProbeForWrite", "ProbeForRead"
 ]
 
 COMPARISONS = [" < ", " > ", " <= ", " >= "]
@@ -95,7 +97,7 @@ class CVulnerabilityPatches:
     ret = CVulnSearchResults()
     # Search all of our function calls patterns
     for pattern in PATTERNS:
-      if src_line.lower().find(pattern) > -1:
+      if src_line.find(pattern) > -1:
         pattern = f'Pattern {repr(pattern)}'
         ret.found = True
         ret.description = pattern
