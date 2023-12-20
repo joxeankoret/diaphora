@@ -63,6 +63,10 @@ If your company does not allow using the AGPL license, you can get a commercial 
 
 You can check the tutorial https://github.com/joxeankoret/diaphora/blob/master/doc/diaphora_help.pdf
 
+## Wiki
+
+If you are looking to how to automate the export or diffing process, or you want to speed operations, etc... You might want to take a look to the [wiki](https://github.com/joxeankoret/diaphora/wiki) where such questions are answered.
+
 ## Screenshots
 
 Diaphora finding the exact function where a vulnerability was patched in CVE-2020-1350:
