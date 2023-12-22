@@ -84,7 +84,7 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "3.1.1"
+VERSION_VALUE = "3.1.2"
 COPYRIGHT_VALUE = "Copyright(c) 2015-2023 Joxean Koret"
 
 ITEM_MAIN_EA = 0
