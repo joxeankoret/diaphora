@@ -62,10 +62,10 @@ EXPORTING_FUNCTIONS_TO_COMMIT = 5000
 
 # The minimum number of functions in a database to, by default, disable running
 # slow queries.
-MIN_FUNCTIONS_TO_DISABLE_SLOW = 3000
+MIN_FUNCTIONS_TO_DISABLE_SLOW = 4001
 # The minimum number of functions to consider it of medium size and disable, for
 # example, exporting microcode.
-MIN_FUNCTIONS_TO_CONSIDER_MEDIUM = 8000
+MIN_FUNCTIONS_TO_CONSIDER_MEDIUM = 8001
 # The minimum number of functions to consider it of huge size and recommend not
 # exporting everything.
 MIN_FUNCTIONS_TO_CONSIDER_HUGE = 100000

@@ -58,7 +58,8 @@ SELECT_FIELDS = """ f.address ea, f.name name1, df.address ea2, df.name name2,
                   f.clean_assembly clean_asm1, df.clean_assembly clean_asm2,
                   f.clean_pseudo clean_pseudo1, df.clean_pseudo clean_pseudo2,
                   f.mangled_function mangled1, df.mangled_function mangled2,
-                  f.clean_microcode clean_micro1, df.clean_microcode clean_micro2"""
+                  f.clean_microcode clean_micro1, df.clean_microcode clean_micro2,
+                  f.bytes_hash bytes_hash1, df.bytes_hash bytes_hash2"""
 def get_query_fields(heur, quote=True):
   """
   Get the list of fields used in any and all SQL heuristics queries.

@@ -177,11 +177,15 @@ def log_refresh(msg, do_log=True):
 
 
 #-------------------------------------------------------------------------------
+def is_debug_enabled():
+  return os.getenv("DIAPHORA_DEBUG") is not None
+
+#-------------------------------------------------------------------------------
 def debug_refresh(msg):
   """
   Print a debugging message if debugging is enabled.
   """
-  if os.getenv("DIAPHORA_DEBUG"):
+  if is_debug_enabled():
     log(msg)
 
 
@@ -1453,21 +1457,28 @@ class CBinDiff:
       if name1 == name2:
         ratio = 1.0
 
-      if self.has_better_match(name1, name2, ratio):
-        return
+      if ratio != 1.0:
+        if self.has_better_match(name1, name2, ratio):
+          return
 
-      if name1 in self.matched_primary:
-        if self.matched_primary[name1]["ratio"] < ratio:
-          old_ratio = self.matched_primary[name1]["ratio"]
-          message = f"Found a better match for function {name1} -> {name2}, {old_ratio} with {ratio}"
-          debug_refresh(message)
+        if name1 in self.matched_primary:
+          if self.matched_primary[name1]["ratio"] < ratio:
+            old_ratio = self.matched_primary[name1]["ratio"]
+            message = f"Found a better match for function {name1} -> {name2}, {old_ratio} with {ratio}"
+            debug_refresh(message)
+
+        if name2 in self.matched_secondary:
+          if self.matched_secondary[name2]["ratio"] < ratio:
+            old_ratio = self.matched_secondary[name2]["ratio"]
+            message = f"Found a better match for function {name1} -> {name2}, {old_ratio} with {ratio}"
+            debug_refresh(message)
 
       if chooser is not None:
         if item not in self.all_matches[chooser]:
           self.all_matches[chooser].append(item)
 
-        self.matched_primary[name1] = {"name": name2, "ratio": ratio}
-        self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
+      self.matched_primary[name1] = {"name": name2, "ratio": ratio}
+      self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
 
   def has_best_match(self, name1, name2):
     """
@@ -1483,19 +1494,18 @@ class CBinDiff:
     """
     Check if there if we found a better match already for either @name1 or @name2.
     """
+
+    # If we have a match by name, that's the best match
+    if not name1.startswith("sub_") and not name2.startswith("sub_"):
+      if name1 in self.matched_primary:
+        return self.matched_primary[name1]["name"] == name1
+
     ratio = float(ratio)
     if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] > ratio:
       return True
     if name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio:
       return True
 
-    # If we have a match by name, that's the best match
-    if not name1.startswith("sub_") and not name2.startswith("sub_"):
-      if (
-        name1 in self.matched_primary
-        and self.matched_primary[name1]["name"] == name1
-      ):
-        return True
     return False
 
   def find_equal_matches(self):
@@ -1649,53 +1659,54 @@ class CBinDiff:
     """
     Check in all the matches for duplicates and bad matches and remove them.
     """
-    dones = {}
-    d = {}
-    ea_ratios = {}
-    for key, items in self.all_matches.items():
-      d[key] = []
+    with self.items_lock:
+      dones = {}
+      d = {}
+      ea_ratios = {}
+      for key, items in self.all_matches.items():
+        d[key] = []
 
-      l_items = sorted(items, key=lambda x: float(x[5]), reverse=True)
-      for item in l_items:
-        # An example item:
-        # item = [ea1, name1, ea2, name2, "100% equal", 1, nodes1, nodes2]
-        ea = item[0]
-        name1 = item[1]
-        name2 = item[3]
-        ratio = item[5]
+        l_items = sorted(items, key=lambda x: float(x[5]), reverse=True)
+        for item in l_items:
+          # An example item:
+          # item = [ea1, name1, ea2, name2, "100% equal", 1, nodes1, nodes2]
+          ea = item[0]
+          name1 = item[1]
+          name2 = item[3]
+          ratio = item[5]
 
-        # Ignore duplicated matches (might happen due to parallelism)
-        match = f"{name1}-{name2}"
-        if match in dones:
-          continue
+          # Ignore duplicated matches (might happen due to parallelism)
+          match = f"{name1}-{name2}"
+          if match in dones:
+            continue
 
-        if name1 == name2:
-          debug_refresh(f"Using a fake 1.0 ratio for match {name1} - {name2}")
-          ratio = 1.0
+          if name1 == name2:
+            debug_refresh(f"Using a fake 1.0 ratio for match {name1} - {name2}")
+            ratio = 1.0
 
-        dones[match] = ratio
+          dones[match] = ratio
 
-        # If the previous ratio for a match with function @ea is worst, ignore
-        # this match
-        if ea in ea_ratios and ea_ratios[ea] > ratio:
-          continue
-        else:
-          ea_ratios[ea] = ratio
+          # If the previous ratio for a match with function @ea is worst, ignore
+          # this match
+          if ea in ea_ratios and ea_ratios[ea] > ratio:
+            continue
+          else:
+            ea_ratios[ea] = ratio
 
-        d[key].append(item)
+          d[key].append(item)
 
-    # Update now the dict of matched functions for both databases
-    self.matched_primary = {}
-    self.matched_secondary = {}
-    for key, l_items in d.items():
-      for item in l_items:
-        name1 = item[1]
-        name2 = item[3]
-        ratio = item[5]
-        self.matched_primary[name1] = {"name": name2, "ratio": ratio}
-        self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
+      # Update now the dict of matched functions for both databases
+      self.matched_primary = {}
+      self.matched_secondary = {}
+      for key, l_items in d.items():
+        for item in l_items:
+          name1 = item[1]
+          name2 = item[3]
+          ratio = item[5]
+          self.matched_primary[name1] = {"name": name2, "ratio": ratio}
+          self.matched_secondary[name2] = {"name": name1, "ratio": ratio}
 
-    self.all_matches = d
+      self.all_matches = d
 
   def count_different_matches(self, items):
     """
@@ -1760,6 +1771,8 @@ class CBinDiff:
     clean_pseudo2 = diff_d["clean_pseudo"]
     clean_micro1 = main_d["clean_micro"]
     clean_micro2 = diff_d["clean_micro"]
+    bytes_hash1 = main_d["bytes_hash"]
+    bytes_hash2 = diff_d["bytes_hash"]
 
     md1 = float(md1)
     md2 = float(md2)
@@ -1770,6 +1783,10 @@ class CBinDiff:
     if self.relaxed_ratio:
       fratio = real_quick_ratio
       decimal_values = "{0:.1f}"
+
+    if bytes_hash1 == bytes_hash2:
+      self.ratios_cache[key] = 1.0
+      return 1.0
 
     v3 = 0
     ast_done = False
@@ -1890,6 +1907,7 @@ class CBinDiff:
     main_d["clean_asm"] = row["clean_asm1"]
     main_d["clean_pseudo"] = row["clean_pseudo1"]
     main_d["clean_micro"] = row["clean_micro1"]
+    main_d["bytes_hash"] = row["bytes_hash1"]
 
     diff_d = {}
     diff_d["ea"] = row["ea2"]
@@ -1902,27 +1920,33 @@ class CBinDiff:
     diff_d["clean_asm"] = row["clean_asm2"]
     diff_d["clean_pseudo"] = row["clean_pseudo2"]
     diff_d["clean_micro"] = row["clean_micro2"]
+    diff_d["bytes_hash"] = row["bytes_hash2"]
 
-    nullsub = "nullsub_"
-    if name1.startswith(nullsub) or name2.startswith(nullsub):
-      return False, 0.0
+    if ratio != 1.0:
+      nullsub = "nullsub_"
+      if name1.startswith(nullsub) or name2.startswith(nullsub):
+        debug_refresh(f"Ignoring nullsub functions {name1}-{name2}")
+        return False, 0.0
 
-    # Do we already have a 1.0 match for any of these functions?
-    if self.has_best_match(name1, name2):
-      return False, 0.0
+      # Do we already have a 1.0 match for any of these functions?
+      if self.has_best_match(name1, name2):
+        debug_refresh(f"Ignoring as we have a best match {name1}-{name2}")
+        return False, 0.0
 
-    if ratio is None:
-      r = self.check_ratio(main_d, diff_d)
-      if debug:
-        # pylint: disable-next=consider-using-f-string
-        msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
-        logging.debug(msg)
-    else:
-      r = ratio
+      if ratio != 1.0:
+        if ratio is None:
+          r = self.check_ratio(main_d, diff_d)
+          if debug:
+            # pylint: disable-next=consider-using-f-string
+            msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
+            logging.debug(msg)
+        else:
+          r = ratio
 
-    # Do we have a previous match with a better comparison ratio than this?
-    if self.has_better_match(name1, name2, r):
-      return False, 0.0
+        # Do we have a previous match with a better comparison ratio than this?
+        if self.has_better_match(name1, name2, r):
+          debug_refresh(f"Ignoring as there is a better match than {r} for {name1}-{name2}")
+          return False, 0.0
 
     should_add = True
     if self.hooks is not None:
@@ -2133,7 +2157,6 @@ class CBinDiff:
         bb1 = int(row["bb1"])
         bb2 = int(row["bb2"])
         desc = row["description"]
-
         item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
         self.add_match(name1, name2, 1.0, item, category)
         if r < config.DEFAULT_PARTIAL_RATIO:
@@ -2552,6 +2575,7 @@ class CBinDiff:
     main_d["clean_asm"] = main_row["clean_assembly"]
     main_d["clean_pseudo"] = main_row["clean_pseudo"]
     main_d["clean_micro"] = main_row["clean_microcode"]
+    main_d["bytes_hash"] = main_row["bytes_hash"]
 
     diff_d = {}
     diff_d["ea"] = diff_row["address"]
@@ -2564,6 +2588,7 @@ class CBinDiff:
     diff_d["clean_asm"] = diff_row["clean_assembly"]
     diff_d["clean_pseudo"] = diff_row["clean_pseudo"]
     diff_d["clean_micro"] = diff_row["clean_microcode"]
+    diff_d["bytes_hash"] = diff_row["bytes_hash"]
 
     ratio = self.check_ratio(main_d, diff_d)
     return ratio
@@ -3300,13 +3325,9 @@ class CBinDiff:
             for diff_row in diff_rows:
               name1 = main_row["name"]
               name2 = diff_row["name"]
-              if name1.startswith("nullsub_") or name2.startswith(
-                "nullsub_"
-              ):
+              if name1.startswith("nullsub_") or name2.startswith("nullsub_"):
                 continue
-              if not name1.startswith("sub_") and not name2.startswith(
-                "sub_"
-              ):
+              if not name1.startswith("sub_") and not name2.startswith("sub_"):
                 continue
 
               pseudocode_lines1 = main_row["pseudocode_lines"]
@@ -3517,17 +3538,7 @@ class CBinDiff:
     sql_main = sql.replace("{db}", "main")
     sql_diff = sql.replace("{db}", "diff")
 
-    sql = f"""select f.address ea, f.name name1, df.address ea2, df.name name2,
-                    '{heur}' description,
-                    f.pseudocode pseudo1, df.pseudocode pseudo2,
-                    f.assembly asm1, df.assembly asm2,
-                    f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                    f.nodes bb1, df.nodes bb2,
-                    cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-                    f.clean_assembly clean_asm1, df.clean_assembly clean_asm2,
-                    f.clean_pseudo clean_pseudo1, df.clean_pseudo clean_pseudo2,
-                    f.mangled_function mangled1, df.mangled_function mangled2,
-                    f.clean_microcode clean_micro1, df.clean_microcode clean_micro2
+    sql = f"""select """ + get_query_fields(heur) + """
                from functions f,
                     diff.functions df
               where cast(f.address as real)  between ? and ?
