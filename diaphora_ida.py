@@ -2608,11 +2608,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # stuff later on.
     assembly_addrs = []
 
-    # After sorting our the addresses of basic blocks, be sure that the
+    # After sorting out the addresses of basic blocks, be sure that the
     # very first address is always the entry point, no matter at what
     # address it is.
     base = f - image_base
-    keys.remove(base)
+    if base in keys:
+      keys.remove(base)
     keys.insert(0, base)
     for key in keys:
       for line in assembly[key]:
