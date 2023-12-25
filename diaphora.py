@@ -1554,6 +1554,17 @@ class CBinDiff:
     """
     return max(self.cpu_count, 1)
 
+  def call_hook(self, func_name, default_ret, args):
+    """
+    Call the given event @func_name(@args) returning @default_ret if it doesn't
+    exist.
+    """
+    if self.hooks is not None:
+      method = getattr(self.hooks, func_name, None)
+      if method is not None:
+        return method(*args)
+    return default_ret
+
   def run_heuristics_for_category(self, arg_category):
     """
     Run a total of @total_cpus threads running SQL heuristics for category @arg_category
@@ -1568,14 +1579,9 @@ class CBinDiff:
     if self.ignore_small_functions:
       postfix = config.SQL_DEFAULT_POSTFIX
 
-    if self.hooks is not None:
-      if "get_queries_postfix" in dir(self.hooks):
-        postfix = self.hooks.get_queries_postfix(arg_category, postfix)
-
+    self.call_hook("get_queries_postfix", None, [arg_category, postfix])
     heuristics = list(HEURISTICS)
-    if self.hooks is not None:
-      if "get_heuristics" in dir(self.hooks):
-        heuristics = self.hooks.get_heuristics(arg_category, heuristics)
+    heuristics = self.call_hook("get_heuristics", heuristics, [arg_category, heuristics])
 
     heuristic_functions = []
     for heur in heuristics:
@@ -1618,10 +1624,7 @@ class CBinDiff:
       log_refresh(f"{mode} Finding with heuristic '{name}'")
       sql = sql.replace("%POSTFIX%", postfix)
 
-      if self.hooks is not None:
-        if "on_launch_heuristic" in dir(self.hooks):
-          sql = self.hooks.on_launch_heuristic(name, sql)
-
+      sql = self.call_hook("on_launch_heuristic", sql, [name, sql])
       if sql is None:
         continue
 
@@ -1949,10 +1952,8 @@ class CBinDiff:
           return False, 0.0
 
     should_add = True
-    if self.hooks is not None:
-      if "on_match" in dir(self.hooks):
-        should_add, r = self.hooks.on_match(main_d, diff_d, desc, r)
-
+    args = [main_d, diff_d, desc, r]
+    should_add, r = self.call_hook("on_match", [should_add, r], args)
     return should_add, r
 
   def continue_getting_sql_rows(self, i):
@@ -2024,11 +2025,7 @@ class CBinDiff:
       else:
         chooser = None
         item = None
-        if (
-          r < config.DEFAULT_PARTIAL_RATIO
-          and r > val
-          and unreliable is not None
-        ):
+        if r < config.DEFAULT_PARTIAL_RATIO and r > val and unreliable is not None:
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
           # pylint: disable-next=consider-using-f-string
@@ -3043,6 +3040,36 @@ class CBinDiff:
 
     return main_asm, diff_asm
 
+  def call_on_match_hook(self, r, main_row, diff_row):
+    """
+    Call the "on_match" hook, if it exists.
+    """
+    should_add = True
+    if self.hooks is not None and "on_match" in dir(self.hooks):
+      desc = heur
+      ea = main_row["address"]
+      ea2 = diff_row["address"]
+      name1 = main_row["name"]
+      name2 = main_row["name"]
+      pseudo1 = main_row["pseudocode"]
+      pseudo2 = diff_row["pseudocode"]
+      asm1 = main_row["assembly"]
+      asm2 = diff_row["assembly"]
+      ast1 = main_row["pseudocode_primes"]
+      ast2 = diff_row["pseudocode_primes"]
+      bb1 = int(main_row["nodes"])
+      bb2 = int(diff_row["nodes"])
+      md1 = main_row["md_index"]
+      md2 = diff_row["md_index"]
+
+      d1 = { "ea": ea,  "bb": bb1, "name": name1, "ast": ast1,
+              "pseudo": pseudo1, "asm": asm1, "md": md1 }
+      d2 = { "ea": ea2, "bb": bb2, "name": name2, "ast": ast2,
+              "pseudo": pseudo2, "asm": asm2, "md": md2 }
+      tmp = self.call_hook("on_match", [should_add, r], [d1, d2, desc, r])
+      should_add, r = tmp
+    return should_add, r
+
   def find_one_match_diffing(
     self, input_main_row, input_diff_row, field_name, heur, iteration, dones
   ):
@@ -3122,45 +3149,7 @@ class CBinDiff:
               if r + config.MATCHES_BONUS_RATIO < 1.0:
                 r += config.MATCHES_BONUS_RATIO
 
-              should_add = True
-              if self.hooks is not None:
-                if "on_match" in dir(self.hooks):
-                  desc = heur
-                  ea = main_row["address"]
-                  ea2 = diff_row["address"]
-                  name1 = main_row["name"]
-                  name2 = main_row["name"]
-                  pseudo1 = main_row["pseudocode"]
-                  pseudo2 = diff_row["pseudocode"]
-                  asm1 = main_row["assembly"]
-                  asm2 = diff_row["assembly"]
-                  ast1 = main_row["pseudocode_primes"]
-                  ast2 = diff_row["pseudocode_primes"]
-                  bb1 = int(main_row["nodes"])
-                  bb2 = int(diff_row["nodes"])
-                  md1 = main_row["md_index"]
-                  md2 = diff_row["md_index"]
-
-                  d1 = {
-                    "ea": ea,
-                    "bb": bb1,
-                    "name": name1,
-                    "ast": ast1,
-                    "pseudo": pseudo1,
-                    "asm": asm1,
-                    "md": md1,
-                  }
-                  d2 = {
-                    "ea": ea2,
-                    "bb": bb2,
-                    "name": name2,
-                    "ast": ast2,
-                    "pseudo": pseudo2,
-                    "asm": asm2,
-                    "md": md2,
-                  }
-                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
+              should_add, r = self.call_on_match_hook(r, main_row, diff_row)
               if should_add:
                 heur_text = f"{heur} (iteration #{iteration})"
                 ea1 = main_row["address"]
@@ -3270,20 +3259,12 @@ class CBinDiff:
     # Only if the processor is the same for both databases we diff assembly
     if self.is_same_processor:
       heur = "Callee found diffing matches assembly"
-      enabled = True
-      if self.hooks is not None:
-        if "on_special_heuristic" in dir(self.hooks):
-          enabled = self.hooks.on_special_heuristic(heur, iteration)
-
+      enabled = self.call_hook("on_special_heuristic", True, [heur, iteration])
       if enabled:
         self.find_matches_diffing_assembly()
 
-    enabled = True
     heur = "Callee found diffing matches pseudo-code"
-    if self.hooks is not None:
-      if "on_special_heuristic" in dir(self.hooks):
-        enabled = self.hooks.on_special_heuristic(heur, iteration)
-    
+    enabled = self.call_hook("on_special_heuristic", True, [heur, iteration])
     if enabled:
       self.find_matches_diffing_pseudo()
 
@@ -3353,45 +3334,7 @@ class CBinDiff:
               if name2 in local_diff_matched and diff_score[name2] >= r:
                 continue
 
-              should_add = True
-              if self.hooks is not None:
-                if "on_match" in dir(self.hooks):
-                  desc = heur_text
-                  ea = main_row["address"]
-                  ea2 = diff_row["address"]
-                  name1 = main_row["name"]
-                  name2 = main_row["name"]
-                  pseudo1 = main_row["pseudocode"]
-                  pseudo2 = diff_row["pseudocode"]
-                  asm1 = main_row["assembly"]
-                  asm2 = diff_row["assembly"]
-                  ast1 = main_row["pseudocode_primes"]
-                  ast2 = diff_row["pseudocode_primes"]
-                  bb1 = int(main_row["nodes"])
-                  bb2 = int(diff_row["nodes"])
-                  md1 = main_row["md_index"]
-                  md2 = diff_row["md_index"]
-
-                  d1 = {
-                    "ea": ea,
-                    "bb": bb1,
-                    "name": name1,
-                    "ast": ast1,
-                    "pseudo": pseudo1,
-                    "asm": asm1,
-                    "md": md1,
-                  }
-                  d2 = {
-                    "ea": ea2,
-                    "bb": bb2,
-                    "name": name2,
-                    "ast": ast2,
-                    "pseudo": pseudo2,
-                    "asm": asm2,
-                    "md": md2,
-                  }
-                  should_add, r = self.hooks.on_match(d1, d2, desc, r)
-
+              should_add, r = self.call_on_match_hook(r, main_row, diff_row)
               if should_add:
                 ea1 = main_row["address"]
                 ea2 = diff_row["address"]
@@ -3399,16 +3342,7 @@ class CBinDiff:
                 name2 = diff_row["name"]
                 bb1 = int(main_row["nodes"])
                 bb2 = int(diff_row["nodes"])
-                new_item = [
-                  ea1,
-                  name1,
-                  ea2,
-                  name2,
-                  heur_text,
-                  r,
-                  bb1,
-                  bb2,
-                ]
+                new_item = [ ea1, name1, ea2, name2, heur_text, r, bb1, bb2 ]
                 self.add_match(name1, name2, r, new_item, chooser)
 
                 local_main_matched.add(name1)
@@ -3439,12 +3373,9 @@ class CBinDiff:
     MAX_FUNCTIONS_PER_GAP. We don't consider bigger gaps. For now.
     """
     heur = "Local affinity"
-    enabled = True
-    if self.hooks is not None:
-      if "on_special_heuristic" in dir(self.hooks):
-        enabled = self.hooks.on_special_heuristic(heur, iteration)
-        if not enabled:
-          return
+    enabled = self.call_hook("on_special_heuristic", True, [heur, iteration])
+    if not enabled:
+      return
 
     self.cleanup_matches()
     log_refresh("Finding locally affine functions")
@@ -3515,12 +3446,9 @@ class CBinDiff:
     in that specific area.
     """
     heur = "Related compilation unit"
-    enabled = True
-    if self.hooks is not None:
-      if "on_special_heuristic" in dir(self.hooks):
-        enabled = self.hooks.on_special_heuristic(heur, iteration)
-        if not enabled:
-          return
+    enabled = self.call_hook("on_special_heuristic", True, [heur, iteration])
+    if not enabled:
+      return
 
     self.cleanup_matches()
     log_refresh(f"Finding with heuristic '{heur}'")
@@ -3576,12 +3504,9 @@ class CBinDiff:
     Find matches from previous good matches using a number of heuristics.
     """
     heur = "Same constants related matches"
-    enabled = True
-    if self.hooks is not None:
-      if "on_special_heuristic" in dir(self.hooks):
-        enabled = self.hooks.on_special_heuristic(heur, iteration)
-        if not enabled:
-          return
+    enabled = self.call_hook("on_special_heuristic", True, [heur, iteration])
+    if not enabled:
+      return
 
     self.cleanup_matches()
 
@@ -3621,9 +3546,7 @@ class CBinDiff:
       cur.execute("select value from diff.version")
     except:
       log(f"Error: {sys.exc_info()[1]}")
-      log(
-        "The selected file does not look like a valid Diaphora exported database!"
-      )
+      log("The selected file does not look like a valid Diaphora exported database!")
       cur.close()
       return False
 
@@ -3633,9 +3556,7 @@ class CBinDiff:
       return False
 
     if row["value"] != VERSION_VALUE:
-      log(
-        f"WARNING: The database is from a different version (current {VERSION_VALUE}, database {row[0]})!"
-      )
+      log(f"WARNING: The database is from a different version (current {VERSION_VALUE}, database {row[0]})!")
 
     try:
       t0 = time.monotonic()
@@ -3724,10 +3645,7 @@ class CBinDiff:
         # Show the list of unmatched functions in both databases
         log_refresh("Finding unmatched functions")
         self.find_unmatched()
-
-        if self.hooks is not None:
-          if "on_finish" in dir(self.hooks):
-            self.hooks.on_finish()
+        self.call_hook("on_finish", None, [])
 
         best = len(self.best_chooser.items)
         partial = len(self.partial_chooser.items)
