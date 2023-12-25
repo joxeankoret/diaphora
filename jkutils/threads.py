@@ -63,7 +63,7 @@ def threads_apply(threads, targets, wait_time, log_refresh, timeout):
         t.timeout = True
       t.join(wait_time)
 
-    if times % 5 == 0:
+    if times % 50 == 0:
       names = []
       for x in threads_list:
         names.append(x.name)
