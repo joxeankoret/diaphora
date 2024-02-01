@@ -165,5 +165,33 @@ RUN_DEFAULT_SCRIPTS = True
 # Where is the default patch diffing script?
 DEFAULT_SCRIPT_PATCH_DIFF = os.path.join(CONFIGURATION_DIRECTORY, "scripts/patch_diff_vulns.py")
 
+# When finding new matches in (potential) compilation units by diffing previous
+# results, which is the minimum similarity ratio that we must get in order to
+# consider a functions pair match good.
 RELATED_MATCHES_MIN_RATIO = 0.8
+
+# Multiple heuristics are launched in parallel in different threads. Threads are
+# joined for a fraction of seconds to wait for them to finish after each 
+# iteration in a thread. This value indicates the number of seconds to join. It
+# basically translates to this: thread.join(THREADS_WAIT_TIME).
 THREADS_WAIT_TIME = 0.5
+
+
+#-------------------------------------------------------------------------------
+# Diaphora can try to train using logistic regression a classifier specific for
+# the current set of binaries using matches labelled as "Best" or "Partial" in
+# order to try to learn what is a good match specifically for the two binaries
+# being compared. This approach seems to work when there are a lot of initial
+# matches, and seems to cause a lot of false positives when there aren't enough
+# good initial matches. This configuration directive is used to enable/disable
+# this experimental feature.
+ML_TRAIN_LOCAL_MODEL = True
+
+# What is the minimum ratio required for a match to be considered for usage to
+# train a local model?
+ML_MATCHES_MIN_RATIO = 0.5
+
+# What value should be added to the final similarity ratio when the specialized
+# classifier (trained with known good and bad results found for the current two
+# binaries being compared) finds what it thinks is a good match.
+ML_DEEP_RATIO_ADDED_SCORE = 0.05

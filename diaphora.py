@@ -40,6 +40,9 @@ from difflib import SequenceMatcher, unified_diff
 import diaphora_config as config
 import diaphora_heuristics
 
+import ml.model
+from ml.model import ML_ENABLED, train, predict, get_model_name
+
 from diaphora_heuristics import (
   HEURISTICS,
   HEUR_TYPE_RATIO,
@@ -74,6 +77,7 @@ try:
 except ImportError:
   IS_IDA = False
 
+importlib.reload(ml.model)
 importlib.reload(config)
 importlib.reload(schema)
 importlib.reload(jk_threads)
@@ -84,8 +88,8 @@ if hasattr(sys, "set_int_max_str_digits"):
   sys.set_int_max_str_digits(0)
 
 #-------------------------------------------------------------------------------
-VERSION_VALUE = "3.1.2"
-COPYRIGHT_VALUE = "Copyright(c) 2015-2023 Joxean Koret"
+VERSION_VALUE = "3.2.0"
+COPYRIGHT_VALUE = "Copyright(c) 2015-2024 Joxean Koret"
 
 ITEM_MAIN_EA = 0
 ITEM_MAIN_NAME = 1
@@ -201,15 +205,15 @@ class CChooser:
     A single chooser item.
     """
 
-    def __init__(self, ea, name, ea2=None, name2=None, desc=None, ratio=0, bb1=0, bb2=0):
+    def __init__(self, ea, name, ea2=None, name2=None, desc=None, ratio=0, nodes1=0, nodes2=0):
       self.ea = ea
       self.vfname = name
       self.ea2 = ea2
       self.vfname2 = name2
       self.description = desc
       self.ratio = ratio
-      self.bb1 = int(bb1)
-      self.bb2 = int(bb2)
+      self.nodes1 = int(nodes1)
+      self.nodes2 = int(nodes2)
 
     def __str__(self):
       return "%08x" % int(self.ea)
@@ -255,8 +259,8 @@ class CChooser:
           "%08x" % int(item.ea2),
           item.vfname2,
           dec_vals % item.ratio,
-          "%d" % item.bb1,
-          "%d" % item.bb2,
+          "%d" % item.nodes1,
+          "%d" % item.nodes2,
           item.description,
         ]
       )
@@ -369,6 +373,9 @@ class CBinDiff:
     self.slow_heuristics = self.get_value_for(
       "slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS
     )
+    self.machine_learning = self.get_value_for(
+      "machine_learning", config.ML_TRAIN_LOCAL_MODEL
+    )
     self.exclude_library_thunk = self.get_value_for(
       "exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK
     )
@@ -461,6 +468,12 @@ class CBinDiff:
 
       self.db_close()
 
+  def log(self, message):
+    log(message)
+
+  def log_refresh(self, message):
+    log_refresh(message)
+
   def refresh(self):
     """
     Fake member, it is only useful (and implemented) when running from within IDA.
@@ -479,10 +492,6 @@ class CBinDiff:
     except:
       err = str(sys.exc_info()[1])
       print(f"Error loading project specific Python script: {err}")
-      return False
-
-    if module is None:
-      # How can it be?
       return False
 
     keys = dir(module)
@@ -1762,14 +1771,14 @@ class CBinDiff:
     if key in self.ratios_cache:
       return self.ratios_cache[key]
 
-    ast1 = main_d["ast"]
-    ast2 = diff_d["ast"]
+    ast1 = main_d["pseudocode_primes"]
+    ast2 = diff_d["pseudocode_primes"]
     pseudo1 = main_d["pseudo"]
     pseudo2 = diff_d["pseudo"]
-    md1 = main_d["md"]
-    md2 = diff_d["md"]
-    clean_asm1 = main_d["clean_asm"]
-    clean_asm2 = diff_d["clean_asm"]
+    md1 = main_d["md_index"]
+    md2 = diff_d["md_index"]
+    clean_assembly1 = main_d["clean_assembly"]
+    clean_assembly2 = diff_d["clean_assembly"]
     clean_pseudo1 = main_d["clean_pseudo"]
     clean_pseudo2 = diff_d["clean_pseudo"]
     clean_micro1 = main_d["clean_micro"]
@@ -1827,13 +1836,13 @@ class CBinDiff:
               self.ratios_cache[key] = 1.0
               return 1.0
 
-    v2 = fratio(clean_asm1, clean_asm2)
+    v2 = fratio(clean_assembly1, clean_assembly2)
     v2 = float(decimal_values.format(v2))
     if v2 == 1:
       # Actually, same as the quick_ratio/real_quick_ratio check done
       # with the pseudo-code
       if fratio == real_quick_ratio:
-        v2 = quick_ratio(clean_asm1, clean_asm2)
+        v2 = quick_ratio(clean_assembly1, clean_assembly2)
         if v2 == 1.0:
           self.ratios_cache[key] = 1.0
           return 1.0
@@ -1871,7 +1880,7 @@ class CBinDiff:
           r = v
 
     if r < 1.0:
-      score = self.deep_ratio(int(main_d["ea"]), int(diff_d["ea"]))
+      score = self.deep_ratio(main_d, diff_d, r)
       if r + score < 1.0:
         r += score
 
@@ -1904,26 +1913,46 @@ class CBinDiff:
     main_d["name"] = row["name1"]
     main_d["pseudo"] = row["pseudo1"]
     main_d["asm"] = row["asm1"]
-    main_d["ast"] = row["pseudo_primes1"]
-    main_d["bb"] = row["bb1"]
-    main_d["md"] = row["md1"]
-    main_d["clean_asm"] = row["clean_asm1"]
+    main_d["pseudocode_primes"] = row["pseudo_primes1"]
+    main_d["nodes"] = row["nodes1"]
+    main_d["md_index"] = row["md1"]
+    main_d["clean_assembly"] = row["clean_assembly1"]
     main_d["clean_pseudo"] = row["clean_pseudo1"]
     main_d["clean_micro"] = row["clean_micro1"]
     main_d["bytes_hash"] = row["bytes_hash1"]
+    main_d["edges"] = row["edges1"]
+    main_d["indegree"] = row["indegree1"]
+    main_d["outdegree"] = row["outdegree1"]
+    main_d["instructions"] = row["instructions1"]
+    main_d["cyclomatic_complexity"] = row["cc1"]
+    main_d["strongly_connected"] = row["strongly_connected1"]
+    main_d["loops"] = row["loops1"]
+    main_d["constants_count"] = row["constants_count1"]
+    main_d["size"] = row["size1"]
+    main_d["kgh_hash"] = row["kgh_hash1"]
 
     diff_d = {}
     diff_d["ea"] = row["ea2"]
     diff_d["name"] = row["name2"]
     diff_d["pseudo"] = row["pseudo2"]
     diff_d["asm"] = row["asm2"]
-    diff_d["ast"] = row["pseudo_primes2"]
-    diff_d["bb"] = row["bb2"]
-    diff_d["md"] = row["md2"]
-    diff_d["clean_asm"] = row["clean_asm2"]
+    diff_d["pseudocode_primes"] = row["pseudo_primes2"]
+    diff_d["nodes"] = row["nodes2"]
+    diff_d["md_index"] = row["md2"]
+    diff_d["clean_assembly"] = row["clean_assembly2"]
     diff_d["clean_pseudo"] = row["clean_pseudo2"]
     diff_d["clean_micro"] = row["clean_micro2"]
     diff_d["bytes_hash"] = row["bytes_hash2"]
+    diff_d["edges"] = row["edges2"]
+    diff_d["indegree"] = row["indegree2"]
+    diff_d["outdegree"] = row["outdegree2"]
+    diff_d["instructions"] = row["instructions2"]
+    diff_d["cyclomatic_complexity"] = row["cc2"]
+    diff_d["strongly_connected"] = row["strongly_connected2"]
+    diff_d["loops"] = row["loops2"]
+    diff_d["constants_count"] = row["constants_count2"]
+    diff_d["size"] = row["size2"]
+    diff_d["kgh_hash"] = row["kgh_hash2"]
 
     if ratio != 1.0:
       nullsub = "nullsub_"
@@ -1999,8 +2028,8 @@ class CBinDiff:
       ea2 = row["ea2"]
       name2 = row["name2"]
       desc = row["description"]
-      bb1 = int(row["bb1"])
-      bb2 = int(row["bb2"])
+      nodes1 = int(row["nodes1"])
+      nodes2 = int(row["nodes2"])
 
       done = True
       chooser = None
@@ -2011,10 +2040,10 @@ class CBinDiff:
 
       if r == 1.0:
         chooser = best
-        item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
+        item = [ea, name1, ea2, name2, desc, r, nodes1, nodes2]
       elif r >= val and partial is not None:
         chooser = partial
-        item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
+        item = [ea, name1, ea2, name2, desc, r, nodes1, nodes2]
       else:
         done = False
 
@@ -2027,7 +2056,7 @@ class CBinDiff:
         item = None
         if r < config.DEFAULT_PARTIAL_RATIO and r > val and unreliable is not None:
           chooser = "unreliable"
-          item = [ea, name1, ea2, name2, desc, r, bb1, bb2]
+          item = [ea, name1, ea2, name2, desc, r, nodes1, nodes2]
           # pylint: disable-next=consider-using-f-string
           matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
 
@@ -2151,10 +2180,10 @@ class CBinDiff:
         name1 = row["name1"]
         ea2 = row["ea2"]
         name2 = row["name2"]
-        bb1 = int(row["bb1"])
-        bb2 = int(row["bb2"])
+        nodes1 = int(row["nodes1"])
+        nodes2 = int(row["nodes2"])
         desc = row["description"]
-        item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
+        item = [ea, name1, ea2, name2, desc, 1, nodes1, nodes2]
         self.add_match(name1, name2, 1.0, item, category)
         if r < config.DEFAULT_PARTIAL_RATIO:
           debug_refresh(
@@ -2196,8 +2225,8 @@ class CBinDiff:
         name1 = row["name1"]
         name2 = row["name2"]
 
-        bb1 = int(row["bb1"])
-        bb2 = int(row["bb2"])
+        nodes1 = int(row["nodes1"])
+        nodes2 = int(row["nodes2"])
 
         s1 = set(json.loads(row["f_names"]))
         s2 = set(json.loads(row["df_names"]))
@@ -2219,10 +2248,10 @@ class CBinDiff:
           ea2 = row["ea2"]
           name2 = row["name2"]
           desc = row["description"]
-          bb1 = int(row["bb1"])
-          bb2 = int(row["bb2"])
+          nodes1 = int(row["nodes1"])
+          nodes2 = int(row["nodes2"])
 
-          item = [ea, name1, ea2, name2, desc, ratio, bb1, bb2]
+          item = [ea, name1, ea2, name2, desc, ratio, nodes1, nodes2]
           if ratio == 1.0:
             the_chooser = "best"
           else:
@@ -2272,21 +2301,21 @@ class CBinDiff:
           ea2 = row["ea2"]
           name2 = row["name2"]
           desc = row["description"]
-          bb1 = int(row["bb1"])
-          bb2 = int(row["bb2"])
+          nodes1 = int(row["nodes1"])
+          nodes2 = int(row["nodes2"])
           md1 = row["md1"]
           md2 = row["md2"]
           if float(ratio) == 1.0 or (
             self.relaxed_ratio and md1 != 0 and md1 == md2
           ):
             the_chooser = "best"
-            item = [ea, name1, ea2, name2, desc, 1, bb1, bb2]
+            item = [ea, name1, ea2, name2, desc, 1, nodes1, nodes2]
           else:
             the_chooser = choose
             if ratio + config.MATCHES_BONUS_RATIO < 1.0:
               ratio += config.MATCHES_BONUS_RATIO
 
-            item = [ea, name1, ea2, name2, desc, ratio, bb1, bb2]
+            item = [ea, name1, ea2, name2, desc, ratio, nodes1, nodes2]
 
           self.add_match(name1, name2, ratio, item, the_chooser)
     finally:
@@ -2447,6 +2476,8 @@ class CBinDiff:
     self.best_chooser = self.chooser("Best matches", self)
     self.multimatch_chooser = self.chooser("Problematic matches", self)
 
+    self.ml_chooser = self.chooser("ML matches", self)
+
     self.unmatched_second = self.chooser("Unmatched in secondary", self, False)
     self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
 
@@ -2474,7 +2505,7 @@ class CBinDiff:
       )
 
       sql = """create table results (type, line, address, name, address2, name2,
-                   ratio, bb1, bb2, description)"""
+                   ratio, nodes1, nodes2, description)"""
       cur.execute(sql)
 
       sql = "create unique index uq_results on results(address, address2)"
@@ -2561,31 +2592,59 @@ class CBinDiff:
     """
     Compare the functions of one SQL match.
     """
+    fields = [
+      ["ea", "address"],   ["name", "name"], ["pseudo", "pseudocode"],
+      ["asm", "assembly"], ["pseudocode_primes", "pseudocode_primes"], ["nodes", "nodes"],
+      ["md_index", "md_index"],  ["clean_assembly", "clean_assembly"],
+      ["clean_pseudo", "clean_pseudo"], ["clean_micro", "clean_microcode"],
+      ["bytes_hash", "bytes_hash"], ["edges", "edges"]
+    ]
+
     main_d = {}
     main_d["ea"] = main_row["address"]
     main_d["name"] = main_row["name"]
     main_d["pseudo"] = main_row["pseudocode"]
     main_d["asm"] = main_row["assembly"]
-    main_d["ast"] = main_row["pseudocode_primes"]
-    main_d["bb"] = main_row["nodes"]
-    main_d["md"] = main_row["md_index"]
-    main_d["clean_asm"] = main_row["clean_assembly"]
+    main_d["pseudocode_primes"] = main_row["pseudocode_primes"]
+    main_d["nodes"] = main_row["nodes"]
+    main_d["md_index"] = main_row["md_index"]
+    main_d["clean_assembly"] = main_row["clean_assembly"]
     main_d["clean_pseudo"] = main_row["clean_pseudo"]
     main_d["clean_micro"] = main_row["clean_microcode"]
     main_d["bytes_hash"] = main_row["bytes_hash"]
+    main_d["edges"] = main_row["edges"]
+    main_d["indegree"] = main_row["indegree"]
+    main_d["outdegree"] = main_row["outdegree"]
+    main_d["instructions"] = main_row["instructions"]
+    main_d["cyclomatic_complexity"] = main_row["cyclomatic_complexity"]
+    main_d["strongly_connected"] = main_row["strongly_connected"]
+    main_d["loops"] = main_row["loops"]
+    main_d["constants_count"] = main_row["constants_count"]
+    main_d["size"] = main_row["size"]
+    main_d["kgh_hash"] = main_row["kgh_hash"]
 
     diff_d = {}
     diff_d["ea"] = diff_row["address"]
     diff_d["name"] = diff_row["name"]
     diff_d["pseudo"] = diff_row["pseudocode"]
     diff_d["asm"] = diff_row["assembly"]
-    diff_d["ast"] = diff_row["pseudocode_primes"]
-    diff_d["bb"] = diff_row["nodes"]
-    diff_d["md"] = diff_row["md_index"]
-    diff_d["clean_asm"] = diff_row["clean_assembly"]
+    diff_d["pseudocode_primes"] = diff_row["pseudocode_primes"]
+    diff_d["nodes"] = diff_row["nodes"]
+    diff_d["md_index"] = diff_row["md_index"]
+    diff_d["clean_assembly"] = diff_row["clean_assembly"]
     diff_d["clean_pseudo"] = diff_row["clean_pseudo"]
     diff_d["clean_micro"] = diff_row["clean_microcode"]
     diff_d["bytes_hash"] = diff_row["bytes_hash"]
+    diff_d["edges"] = diff_row["edges"]
+    diff_d["indegree"] = diff_row["indegree"]
+    diff_d["outdegree"] = diff_row["outdegree"]
+    diff_d["instructions"] = diff_row["instructions"]
+    diff_d["cyclomatic_complexity"] = diff_row["cyclomatic_complexity"]
+    diff_d["strongly_connected"] = diff_row["strongly_connected"]
+    diff_d["loops"] = diff_row["loops"]
+    diff_d["constants_count"] = diff_row["constants_count"]
+    diff_d["size"] = diff_row["size"]
+    diff_d["kgh_hash"] = diff_row["kgh_hash"]
 
     ratio = self.check_ratio(main_d, diff_d)
     return ratio
@@ -2777,10 +2836,10 @@ class CBinDiff:
     ea2 = item[2]
     vfname2 = item[3]
     ratio = item[4]
-    bb1 = item[5]
-    bb2 = item[6]
+    nodes1 = item[5]
+    nodes2 = item[6]
     desc = item[7]
-    return CChooser.Item(ea1, vfname1, ea2, vfname2, ratio, bb1, bb2, desc)
+    return CChooser.Item(ea1, vfname1, ea2, vfname2, ratio, nodes1, nodes2, desc)
 
   def add_multimatches_to_chooser(self, multi, ignore_list, dones):
     """
@@ -2799,7 +2858,7 @@ class CBinDiff:
 
     return ignore_list, dones
 
-  def deep_ratio(self, ea1, ea2):
+  def deep_ratio(self, main_d, diff_d, ratio):
     """
     Try to get a score to add to the value returned by `check_ratio()` so less
     multimatches happen.
@@ -2813,6 +2872,9 @@ class CBinDiff:
     at the same time, an acceptable number of multimatches (which are also kind
     of false positives).
     """
+    ea1 = int(main_d["ea"])
+    ea2 = int(diff_d["ea"])
+
     score = 0
 
     # It isn't 100% clear if the required fields should be better added to the
@@ -2836,10 +2898,7 @@ class CBinDiff:
       pseudocode_primes1 = main_row["pseudocode_primes"]
       pseudocode_primes2 = diff_row["pseudocode_primes"]
       if pseudocode_primes1 is not None and pseudocode_primes2 is not None:
-        if (
-          pseudocode_primes1 == pseudocode_primes2
-          and pseudocode_primes1 != ""
-        ):
+        if pseudocode_primes1 == pseudocode_primes2 and pseudocode_primes1 != "":
           score += 0.001
 
       in1 = main_row["indegree"]
@@ -2871,6 +2930,25 @@ class CBinDiff:
           set_result = set1.intersection(set2)
           if len(set_result) > 0:
             score += len(set_result) * 0.0005
+
+      ml_add = False
+      if config.ML_TRAIN_LOCAL_MODEL and ML_ENABLED:
+        ml_ratio = predict(main_row, diff_row, ratio)
+        if ml_ratio > 0:
+          log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
+          score += config.ML_DEEP_RATIO_ADDED_SCORE
+          ml_add = True
+
+      if ml_add:
+        vfname1 = main_d["name"]
+        vfname2 = diff_d["name"]
+        nodes1 = main_d["nodes"]
+        nodes2 = diff_d["nodes"]
+        desc = f"ML {get_model_name()}"
+
+        tmp_item = CChooser.Item(ea1, vfname1, ea2, vfname2, desc, ratio, nodes1, nodes2)
+        self.ml_chooser.add_item(tmp_item)
+
     finally:
       cur.close()
 
@@ -3057,15 +3135,15 @@ class CBinDiff:
       asm2 = diff_row["assembly"]
       ast1 = main_row["pseudocode_primes"]
       ast2 = diff_row["pseudocode_primes"]
-      bb1 = int(main_row["nodes"])
-      bb2 = int(diff_row["nodes"])
+      nodes1 = int(main_row["nodes"])
+      nodes2 = int(diff_row["nodes"])
       md1 = main_row["md_index"]
       md2 = diff_row["md_index"]
 
-      d1 = { "ea": ea,  "bb": bb1, "name": name1, "ast": ast1,
-              "pseudo": pseudo1, "asm": asm1, "md": md1 }
-      d2 = { "ea": ea2, "bb": bb2, "name": name2, "ast": ast2,
-              "pseudo": pseudo2, "asm": asm2, "md": md2 }
+      d1 = { "ea": ea,  "nodes": nodes1, "name": name1, "pseudocode_primes": ast1,
+              "pseudo": pseudo1, "asm": asm1, "md_index": md1 }
+      d2 = { "ea": ea2, "nodes": nodes2, "name": name2, "pseudocode_primes": ast2,
+              "pseudo": pseudo2, "asm": asm2, "md_index": md2 }
       tmp = self.call_hook("on_match", [should_add, r], [d1, d2, desc, r])
       should_add, r = tmp
     return should_add, r
@@ -3154,8 +3232,8 @@ class CBinDiff:
                 heur_text = f"{heur} (iteration #{iteration})"
                 ea1 = main_row["address"]
                 ea2 = diff_row["address"]
-                bb1 = int(main_row["nodes"])
-                bb2 = int(diff_row["nodes"])
+                nodes1 = int(main_row["nodes"])
+                nodes2 = int(diff_row["nodes"])
                 new_item = [
                   ea1,
                   name1,
@@ -3163,8 +3241,8 @@ class CBinDiff:
                   name2,
                   heur_text,
                   r,
-                  bb1,
-                  bb2,
+                  nodes1,
+                  nodes2,
                 ]
                 self.add_match(name1, name2, r, new_item, chooser)
 
@@ -3340,9 +3418,9 @@ class CBinDiff:
                 ea2 = diff_row["address"]
                 name1 = main_row["name"]
                 name2 = diff_row["name"]
-                bb1 = int(main_row["nodes"])
-                bb2 = int(diff_row["nodes"])
-                new_item = [ ea1, name1, ea2, name2, heur_text, r, bb1, bb2 ]
+                nodes1 = int(main_row["nodes"])
+                nodes2 = int(diff_row["nodes"])
+                new_item = [ ea1, name1, ea2, name2, heur_text, r, nodes1, nodes2 ]
                 self.add_match(name1, name2, r, new_item, chooser)
 
                 local_main_matched.add(name1)
@@ -3533,6 +3611,11 @@ class CBinDiff:
         if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
           self.find_related_constants(main_row, diff_row)
 
+  def train_local_model(self):
+    if config.ML_TRAIN_LOCAL_MODEL and ML_ENABLED and self.machine_learning:
+      log("[i] Machine learning module enabled.")
+      train(self, self.all_matches)
+
   def diff(self, db):
     """
     Diff the current two databases (main and diff).
@@ -3600,6 +3683,8 @@ class CBinDiff:
           # Find the modified functions
           log_refresh("Finding partial matches")
           self.find_partial_matches()
+
+          self.train_local_model()
 
           if self.unreliable:
             # Find using likely unreliable methods modified functions

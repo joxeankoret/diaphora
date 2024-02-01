@@ -53,13 +53,26 @@ SELECT_FIELDS = """ f.address ea, f.name name1, df.address ea2, df.name name2,
                   f.pseudocode pseudo1, df.pseudocode pseudo2,
                   f.assembly asm1, df.assembly asm2,
                   f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                  f.nodes bb1, df.nodes bb2,
+                  f.nodes nodes1, df.nodes nodes2,
                   cast(f.md_index as real) md1, cast(df.md_index as real) md2,
-                  f.clean_assembly clean_asm1, df.clean_assembly clean_asm2,
+                  f.clean_assembly clean_assembly1, df.clean_assembly clean_assembly2,
                   f.clean_pseudo clean_pseudo1, df.clean_pseudo clean_pseudo2,
                   f.mangled_function mangled1, df.mangled_function mangled2,
                   f.clean_microcode clean_micro1, df.clean_microcode clean_micro2,
-                  f.bytes_hash bytes_hash1, df.bytes_hash bytes_hash2"""
+                  f.bytes_hash bytes_hash1, df.bytes_hash bytes_hash2,
+                  f.edges edges1, df.edges edges2,
+                  f.indegree indegree1, df.indegree indegree2,
+                  f.outdegree outdegree1, df.outdegree outdegree2,
+                  f.instructions instructions1, df.instructions instructions2,
+                  f.cyclomatic_complexity cc1, df.cyclomatic_complexity cc2,
+                  f.strongly_connected strongly_connected1,
+                  df.strongly_connected strongly_connected2,
+                  f.loops loops1, df.loops loops2,
+                  f.constants_count constants_count1,
+                  df.constants_count constants_count2,
+                  f.size size1, df.size size2,
+                  f.kgh_hash kgh_hash1, df.kgh_hash kgh_hash2
+"""
 def get_query_fields(heur, quote=True):
   """
   Get the list of fields used in any and all SQL heuristics queries.

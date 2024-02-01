@@ -68,5 +68,5 @@ def threads_apply(threads, targets, wait_time, log_refresh, timeout):
       for x in threads_list:
         names.append(x.name)
       tmp_names = ", ".join(names)
-      log_refresh(f"[Parallel] {len(threads_list)} thread(s) still running:\n{tmp_names}")
+      log_refresh(f"[Parallel] {len(threads_list)} thread(s) still running: {tmp_names}")
 

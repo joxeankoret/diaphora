@@ -226,8 +226,8 @@ class CVulnerabilityPatches:
         # And finally add the item in the chooser we created
         ea1 = func1["ea"]
         ea2 = func2["ea"]
-        bb1 = func1["bb"]
-        bb2 = func2["bb"]
+        bb1 = func1["nodes"]
+        bb2 = func2["nodes"]
         item = CChooser.Item(ea1, name1, ea2, name2, results.description, ratio, bb1, bb2)
         self.chooser.add_item(item)
 

@@ -230,6 +230,16 @@ def diaphora_decode(ea):
 
 
 #-------------------------------------------------------------------------------
+def get_string_at(ea):
+  """
+  Get the defined string at the given address.
+  """
+  if ida_bytes.is_mapped(ea):
+    return get_strlit_contents(ea, -1, -1)
+  return None
+
+
+#-------------------------------------------------------------------------------
 # pylint: disable=redefined-outer-name
 # pylint: disable=arguments-renamed
 # pylint: disable=attribute-defined-outside-init
@@ -617,8 +627,8 @@ class CIDAChooser(CDiaphoraChooser):
     ea2 = diff_row["address"]
     name2 = diff_row["name"]
     desc = "Manual match"
-    bb1 = main_row["nodes"]
-    bb2 = diff_row["nodes"]
+    nodes1 = main_row["nodes"]
+    nodes2 = diff_row["nodes"]
 
     if name1 in self.bindiff.matched_primary or name2 in self.bindiff.matched_secondary:
       line = (
@@ -629,7 +639,7 @@ class CIDAChooser(CDiaphoraChooser):
       return
 
     self.bindiff.partial_chooser.add_item(
-      diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, bb1, bb2)
+      diaphora.CChooser.Item(ea1, name1, ea2, name2, desc, ratio, nodes1, nodes2)
     )
     self.bindiff.matched_primary[name1] = {"name": name2, "ratio": ratio}
     self.bindiff.matched_secondary[name2] = {"name": name1, "ratio": ratio}
@@ -681,9 +691,9 @@ class CIDAChooser(CDiaphoraChooser):
       if self.seems_false_positive(item):
         return [LITTLE_ORANGE, 0]
       else:
-        red = int(164 * (1 - ratio))
-        green = int(128 * ratio)
-        blue = int(255 * (1 - ratio))
+        red = abs(int(164 * (1 - ratio)))
+        green = abs(int(128 * ratio))
+        blue = abs(int(255 * (1 - ratio)))
         # pylint: disable-next=consider-using-f-string
         color = int("0x%02x%02x%02x" % (blue, green, red), 16)
       return [color, 0]
@@ -720,7 +730,8 @@ class CBinDiffExporterSetup(Form):
   <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
   <Use speed ups:{rExperimental}##Use tricks to speed ups some of the most common diffing tasks>
   <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
-  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>{cGroup1}>
+  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
+  <#Enable this option to use the Machine Learning engine and generate a dataset with known good and bad results specific to the 2 binaries being compared.#Train a specialized classifier (experimental ML support):{rMachineLearning}>{cGroup1}>
 
   Project specific rules:
   <#Select the project specific Python script rules#Python script:{iProjectSpecificRules}>
@@ -750,6 +761,7 @@ class CBinDiffExporterSetup(Form):
           "rExperimental",
           "rIgnoreSubNames",
           "rIgnoreAllNames",
+          "rMachineLearning"
         )
       ),
       "iProjectSpecificRules": Form.FileInput(
@@ -774,6 +786,7 @@ class CBinDiffExporterSetup(Form):
     self.rExcludeLibraryThunk.checked = opts.exclude_library_thunk
     self.rUnreliable.checked = opts.unreliable
     self.rSlowHeuristics.checked = opts.slow
+    self.rMachineLearning.checked = opts.machine_learning
     self.rRelaxRatio.checked = opts.relax
     self.rExperimental.checked = opts.experimental
     self.iMinEA.value = opts.min_ea
@@ -796,6 +809,7 @@ class CBinDiffExporterSetup(Form):
       exclude_library_thunk=self.rExcludeLibraryThunk.checked,
       unreliable=self.rUnreliable.checked,
       slow=self.rSlowHeuristics.checked,
+      machine_learning=self.rMachineLearning.checked,
       relax=self.rRelaxRatio.checked,
       experimental=self.rExperimental.checked,
       min_ea=self.iMinEA.value,
@@ -1070,6 +1084,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.unmatched_primary,
       self.unmatched_second,
       self.interesting_matches,
+      self.ml_chooser
     ]
 
     for chooser in CHOOSERS:
@@ -2508,7 +2523,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       drefs = DataRefsFrom(x)
       for dref in drefs:
         if get_func(dref) is None:
-          str_constant = get_strlit_contents(dref, -1, -1)
+          str_constant = get_string_at(dref)
           if str_constant is not None:
             str_constant = str_constant.decode("utf-8", "backslashreplace")
             if str_constant not in constants:
@@ -3378,12 +3393,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
           log(f"Match {name1}-{name2} is excluded")
           continue
 
-        bb1 = int(row["bb1"])
-        bb2 = int(row["bb2"])
+        nodes1 = int(row["nodes1"])
+        nodes2 = int(row["nodes2"])
 
         choose.add_item(
           diaphora.CChooser.Item(
-            ea1, name1, ea2, name2, desc, ratio, bb1, bb2
+            ea1, name1, ea2, name2, desc, ratio, nodes1, nodes2
           )
         )
 
@@ -3462,12 +3477,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         name2 = row["name2"]
         desc = row["description"]
         ratio = float(row["ratio"])
-        bb1 = int(row["bb1"])
-        bb2 = int(row["bb2"])
+        nodes1 = int(row["nodes1"])
+        nodes2 = int(row["nodes2"])
 
         choose.add_item(
           diaphora.CChooser.Item(
-            ea1, name1, ea2, name2, desc, ratio, bb1, bb2
+            ea1, name1, ea2, name2, desc, ratio, nodes1, nodes2
           )
         )
 
@@ -3602,6 +3617,7 @@ def _diff_or_export(use_ui, **options):
     bd.exclude_library_thunk = opts.exclude_library_thunk
     bd.unreliable = opts.unreliable
     bd.slow_heuristics = opts.slow
+    bd.machine_learning = opts.machine_learning
     bd.relaxed_ratio = opts.relax
     bd.experimental = opts.experimental
     bd.min_ea = opts.min_ea
@@ -3691,6 +3707,9 @@ class BinDiffOptions:
     self.unreliable = kwargs.get("unreliable", config.DIFFING_ENABLE_UNRELIABLE)
     self.slow = kwargs.get(
       "slow", total_functions <= config.MIN_FUNCTIONS_TO_DISABLE_SLOW
+    )
+    self.machine_learning = kwargs.get(
+      "machine_learning", config.ML_TRAIN_LOCAL_MODEL
     )
     self.experimental = kwargs.get(
       "experimental", config.DIFFING_ENABLE_EXPERIMENTAL
