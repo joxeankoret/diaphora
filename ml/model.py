@@ -81,12 +81,10 @@ def compare_rows(row1, row2):
       continue
 
     if type(value1) is int:
-      num1 = value1
-      num2 = value2
-      if num1 + num2 == 0:
+      if value1 + value2 == 0:
         val = 1.0
       else:
-        val = 1 - ( abs(value1 - value2) / max(num1, num2) )
+        val = 1 - ( abs(value1 - value2) / max(value1, value2) )
       scores.append(val)
     elif type(value1) is str:
       if value1.startswith('["') and value2.startswith('["'):
@@ -137,22 +135,31 @@ class CClassifier:
     return l
 
   def db_query_values(self):
-    # XXX: FIXME: TODO: Create a temporary table with the addresses and join the
-    # 2 tables together.
-    sql = """ select distinct * from {db}.functions where name in ({addresses}) """
-    vals = [ ["main", 0], ["diff", 1] ]
+    cur = self.diaphora.db_cursor()
+    try:
+      sql = "create temporary table model_functions(db_name, name)"
+      cur.execute(sql)
 
-    for db_name, idx in vals:
-      query = sql.format(db=db_name, addresses=",".join(f"'{name}'" for name in self.matches[:,idx]))
-      cur = self.diaphora.db_cursor()
+      vals = [ ["main", 0], ["diff", 1] ]
+      for db_name, idx in vals:
+        sql = "insert into model_functions values ('{db}', ?)"
+        query = sql.format(db=db_name)
+        for name in self.matches[:,idx]:
+          cur.execute(query, (name,))
 
-      if db_name == "main":
-        d = self.primary
-      else:
-        d = self.secondary
+      sql = """ select distinct *
+                  from {db}.functions f
+                 where name in (select name
+                                  from model_functions
+                                 where db_name = ?) """
+      for db_name, idx in vals:
+        query = sql.format(db=db_name)
+        if db_name == "main":
+          d = self.primary
+        else:
+          d = self.secondary
 
-      try:
-        cur.execute(query)
+        cur.execute(query, (db_name,))
         while 1:
           row = cur.fetchone()
           if not row:
@@ -160,8 +167,8 @@ class CClassifier:
 
           features = self.get_features(row)
           d[row["name"]] = features
-      finally:
-        cur.close()
+    finally:
+      cur.close()
 
   def train_local_model(self):
     X = []

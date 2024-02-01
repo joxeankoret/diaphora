@@ -1392,6 +1392,16 @@ class CBinDiff:
 
     return bb_blocks, bb_relations
 
+  def delete_function(self, ea):
+    """
+    Delete the function at address @ea from the database
+    """
+    cur = self.db_cursor()
+    try:
+      cur.execute("delete from functions where address = ?", (str(ea),))
+    finally:
+      cur.close()
+
   def is_auto_generated(self, name):
     """
     Check if the function name looks like an IDA's auto-generated one

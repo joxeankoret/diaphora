@@ -178,13 +178,13 @@ THREADS_WAIT_TIME = 0.5
 
 
 #-------------------------------------------------------------------------------
-# Diaphora can try to train using logistic regression a classifier specific for
-# the current set of binaries using matches labelled as "Best" or "Partial" in
-# order to try to learn what is a good match specifically for the two binaries
-# being compared. This approach seems to work when there are a lot of initial
-# matches, and seems to cause a lot of false positives when there aren't enough
-# good initial matches. This configuration directive is used to enable/disable
-# this experimental feature.
+# Diaphora can try to train using Ridge regression a classifier specific for the
+# current set of binaries using matches labelled as "Best" or "Partial" in order
+# to try to learn what is a good match specifically for the two binaries being
+# compared. This approach seems to work when there are a lot of initial matches,
+# and seems to cause a lot of false positives when there aren't enough good
+# initial matches. This configuration directive is used to enable/disable this
+# experimental feature.
 ML_TRAIN_LOCAL_MODEL = True
 
 # What is the minimum ratio required for a match to be considered for usage to
@@ -194,4 +194,4 @@ ML_MATCHES_MIN_RATIO = 0.5
 # What value should be added to the final similarity ratio when the specialized
 # classifier (trained with known good and bad results found for the current two
 # binaries being compared) finds what it thinks is a good match.
-ML_DEEP_RATIO_ADDED_SCORE = 0.05
+ML_DEEP_RATIO_ADDED_SCORE = 0.04
