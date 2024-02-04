@@ -195,3 +195,6 @@ ML_MATCHES_MIN_RATIO = 0.5
 # classifier (trained with known good and bad results found for the current two
 # binaries being compared) finds what it thinks is a good match.
 ML_DEEP_RATIO_ADDED_SCORE = 0.04
+
+# Show a chooser with all the matches that the classifier think are good ones?
+ML_DEBUG_SHOW_MATCHES = True

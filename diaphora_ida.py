@@ -676,6 +676,8 @@ class CIDAChooser(CDiaphoraChooser):
 
     name1 = name1.rstrip("_0")
     name2 = name2.rstrip("_0")
+    name1 = name1.strip(".")
+    name2 = name2.strip(".")
 
     if not name1.startswith("sub_") and not name2.startswith("sub_"):
       if name1 != name2:
@@ -1083,9 +1085,11 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.unreliable_chooser,
       self.unmatched_primary,
       self.unmatched_second,
-      self.interesting_matches,
-      self.ml_chooser
+      self.interesting_matches
     ]
+
+    if config.ML_DEBUG_SHOW_MATCHES:
+      CHOOSERS.append(self.ml_chooser)
 
     for chooser in CHOOSERS:
       if chooser is not None and len(chooser.items) > 0:

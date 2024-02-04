@@ -2942,10 +2942,10 @@ class CBinDiff:
             score += len(set_result) * 0.0005
 
       ml_add = False
-      if config.ML_TRAIN_LOCAL_MODEL and ML_ENABLED:
+      if ML_ENABLED and self.machine_learning:
         ml_ratio = predict(main_row, diff_row, ratio)
         if ml_ratio > 0:
-          log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
+          debug_refresh(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
           score += config.ML_DEEP_RATIO_ADDED_SCORE
           ml_add = True
 
@@ -3622,8 +3622,8 @@ class CBinDiff:
           self.find_related_constants(main_row, diff_row)
 
   def train_local_model(self):
-    if config.ML_TRAIN_LOCAL_MODEL and ML_ENABLED and self.machine_learning:
-      log("[i] Machine learning module enabled.")
+    if ML_ENABLED and self.machine_learning:
+      debug_refresh("[i] Machine learning module enabled.")
       train(self, self.all_matches)
 
   def diff(self, db):

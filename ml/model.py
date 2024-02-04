@@ -12,15 +12,7 @@ from difflib import SequenceMatcher
 try:
   import numpy as np
 
-  # So far, it looks like the best NON-INCREMENTAL algorithm
-  from sklearn.linear_model import LogisticRegression
-
-  # This is by far the fastest giving good enough results
   from sklearn.linear_model import RidgeClassifier
-
-  # So far, it looks like the best incremental algorithm
-  from sklearn.naive_bayes import BernoulliNB
-
   from sklearn.calibration import CalibratedClassifierCV
   
   ML_ENABLED = True
@@ -45,7 +37,7 @@ COLUMNS = [
 INVALID_SCORE = -1
 
 #-------------------------------------------------------------------------------
-def convert2numbers(row):
+def convert2numbers(row : list) -> list:
   for i, item in enumerate(row):
     val = row[i]
     if str(item).find(".") > -1:
@@ -55,7 +47,7 @@ def convert2numbers(row):
   return row
 
 #-------------------------------------------------------------------------------
-def quick_ratio(buf1, buf2):
+def quick_ratio(buf1 : str, buf2 : str) -> float:
   """
   Call SequenceMatcher.quick_ratio() to get a comparison ratio.
   """
@@ -65,7 +57,7 @@ def quick_ratio(buf1, buf2):
   return seq.quick_ratio()
 
 #-------------------------------------------------------------------------------
-def compare_rows(row1, row2):
+def compare_rows(row1 : list, row2 : list) -> list[float]:
   scores = []
   keys = list(row1.keys())
   IGNORE = ["id", "db_name", "export_time"]
@@ -106,9 +98,8 @@ def compare_rows(row1, row2):
 
 #-------------------------------------------------------------------------------
 class CClassifier:
-  def __init__(self, diaphora_obj):
+  def __init__(self, diaphora_obj : object):
     self.diaphora = diaphora_obj
-    # self.clf = LogisticRegression(max_iter=1000000)
     self.clf = RidgeClassifier()
     self.matches = []
     self.primary = {}
@@ -117,7 +108,7 @@ class CClassifier:
 
     self.model = None
 
-  def find_matches(self, matches):
+  def find_matches(self, matches : list):
     for group in matches:
       if group in ["best", "partial"]:
         for match in matches[group]:
@@ -128,7 +119,7 @@ class CClassifier:
             self.matches.append([name1, name2])
     self.matches = np.array(self.matches)
 
-  def get_features(self, row):
+  def get_features(self, row : dict) -> list:
     l = []
     for col in COLUMNS:
       l.append(row[col])
@@ -170,7 +161,7 @@ class CClassifier:
     finally:
       cur.close()
 
-  def train_local_model(self):
+  def train_local_model(self) -> float:
     X = []
     Y = []
     total_round = 0
@@ -203,11 +194,15 @@ class CClassifier:
         final = convert2numbers(final)
 
         x = np.array(final)
+
+        # The ratio could be the actual ratio we calculate, but we want to train
+        # a classifier, therefore, we will only use "good" (1.0) and "bad" (0).
         if ratio >= ML_MATCHES_MIN_RATIO:
           ratio = 1.
           found_some_good = True
         else:
           ratio = 0.0
+
         y = [ round(ratio), ]
 
         X.append(x)
@@ -226,7 +221,7 @@ class CClassifier:
 
     return found_some_good
 
-  def train(self, matches):
+  def train(self, matches : list):
     self.find_matches(matches)
     if len(self.matches) > 0:
       self.db_query_values()
@@ -234,7 +229,7 @@ class CClassifier:
       self.fitted = self.train_local_model()
       self.diaphora.log_refresh("Done training local model...")
 
-  def predict(self, row):
+  def predict(self, row : dict) -> float:
     ret = 0.0
     if self.fitted:
       if 'predict_proba' in dir(self.clf):
@@ -247,13 +242,13 @@ class CClassifier:
     return ret
 
 #-------------------------------------------------------------------------------
-def train(diaphora_obj, matches):
+def train(diaphora_obj : object, matches : list):
   global ml_model
   ml_model = CClassifier(diaphora_obj)
   ml_model.train(matches)
 
 #-------------------------------------------------------------------------------
-def predict(main_row, diff_row, ratio):
+def predict(main_row : dict, diff_row : dict, ratio : float) -> float:
   global ml_model
   ratio = 0.0
   if ml_model is not None:
