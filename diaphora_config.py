@@ -185,7 +185,7 @@ THREADS_WAIT_TIME = 0.5
 # and seems to cause a lot of false positives when there aren't enough good
 # initial matches. This configuration directive is used to enable/disable this
 # experimental feature.
-ML_TRAIN_LOCAL_MODEL = True
+ML_TRAIN_LOCAL_MODEL = False
 
 # What is the minimum ratio required for a match to be considered for usage to
 # train a local model?
