@@ -700,6 +700,10 @@ class CBinDiff:
                 cls=CBytesEncoder,
               )
             )
+          elif isinstance(instruction_property, int):
+            if instruction_property > 0x8000000000000000:
+              instruction_property = str(instruction_property)
+            instruction_properties.append(instruction_property)
           else:
             instruction_properties.append(instruction_property)
 
