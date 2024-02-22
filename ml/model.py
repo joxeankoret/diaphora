@@ -6,7 +6,10 @@ import sys
 import json
 import random
 
-from difflib import SequenceMatcher
+try:
+  from cdifflib import CSequenceMatcher as SequenceMatcher
+except ImportError:
+  from difflib import SequenceMatcher
 
 #-------------------------------------------------------------------------------
 try:
@@ -53,14 +56,52 @@ def quick_ratio(buf1 : str, buf2 : str) -> float:
   """
   if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
     return 0
-  seq = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
-  return seq.quick_ratio()
+
+  if buf1 == buf2:
+    return 1.0
+
+  s1 = buf1.lower().split('\n')
+  s2 = buf2.lower().split('\n')
+  seq = SequenceMatcher(None, s1, s2)
+  return seq.ratio()
+
+#-------------------------------------------------------------------------------
+def int_compare_ratio(value1 : int, value2 : int) -> float:
+  """
+  Get a similarity ratio for two integers.
+  """
+  if value1 + value2 == 0:
+    val = 1.0
+  else:
+    val = 1 - ( abs(value1 - value2) / max(value1, value2) )
+  return val
+
+#-------------------------------------------------------------------------------
+def count_callers_callees(db_name : str, func_id : int):
+  """
+  Count the callers and the callees for the given @func_id in @db_name database.
+  """
+  global ml_model
+  calls = ml_model.diaphora.get_callers_callees(db_name, func_id)
+  callees = 0
+  callers = 0
+  for call in calls:
+    call_type = call["type"]
+    if call_type == 'callee':
+      callees += 1
+    elif call_type == 'caller':
+      callers += 1
+  return callers, callees
 
 #-------------------------------------------------------------------------------
 def compare_rows(row1 : list, row2 : list) -> list[float]:
+  """
+  Compare two function rows and calculate a similarity ratio for it.
+  """
   scores = []
   keys = list(row1.keys())
   IGNORE = ["id", "db_name", "export_time"]
+
   for key in keys:
     if key in IGNORE:
       continue
@@ -73,10 +114,7 @@ def compare_rows(row1 : list, row2 : list) -> list[float]:
       continue
 
     if type(value1) is int:
-      if value1 + value2 == 0:
-        val = 1.0
-      else:
-        val = 1 - ( abs(value1 - value2) / max(value1, value2) )
+      val = int_compare_ratio(value1, value2)
       scores.append(val)
     elif type(value1) is str:
       if value1.startswith('["') and value2.startswith('["'):
@@ -94,6 +132,13 @@ def compare_rows(row1 : list, row2 : list) -> list[float]:
         scores.append(val)
     else:
       scores.append(value1 == value2)
+
+
+  main_callers, main_callees = count_callers_callees("main", row1["id"])
+  diff_callers, diff_callees = count_callers_callees("diff", row2["id"])
+  scores.append(int_compare_ratio(main_callers, diff_callees))
+  scores.append(int_compare_ratio(diff_callers, diff_callers))
+
   return scores
 
 #-------------------------------------------------------------------------------
@@ -102,13 +147,14 @@ class CClassifier:
     self.diaphora = diaphora_obj
     self.clf = RidgeClassifier()
     self.matches = []
-    self.primary = {}
-    self.secondary = {}
     self.fitted = False
 
     self.model = None
 
   def find_matches(self, matches : list):
+    """
+    Find appropriate good matches to build a dataset.
+    """
     for group in matches:
       if group in ["best", "partial"]:
         for match in matches[group]:
@@ -120,48 +166,17 @@ class CClassifier:
     self.matches = np.array(self.matches)
 
   def get_features(self, row : dict) -> list:
+    """
+    Convert the function's row dict to a list.
+    """
     l = []
     for col in COLUMNS:
       l.append(row[col])
     return l
 
-  def db_query_values(self):
-    cur = self.diaphora.db_cursor()
-    try:
-      sql = "create temporary table model_functions(db_name, name)"
-      cur.execute(sql)
-
-      vals = [ ["main", 0], ["diff", 1] ]
-      for db_name, idx in vals:
-        sql = "insert into model_functions values ('{db}', ?)"
-        query = sql.format(db=db_name)
-        for name in self.matches[:,idx]:
-          cur.execute(query, (name,))
-
-      sql = """ select distinct *
-                  from {db}.functions f
-                 where name in (select name
-                                  from model_functions
-                                 where db_name = ?) """
-      for db_name, idx in vals:
-        query = sql.format(db=db_name)
-        if db_name == "main":
-          d = self.primary
-        else:
-          d = self.secondary
-
-        cur.execute(query, (db_name,))
-        while 1:
-          row = cur.fetchone()
-          if not row:
-            break
-
-          features = self.get_features(row)
-          d[row["name"]] = features
-    finally:
-      cur.close()
-
-  def train_local_model(self) -> float:
+  def train_local_model(self) -> bool:
+    max_size = len(self.matches)
+    self.diaphora.log(f"Building dataset for a maximum of {max_size} x {max_size} ({max_size*max_size})")
     X = []
     Y = []
     total_round = 0
@@ -189,6 +204,7 @@ class CClassifier:
         ratio = self.diaphora.compare_function_rows(row1, row2)
         features1 = self.get_features(row1)
         features2 = self.get_features(row2)
+
         comparisons = compare_rows(row1, row2)
         final = features1 + features2 + comparisons
         final = convert2numbers(final)
@@ -203,7 +219,7 @@ class CClassifier:
         else:
           ratio = 0.0
 
-        y = [ round(ratio), ]
+        y = [ ratio, ]
 
         X.append(x)
         Y.append(y)
@@ -211,10 +227,9 @@ class CClassifier:
     X = np.array(X)
     Y = np.array(Y)
 
+    self.diaphora.log("Done building dataset")
     if found_some_good:
-      self.clf.fit(X, Y)
-      calibrator = CalibratedClassifierCV(self.clf, cv='prefit')
-      self.model = calibrator.fit(X, Y)
+      self.model = self.clf.fit(X, Y)
       self.diaphora.log(f"ML model score {self.clf.score(X, Y)}")
     else:
       self.diaphora.log(f"The ML model did not find any good enough match to use for training")
@@ -224,7 +239,6 @@ class CClassifier:
   def train(self, matches : list):
     self.find_matches(matches)
     if len(self.matches) > 0:
-      self.db_query_values()
       self.diaphora.log_refresh("Training local model...")
       self.fitted = self.train_local_model()
       self.diaphora.log_refresh("Done training local model...")
@@ -232,13 +246,8 @@ class CClassifier:
   def predict(self, row : dict) -> float:
     ret = 0.0
     if self.fitted:
-      if 'predict_proba' in dir(self.clf):
-        ret = self.clf.predict(row)
-        if ret[0] == 1:
-          ret = self.model.predict_proba(row)
-          return round(ret[0][1], 3)
-      else:
-        ret = self.clf.predict(row)
+      d = self.clf.decision_function(row)[0]
+      ret = np.exp(d) / (1 + np.exp(d))
     return ret
 
 #-------------------------------------------------------------------------------
@@ -248,7 +257,7 @@ def train(diaphora_obj : object, matches : list):
   ml_model.train(matches)
 
 #-------------------------------------------------------------------------------
-def predict(main_row : dict, diff_row : dict, ratio : float) -> float:
+def predict(main_row : dict, diff_row : dict) -> float:
   global ml_model
   ratio = 0.0
   if ml_model is not None:

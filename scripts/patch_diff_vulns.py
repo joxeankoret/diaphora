@@ -24,7 +24,9 @@ PATTERNS = [
   # Windows 'unsafe' APIs
   "ShellExecute", "WinExec", "LoadLibrary", "CreateProcess",
   # Functions that may be interesting for Windows kernel drivers
-  "ProbeForWrite", "ProbeForRead"
+  "ProbeForWrite", "ProbeForRead",
+  # UNC paths related pattern
+  "UNC"
 ]
 
 COMPARISONS = [" < ", " > ", " <= ", " >= "]
@@ -220,7 +222,7 @@ class CVulnerabilityPatches:
       if results.found:
         # Report matches while it's still finding for exciting reversers
         msg = f"Potentially interesting patch found (pattern {repr(results.description)}): {name1} - {name2}"
-        log(msg)
+        self.diaphora.log_refresh(msg)
         log(f"> {results.line}")
 
         # And finally add the item in the chooser we created

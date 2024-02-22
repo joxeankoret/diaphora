@@ -60,6 +60,12 @@ EXPORTING_USE_MICROCODE = True
 # Number of rows that must be inserted to commit the transaction
 EXPORTING_FUNCTIONS_TO_COMMIT = 5000
 
+# Every time the GUI export dialog is updated a commit is issued. This is useful
+# whenever we are facing long export times with known IDA bugs that might cause
+# it to fail at an unknown moment and we want to recover from errors. You might
+# want to set it to False if you're finding small little performance wins.
+COMMIT_AFTER_EACH_GUI_UPDATE = True
+
 # The minimum number of functions in a database to, by default, disable running
 # slow queries.
 MIN_FUNCTIONS_TO_DISABLE_SLOW = 4001
@@ -73,13 +79,23 @@ MIN_FUNCTIONS_TO_CONSIDER_HUGE = 100000
 # Block size to use to generate fuzzy hashes for pseudo-codes with DeepToad
 FUZZY_HASHING_BLOCK_SIZE = 512
 
+# Use it to disable finding compilation units. In some rare cases, there are too
+# many compilation units and Diaphora might take very long to find them.
+EXPORTING_COMPILATION_UNITS = True
+
 ################################################################################
-# Default SQL related configuration options
+# Default SQL and SQLite related configuration options
 
 # Diaphora won't process more than the given value of rows (per heuristic)
 SQL_MAX_PROCESSED_ROWS = 1000000
 # SQL queries will timeout after the given number of seconds
 SQL_TIMEOUT_LIMIT = 60 * 5
+# Set this to DELETE, TRUNCATE, PERSIST, MEMORY, WAL, OFF, or None to use the
+# default value.
+SQLITE_JOURNAL_MODE = "MEMORY"
+# Set this to 0/OFF,  1/NORMAL,  2/FULL, 3/EXTRA, or None to use the default
+# value.
+SQLITE_PRAGMA_SYNCHRONOUS = "1"
 
 ################################################################################
 # Heuristics related configuration options
@@ -189,12 +205,23 @@ ML_TRAIN_LOCAL_MODEL = False
 
 # What is the minimum ratio required for a match to be considered for usage to
 # train a local model?
-ML_MATCHES_MIN_RATIO = 0.5
+ML_MATCHES_MIN_RATIO = 0.6
+ML_MIN_PREDICTION_RATIO = 0.72
 
 # What value should be added to the final similarity ratio when the specialized
 # classifier (trained with known good and bad results found for the current two
 # binaries being compared) finds what it thinks is a good match.
-ML_DEEP_RATIO_ADDED_SCORE = 0.04
+ML_DEEP_RATIO_ADDED_SCORE = 0.1
 
 # Show a chooser with all the matches that the classifier think are good ones?
 ML_DEBUG_SHOW_MATCHES = True
+
+#-------------------------------------------------------------------------------
+# Some imports improve performance or add features to Diaphora but aren't 100%
+# required. Diaphora will warn the reverser when these libraries failed to be
+# imported. Change this directive to shutup this warning.
+SHOW_IMPORT_WARNINGS = True
+
+#-------------------------------------------------------------------------------
+# Workarounds for IDA bugs
+DIAPHORA_WORKAROUND_MAX_TINFO_T = True

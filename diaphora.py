@@ -35,10 +35,21 @@ import traceback
 from io import StringIO
 from threading import Lock
 from multiprocessing import cpu_count
-from difflib import SequenceMatcher, unified_diff
 
 import diaphora_config as config
 import diaphora_heuristics
+
+try:
+  from cdifflib import CSequenceMatcher as SequenceMatcher
+  HAS_CDIFFLIB = True
+except ImportError:
+  HAS_CDIFFLIB = False
+  if config.SHOW_IMPORT_WARNINGS:
+    print("WARNING: Python library 'cdifflib' not found. Installing it will significantly improve text diffing performance.")
+    print("INFO: Alternatively, you can silence this warning by changing the value of SHOW_IMPORT_WARNINGS in diaphora_config.py.")
+  from difflib import SequenceMatcher
+
+from difflib import unified_diff
 
 import ml.model
 from ml.model import ML_ENABLED, train, predict, get_model_name
@@ -709,6 +720,10 @@ class CBinDiff:
                 cls=CBytesEncoder,
               )
             )
+          elif isinstance(instruction_property, int):
+            if instruction_property > 0x8000000000000000:
+              instruction_property = str(instruction_property)
+            instruction_properties.append(instruction_property)
           else:
             instruction_properties.append(instruction_property)
 
@@ -1104,7 +1119,7 @@ class CBinDiff:
         insert_args.append([func_id, str(caller), "caller"])
 
       for callee in callees:
-        insert_args.append([func_id, str(callee), "callee"])      
+        insert_args.append([func_id, str(callee), "callee"])
       cur.executemany(sql, insert_args)
 
       # Phase 3: Insert the constants of the function
@@ -1880,12 +1895,17 @@ class CBinDiff:
         self.ratios_cache[key] = 1.0
         return 1.0
 
-    r = max(v1, v2, v3, v4, v5)
+    v6 = 0.0
+    if ML_ENABLED and self.machine_learning:
+      v6 = self.get_ml_ratio(main_d, diff_d)
+
+    values_set = set([v1, v2, v3, v4, v5, v6])
+    r = max(values_set)
     if r == 1.0 and md1 != md2:
       # We cannot assign a 1.0 ratio if both MD indices are different, that's an
       # error
       r = 0
-      for v in [v1, v2, v3, v4, v5]:
+      for v in values_set:
         if v != 1.0 and v > r:
           r = v
 
@@ -1893,7 +1913,10 @@ class CBinDiff:
       score = self.deep_ratio(main_d, diff_d, r)
       if r + score < 1.0:
         r += score
+      else:
+        r = 0.99
 
+    debug_refresh(f"self.ratios_cache[{main_d['name']}-{diff_d['name']}] = {r}")
     self.ratios_cache[key] = r
     return r
 
@@ -2868,6 +2891,45 @@ class CBinDiff:
 
     return ignore_list, dones
 
+  def get_ml_ratio(self, main_d, diff_d):
+    ea1 = int(main_d["ea"])
+    ea2 = int(diff_d["ea"])
+
+    ml_ratio = 0.0
+
+    cur = self.db_cursor()
+    sql = "select * from {db}.functions where address = ?"
+    try:
+      cur.execute(sql.format(db="main"), (str(ea1),))
+      main_row = cur.fetchone()
+
+      cur.execute(sql.format(db="diff"), (str(ea2),))
+      diff_row = cur.fetchone()
+
+      ml_add = False
+      ml_ratio = 0
+      if ML_ENABLED and self.machine_learning:
+        ml_ratio = predict(main_row, diff_row)
+        if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
+          log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
+          ml_add = True
+        else:
+          ml_ratio = 0.0
+
+      if ml_add:
+        vfname1 = main_d["name"]
+        vfname2 = diff_d["name"]
+        nodes1 = main_d["nodes"]
+        nodes2 = diff_d["nodes"]
+        desc = f"ML {get_model_name()}"
+
+        tmp_item = CChooser.Item(ea1, vfname1, ea2, vfname2, desc, ml_ratio, nodes1, nodes2)
+        self.ml_chooser.add_item(tmp_item)
+    finally:
+      cur.close()
+
+    return ml_ratio
+
   def deep_ratio(self, main_d, diff_d, ratio):
     """
     Try to get a score to add to the value returned by `check_ratio()` so less
@@ -2940,25 +3002,6 @@ class CBinDiff:
           set_result = set1.intersection(set2)
           if len(set_result) > 0:
             score += len(set_result) * 0.0005
-
-      ml_add = False
-      if ML_ENABLED and self.machine_learning:
-        ml_ratio = predict(main_row, diff_row, ratio)
-        if ml_ratio > 0:
-          debug_refresh(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
-          score += config.ML_DEEP_RATIO_ADDED_SCORE
-          ml_add = True
-
-      if ml_add:
-        vfname1 = main_d["name"]
-        vfname2 = diff_d["name"]
-        nodes1 = main_d["nodes"]
-        nodes2 = diff_d["nodes"]
-        desc = f"ML {get_model_name()}"
-
-        tmp_item = CChooser.Item(ea1, vfname1, ea2, vfname2, desc, ratio, nodes1, nodes2)
-        self.ml_chooser.add_item(tmp_item)
-
     finally:
       cur.close()
 
@@ -3625,6 +3668,17 @@ class CBinDiff:
     if ML_ENABLED and self.machine_learning:
       debug_refresh("[i] Machine learning module enabled.")
       train(self, self.all_matches)
+
+  def get_callers_callees(self, db_name, func_id):
+    cur = self.db_cursor()
+    rows = []
+    try:
+      sql = "select * from {db}.callgraph where func_id = ?"
+      cur.execute(sql.format(db=db_name), (func_id,))
+      rows = list(cur.fetchall())
+    finally:
+      cur.close()
+    return rows
 
   def diff(self, db):
     """

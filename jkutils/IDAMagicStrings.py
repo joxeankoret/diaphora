@@ -27,14 +27,18 @@ try:
 except ImportError as e:
   print(f'{os.path.basename(__file__)} importerror {e}')
 
+sys.path.append("..")
+import diaphora_config as config
+
 try:
   import nltk
   from nltk.tokenize import word_tokenize
   from nltk.tag import pos_tag
   has_nltk = True
 except ImportError as e:
-  print("NLTK is not installed. It's recommended to install python-nltk.")
-  print("It's optional, but significantly improves the results.")
+  if config.SHOW_IMPORT_WARNINGS:
+    print("WARNING: NLTK is not installed. It's recommended to install python-nltk. It's optional, but significantly improves the results.")
+    print("INFO: Alternatively, you can silence this warning by changing the value of SHOW_IMPORT_WARNINGS in diaphora_config.py.")
   has_nltk = False
 
 #-------------------------------------------------------------------------------

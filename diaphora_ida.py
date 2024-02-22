@@ -1152,9 +1152,16 @@ class CIDABinDiff(diaphora.CBinDiff):
     return callgraph_primes, callgraph_all_primes
 
   def commit_and_start_transaction(self):
-    self.db.commit()
-    self.db.execute("PRAGMA synchronous = OFF")
-    self.db.execute("PRAGMA journal_mode = MEMORY")
+    try:
+      self.db.execute("commit")
+    except sqlite3.OperationalError as e:
+      # Ignore the "cannot commit - no transaction active" error
+      pass
+
+    if config.SQLITE_PRAGMA_SYNCHRONOUS is not None:
+      self.db.execute(f"PRAGMA synchronous = {config.SQLITE_PRAGMA_SYNCHRONOUS}")
+    if config.SQLITE_JOURNAL_MODE is not None:
+      self.db.execute(f"PRAGMA journal_mode = {config.SQLITE_JOURNAL_MODE}")
     self.db.execute("BEGIN transaction")
 
   def do_export(self, crashed_before=False):
@@ -1185,10 +1192,12 @@ class CIDABinDiff(diaphora.CBinDiff):
     self._funcs_cache = {}
     for func in func_list:
       if user_cancelled():
-        raise Exception("Canceled.")
+        raise Exception("Cancelled.")
 
       i += 1
       if (total_funcs >= 100) and i % (int(total_funcs / 100)) == 0 or i == 1:
+        if config.COMMIT_AFTER_EACH_GUI_UPDATE:
+          self.commit_and_start_transaction()
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
         elapsed = time.monotonic() - t
         remaining = (elapsed / i) * (total_funcs - i)
@@ -1231,6 +1240,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if i % (total_funcs / 10) == 0:
           self.commit_and_start_transaction()
 
+    self.commit_and_start_transaction()
     md5sum = GetInputFileMD5()
     self.save_callgraph(
       str(callgraph_primes), json.dumps(callgraph_all_primes), md5sum
@@ -1240,7 +1250,9 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.export_til()
     except:
       log(f"Error reading type libraries: {str(sys.exc_info()[1])}")
-    self.save_compilation_units()
+    
+    if config.EXPORTING_COMPILATION_UNITS:
+      self.save_compilation_units()
 
     log_refresh("Creating indices...")
     self.create_indices()
@@ -1898,6 +1910,7 @@ class CIDABinDiff(diaphora.CBinDiff):
 
         comment = mcmt
         cfunc.set_user_cmt(tl, comment)
+        cfunc.del_orphan_cmts()
         cfunc.save_user_cmts()
 
     tmp_ea = None
@@ -2342,8 +2355,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     #
     # max non-trivial tinfo_t count has been reached
     #
-    if os.getenv("DIAPHORA_WORKAROUND_MAX_TINFO_T") is not None:
-      idaapi.clear_cached_cfuncs()
+    if config.DIAPHORA_WORKAROUND_MAX_TINFO_T:
+      if len(self._funcs_cache) % 10000 == 0:
+        idaapi.clear_cached_cfuncs()
 
     decompiler_plugin = os.getenv("DIAPHORA_DECOMPILER_PLUGIN")
     if decompiler_plugin is None:
@@ -3225,7 +3239,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     return new_modules
 
   def save_compilation_units(self):
+    log_refresh("Finding compilation units...")
     lfa_modules = self.get_modules_using_lfa()
+    log_refresh("Saving compilation units...")
 
     sql1 = """insert into compilation_units (name, start_ea, end_ea)
                   values (?, ?, ?)"""
@@ -3241,7 +3257,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     cur = self.db_cursor()
     try:
       dones = set()
-      for module in lfa_modules:
+      total = len(lfa_modules)
+      checkpoint = int(total / 10)
+      for i, module in enumerate(lfa_modules):
+        if i > 0 and checkpoint > 0 and i % checkpoint == 0:
+          log_refresh(f"Processing compilation unit {i} out of {total}...")
+
         module_name = None
         if module["name"] != "":
           module_name = module["name"]
@@ -3250,12 +3271,15 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         cur.execute(sql1, vals)
         cu_id = cur.lastrowid
 
-        for values in self._funcs_cache.values():
-          func_id = values[0]
-          if func_id not in dones:
-            dones.add(func_id)
-            cur.execute(sql2, (cu_id, func_id))
-            cur.execute(sql4, (module_name, func_id))
+        for func in self._funcs_cache:
+          item = self._funcs_cache[func]
+          func = int(func)
+          if func >= module["start"] and func <= module["end"]:
+            func_id = item[0]
+            if func_id not in dones:
+              dones.add(func_id)
+              cur.execute(sql2, (cu_id, func_id))
+              cur.execute(sql4, (module_name, func_id))
 
         cur.execute(
           sql3,
