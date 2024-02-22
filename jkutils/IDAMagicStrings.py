@@ -4,7 +4,7 @@
 # also able to rename functions based on the guessed function name & rename
 # functions based on the source code file they belong to.
 #
-# Copyright (c) 2018-2022, Joxean Koret
+# Copyright (c) 2018-2024, Joxean Koret
 # Licensed under the GNU Affero General Public License v3.
 #
 #-------------------------------------------------------------------------------
