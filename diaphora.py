@@ -52,7 +52,7 @@ except ImportError:
 from difflib import unified_diff
 
 import ml.model
-from ml.model import ML_ENABLED, train, predict, get_model_name
+from ml.model import ML_ENABLED, train, predict, get_model_name, int_compare_ratio
 
 from diaphora_heuristics import (
   HEURISTICS,
@@ -2909,12 +2909,15 @@ class CBinDiff:
       ml_add = False
       ml_ratio = 0
       if ML_ENABLED and self.machine_learning:
-        ml_ratio = predict(main_row, diff_row)
-        if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
-          log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
-          ml_add = True
-        else:
-          ml_ratio = 0.0
+        if min(main_row["nodes"], diff_row["nodes"]) > 3:
+          ml_ratio = int_compare_ratio(main_row["nodes"], diff_row["nodes"])
+          if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
+            ml_ratio = predict(main_row, diff_row)
+            if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
+              log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
+              ml_add = True
+            else:
+              ml_ratio = 0.0
 
       if ml_add:
         vfname1 = main_d["name"]
@@ -3001,7 +3004,7 @@ class CBinDiff:
           set2 = set(json.loads(diff_row["constants"]))
           set_result = set1.intersection(set2)
           if len(set_result) > 0:
-            score += len(set_result) * 0.0005
+            score += len(set_result) * 0.001
     finally:
       cur.close()
 

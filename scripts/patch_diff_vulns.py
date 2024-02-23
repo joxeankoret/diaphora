@@ -8,7 +8,7 @@ Joxean Koret
 Public domain
 """
 
-from difflib import ndiff
+from difflib import unified_diff
 
 from diaphora import CChooser, log
 
@@ -136,7 +136,7 @@ class CVulnerabilityPatches:
     if asm1 is None or asm2 is None:
       return results
 
-    lines = ndiff(asm1.split("\n"), asm2.split("\n"))
+    lines = unified_diff(asm1.split("\n"), asm2.split("\n"))
     lines = list(lines)
     added = None
     removed = None
@@ -147,14 +147,16 @@ class CVulnerabilityPatches:
       # Only consider removed/added lines (which also means modified lines)
       if c in ["-", "+"]:
         if c == "+":
-          added = line
+          added = line[1:]
         elif c == "-":
-          removed = line
+          if line[1:].endswith(":"):
+            continue
+          removed = line[1:]
 
         if added is not None and removed is not None:
           # Check the list of known signed <-> unsigned instructions
-          mnem1 = added.split(" ")[1].lower()
-          mnem2 = removed.split(" ")[1].lower()
+          mnem1 = added.split(" ")[0].lower()
+          mnem2 = removed.split(" ")[0].lower()
           if mnem1 in SIGNED_UNSIGNED_LIST:
             if SIGNED_UNSIGNED_LIST[mnem1] == mnem2:
               found = True
@@ -183,7 +185,7 @@ class CVulnerabilityPatches:
     if pseudo1 is None or pseudo2 is None:
       return results
 
-    lines = ndiff(pseudo1.split("\n"), pseudo2.split("\n"))
+    lines = unified_diff(pseudo1.split("\n"), pseudo2.split("\n"))
     for line in lines:
       c = line[0]
       # Only consider removed/added lines (which also means modified lines)

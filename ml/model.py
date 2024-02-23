@@ -18,7 +18,8 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ["ML_ENABLED", "ml_model", "train", "predict", "get_model_name"]
+__all__ = ["ML_ENABLED", "ml_model", "train", "predict", "get_model_name",
+  "int_compare_ratio"]
 
 import sys
 import json
@@ -226,6 +227,10 @@ class CClassifier:
         comparisons = compare_rows(row1, row2)
         final = features1 + features2 + comparisons
         final = convert2numbers(final)
+
+        bbratio = int_compare_ratio(row1["nodes"], row2["nodes"])
+        if bbratio <= ML_MATCHES_MIN_RATIO and bbratio < ratio:
+          ratio = bbratio
 
         x = np.array(final)
 

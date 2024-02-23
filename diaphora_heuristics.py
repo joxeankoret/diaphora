@@ -834,7 +834,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min": 0.35,
-  "flags":[HEUR_FLAG_UNRELIABLE]
+  "flags":[]
 })
 
 NAME = "Partial pseudo-code fuzzy hash (normal)"
@@ -992,7 +992,7 @@ HEURISTICS.append({
         %POSTFIX%
       order by f.source_file = df.source_file""",
   "min":0.49,
-  "flags":[HEUR_FLAG_SLOW, HEUR_FLAG_UNRELIABLE]
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 NAME = "Same graph"
