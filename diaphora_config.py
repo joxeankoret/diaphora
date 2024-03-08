@@ -190,7 +190,7 @@ RELATED_MATCHES_MIN_RATIO = 0.8
 # joined for a fraction of seconds to wait for them to finish after each 
 # iteration in a thread. This value indicates the number of seconds to join. It
 # basically translates to this: thread.join(THREADS_WAIT_TIME).
-THREADS_WAIT_TIME = 0.5
+THREADS_WAIT_TIME = 1
 
 
 #-------------------------------------------------------------------------------

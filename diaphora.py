@@ -174,11 +174,10 @@ def log(message):
   Print a message
   """
   # pylint: disable=protected-access
-  if isinstance(threading.current_thread(), threading._MainThread):
-    if IS_IDA or os.getenv("DIAPHORA_LOG_PRINT") is not None:
-      print(f"[Diaphora: {time.asctime()}] {message}")
-    else:
-      logging.info(message)
+  if IS_IDA or os.getenv("DIAPHORA_LOG_PRINT") is not None:
+    print(f"[Diaphora: {time.asctime()}] {message}")
+  else:
+    logging.info(message)
   # pylint: enable=protected-access
 
 
@@ -2041,8 +2040,8 @@ class CBinDiff:
     t = time.monotonic()
     while self.continue_getting_sql_rows(i):
       if time.monotonic() - t > self.timeout or cur_thread.timeout:
-        log("Timeout")
-        break
+        log_refresh(f"Timeout with heuristic '{cur_thread.name}'")
+        raise SystemExit()
 
       i += 1
       if i % 50000 == 0:
@@ -2113,6 +2112,8 @@ class CBinDiff:
       self.add_matches_internal(
         cur, best=best, partial=partial, unreliable=unreliable, debug=debug
       )
+    except SystemExit:
+      pass
     except:
       log(f"Error: {str(sys.exc_info()[1])}")
       print("*" * 80)
@@ -2136,6 +2137,8 @@ class CBinDiff:
       self.add_matches_internal(
         cur, best=best, partial=partial, val=val, unreliable="unreliable"
       )
+    except SystemExit:
+      pass
     except:
       log(f"Error: {str(sys.exc_info()[1])}")
       print("*" * 80)
@@ -2160,6 +2163,8 @@ class CBinDiff:
       self.add_matches_internal(
         cur, best="best", partial="partial", val=val, unreliable="partial"
       )
+    except SystemExit:
+      pass
     except:
       log(f"Error: {str(sys.exc_info()[1])}")
       print("*" * 80)

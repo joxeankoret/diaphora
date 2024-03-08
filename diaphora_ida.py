@@ -3240,8 +3240,10 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
   def save_compilation_units(self):
     log_refresh("Finding compilation units...")
+    msg("Finding compilation units...")
     lfa_modules = self.get_modules_using_lfa()
     log_refresh("Saving compilation units...")
+    msg("Saving compilation units...")
 
     sql1 = """insert into compilation_units (name, start_ea, end_ea)
                   values (?, ?, ?)"""
@@ -3258,7 +3260,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     try:
       dones = set()
       total = len(lfa_modules)
-      checkpoint = int(total / 10)
+      checkpoint = int(total / 100)
       for i, module in enumerate(lfa_modules):
         if i > 0 and checkpoint > 0 and i % checkpoint == 0:
           log_refresh(f"Processing compilation unit {i} out of {total}...")
