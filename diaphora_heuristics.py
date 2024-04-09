@@ -408,7 +408,7 @@ HEURISTICS.append({
                 and df.nodes > 4
                 and (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4) == 'sub_')
                 %POSTFIX% """,
-  "flags":[]
+  "flags":[HEUR_FLAG_SLOW]
 })
 
 # Adding a DISTINCT and an ORDER BY clause in this query causes SQLite to create
