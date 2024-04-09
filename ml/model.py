@@ -30,6 +30,8 @@ try:
 except ImportError:
   from difflib import SequenceMatcher
 
+from typing import List
+
 #-------------------------------------------------------------------------------
 try:
   import numpy as np
@@ -113,7 +115,7 @@ def count_callers_callees(db_name : str, func_id : int):
   return callers, callees
 
 #-------------------------------------------------------------------------------
-def compare_rows(row1 : list, row2 : list) -> list[float]:
+def compare_rows(row1 : list, row2 : list) -> List[float]:
   """
   Compare two function rows and calculate a similarity ratio for it.
   """
