@@ -1,5 +1,5 @@
 """
-Behold, Diaphora 3.0 configuration options ahead!
+Behold, Diaphora 3.X configuration options ahead!
 
 NOTES: This configuration file is a normal python script, therefore, you're free
 to add your own code here.
@@ -205,8 +205,8 @@ ML_TRAIN_LOCAL_MODEL = False
 
 # What is the minimum ratio required for a match to be considered for usage to
 # train a local model?
-ML_MATCHES_MIN_RATIO = 0.6
-ML_MIN_PREDICTION_RATIO = 0.72
+ML_MATCHES_MIN_RATIO = 0.7
+ML_MIN_PREDICTION_RATIO = 0.75
 
 # What value should be added to the final similarity ratio when the specialized
 # classifier (trained with known good and bad results found for the current two
