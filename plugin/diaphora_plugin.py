@@ -42,7 +42,7 @@ def resolve_diaphora():
 
 #-------------------------------------------------------------------------------
 class DiaphoraPlugin(idaapi.plugin_t):
-  wanted_name = "Diaphora: Run Diaphora"
+  wanted_name = "Diaphora"
   version = "3.2.0"
   wanted_hotkey = ""
   comment = "Diaphora by joxeankoret"
