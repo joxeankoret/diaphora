@@ -22,7 +22,7 @@ import module
 import cc_base
 import basicutils_7x as basicutils
 import snap_cg
-import imp
+import importlib
 
 try:
   import modnaming
@@ -57,12 +57,12 @@ def go():
 	return True
 
 if __name__ == "__main__":
-	imp.reload(modnaming)
-	imp.reload(module)
-	imp.reload(cc_base)
-	imp.reload(lfa)
-	imp.reload(maxcut)
-	imp.reload(snap_cg)
-	imp.reload(basicutils)
+	importlib.reload(modnaming)
+	importlib.reload(module)
+	importlib.reload(cc_base)
+	importlib.reload(lfa)
+	importlib.reload(maxcut)
+	importlib.reload(snap_cg)
+	importlib.reload(basicutils)
 	go()
 

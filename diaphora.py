@@ -21,7 +21,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import re
 import sys
-import imp
 import time
 import json
 import decimal
@@ -120,6 +119,16 @@ CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
 fmt = "[Diaphora: %(asctime)s] %(levelname)s: %(message)s"
 logging.basicConfig(format=fmt, level=logging.INFO)
 
+#-------------------------------------------------------------------------------
+def load_source(modname, filename):
+  # Copied from https://docs.python.org/3.12/whatsnew/3.12.html#imp as a
+  # replacement for the removed imp.load_source().
+  loader = importlib.machinery.SourceFileLoader(modname, filename)
+  spec = importlib.util.spec_from_file_location(modname, filename, loader=loader)
+  module = importlib.util.module_from_spec(spec)
+  # The module is always executed and not cached in sys.modules.
+  loader.exec_module(module)
+  return module
 
 #-------------------------------------------------------------------------------
 def result_iter(cursor, arraysize=1000):
@@ -498,7 +507,7 @@ class CBinDiff:
 
     try:
       log(f"Loading project specific Python script {self.project_script}")
-      module = imp.load_source("diaphora_hooks", self.project_script)
+      module = load_source("diaphora_hooks", self.project_script)
     except:
       err = str(sys.exc_info()[1])
       print(f"Error loading project specific Python script: {err}")
