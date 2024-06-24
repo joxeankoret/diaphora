@@ -38,7 +38,7 @@ However, Diaphora has also many features that are unique, not available in any o
 
 Diaphora requires no installation: just download the code and run the script `diaphora.py` from within IDA or on the command line (only for diffing already exported databases). However, it can be integrated as a [plugin](https://github.com/joxeankoret/diaphora/tree/master/plugin) into IDA by doing the following:
 
- * Copy `plugsin/diaphora_plugin.py` and `plugins/diaphora_plugin.cfg` to the IDA's plugins directory.
+ * Copy `plugins/diaphora_plugin.py` and `plugins/diaphora_plugin.cfg` to the IDA's plugins directory.
  * Edit `diaphora_plugin.cfg` and set the path value to the Diaphora's directory.
 
 ## Donations
