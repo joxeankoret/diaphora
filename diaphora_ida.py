@@ -2195,6 +2195,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       self.best_chooser,
       self.partial_chooser,
       self.unreliable_chooser,
+      self.multimatch_chooser
     ]:
       for i, item in enumerate(chooser.items):
         ea = int(item[1], 16)
