@@ -3309,6 +3309,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     finally:
       cur.close()
 
+  def GetOrdinalCount(self):
+    # The API get_ordinal_qty() has been removed in IDA 9.0 and now I have to do
+    # this mess to support new and old versions, as is common in Diaphora.
+    if hasattr(idaapi, "get_ordinal_count"):
+      return idaapi.get_ordinal_count()
+    return idc.get_ordinal_qty()
+
   def GetLocalType(self, ordinal, flags):
     ret = get_local_tinfo(ordinal)
     if ret is not None:
@@ -3327,7 +3334,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # numbers, according to one beta-tester. My guess is that it's a bug
     # in IDA. However, as we cannot reproduce, at least handle this
     # condition.
-    local_types = idc.get_ordinal_qty()
+    local_types = self.GetOrdinalCount()
     if (local_types & 0x80000000) != 0:
       # pylint: disable-next=consider-using-f-string
       message = "warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types
@@ -3348,7 +3355,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       elif definition.startswith("union"):
         type_name = "union"
 
-      # For some reason, IDA my return types with the form "__int128 unsigned",
+      # For some reason, IDA may return types with the form "__int128 unsigned",
       # we want it the right way "unsigned __int128".
       if name and name.find(" ") > -1:
         names = name.split(" ")
