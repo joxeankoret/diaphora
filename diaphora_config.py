@@ -224,4 +224,4 @@ SHOW_IMPORT_WARNINGS = True
 
 #-------------------------------------------------------------------------------
 # Workarounds for IDA bugs
-DIAPHORA_WORKAROUND_MAX_TINFO_T = True
+DIAPHORA_WORKAROUND_MAX_TINFO_T = False

@@ -2650,6 +2650,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       keys.remove(base)
     keys.insert(0, base)
     for key in keys:
+      if key not in assembly:
+        log(f"Key not in `assembly` list? Key {key} Assembly {assembly}")
+        continue
       for line in assembly[key]:
         assembly_addrs.append(line[0])
         asm.append(line[1])
