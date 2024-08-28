@@ -2049,7 +2049,7 @@ class CBinDiff:
     t = time.monotonic()
     while self.continue_getting_sql_rows(i):
       if time.monotonic() - t > self.timeout or cur_thread.timeout:
-        log_refresh(f"Timeout with heuristic '{cur_thread.name}'")
+        log(f"Timeout with heuristic '{cur_thread.name}'")
         raise SystemExit()
 
       i += 1
