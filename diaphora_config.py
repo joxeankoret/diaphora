@@ -140,6 +140,13 @@ DEFAULT_PARTIAL_RATIO = 0.5
 # can relax the minimum ratio needed to consider a match good or bad.
 DEFAULT_TRUSTED_PARTIAL_RATIO = 0.3
 
+# Every single constant that is matched for a functions pair adds a small value
+# to the total generated ratio. A little hack here is that for different cpu
+# targets, if we increase the ratio a little, it will match better multiple
+# functions that were missed before (or generated a too low ratio).
+INCREASE_RATIO_PER_CONSTANT_MATCH_SAME_CPU = 0.006
+INCREASE_RATIO_PER_CONSTANT_MATCH = 0.008
+
 # Regular expressions used to clean-up the pseudo-code and assembly dumps in
 # order to get better comparison ratios.
 CLEANING_CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
@@ -202,6 +209,7 @@ THREADS_WAIT_TIME = 1
 # initial matches. This configuration directive is used to enable/disable this
 # experimental feature.
 ML_TRAIN_LOCAL_MODEL = False
+ML_USE_TRAINED_MODEL = True
 
 # What is the minimum ratio required for a match to be considered for usage to
 # train a local model?

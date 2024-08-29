@@ -51,7 +51,7 @@ except ImportError:
 from difflib import unified_diff
 
 import ml.model
-from ml.model import ML_ENABLED, train, predict, get_model_name, int_compare_ratio
+from ml.model import ML_AVAILABLE, train, predict, get_model_name, int_compare_ratio, is_fitted
 
 from diaphora_heuristics import (
   HEURISTICS,
@@ -392,9 +392,11 @@ class CBinDiff:
     self.slow_heuristics = self.get_value_for(
       "slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS
     )
-    self.machine_learning = self.get_value_for(
-      "machine_learning", config.ML_TRAIN_LOCAL_MODEL
+    self.train_local_model = self.get_value_for(
+      "train_local_model", config.ML_TRAIN_LOCAL_MODEL
     )
+    if self.train_local_model:
+      log("Machine Learning module available")
     self.exclude_library_thunk = self.get_value_for(
       "exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK
     )
@@ -1903,11 +1905,7 @@ class CBinDiff:
         self.ratios_cache[key] = 1.0
         return 1.0
 
-    v6 = 0.0
-    if ML_ENABLED and self.machine_learning:
-      v6 = self.get_ml_ratio(main_d, diff_d)
-
-    values_set = set([v1, v2, v3, v4, v5, v6])
+    values_set = set([v1, v2, v3, v4, v5])
     r = max(values_set)
     if r == 1.0 and md1 != md2:
       # We cannot assign a 1.0 ratio if both MD indices are different, that's an
@@ -2049,7 +2047,7 @@ class CBinDiff:
     t = time.monotonic()
     while self.continue_getting_sql_rows(i):
       if time.monotonic() - t > self.timeout or cur_thread.timeout:
-        log_refresh(f"Timeout with heuristic '{cur_thread.name}'")
+        log(f"Timeout with heuristic '{cur_thread.name}'")
         raise SystemExit()
 
       i += 1
@@ -2922,7 +2920,7 @@ class CBinDiff:
 
       ml_add = False
       ml_ratio = 0
-      if ML_ENABLED and self.machine_learning:
+      if ML_AVAILABLE and self.train_local_model and is_fitted:
         if min(main_row["nodes"], diff_row["nodes"]) > 3:
           ml_ratio = int_compare_ratio(main_row["nodes"], diff_row["nodes"])
           if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
@@ -3011,14 +3009,22 @@ class CBinDiff:
         score += 0.001
 
       if main_row["constants"] != "[]":
-        if main_row["constants"] == diff_row["constants"]:
-          score += 0.003
-        else:
-          set1 = set(json.loads(main_row["constants"]))
-          set2 = set(json.loads(diff_row["constants"]))
-          set_result = set1.intersection(set2)
-          if len(set_result) > 0:
-            score += len(set_result) * 0.001
+        set1 = set(json.loads(main_row["constants"]))
+        set2 = set(json.loads(diff_row["constants"]))
+        set_result = set1.intersection(set2)
+        if len(set_result) > 0:
+          if self.is_same_processor:
+            tmp = config.INCREASE_RATIO_PER_CONSTANT_MATCH_SAME_CPU
+          else:
+            tmp = config.INCREASE_RATIO_PER_CONSTANT_MATCH
+          score += len(set_result) * tmp
+        
+        if score > 0.1:
+          log(f"CONSTANTS: 0x%08x 0x%08x {score} %d constants matched" % (ea1, ea2, len(set_result)))
+
+      if ML_AVAILABLE and self.train_local_model:
+        tmp = self.get_ml_ratio(main_d, diff_d)
+        score += 0.01
     finally:
       cur.close()
 
@@ -3681,8 +3687,8 @@ class CBinDiff:
         if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
           self.find_related_constants(main_row, diff_row)
 
-  def train_local_model(self):
-    if ML_ENABLED and self.machine_learning:
+  def do_train_local_model(self):
+    if ML_AVAILABLE and self.train_local_model:
       debug_refresh("[i] Machine learning module enabled.")
       train(self, self.all_matches)
 
@@ -3765,7 +3771,7 @@ class CBinDiff:
           log_refresh("Finding partial matches")
           self.find_partial_matches()
 
-          self.train_local_model()
+          self.do_train_local_model()
 
           if self.unreliable:
             # Find using likely unreliable methods modified functions

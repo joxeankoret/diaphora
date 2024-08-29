@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 """
-Diaphora, a diffing plugin for IDA
+Diaphora, a binary diffing tool
 Copyright (c) 2015-2024, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
@@ -18,8 +18,8 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ["ML_ENABLED", "ml_model", "train", "predict", "get_model_name",
-  "int_compare_ratio"]
+__all__ = ["ML_AVAILABLE", "ml_model", "train", "predict", "get_model_name",
+  "int_compare_ratio", "is_fitted"]
 
 import sys
 import json
@@ -36,13 +36,14 @@ from typing import List
 try:
   import numpy as np
 
-  from sklearn.linear_model import RidgeClassifier
-  from sklearn.calibration import CalibratedClassifierCV
+  from sklearn.tree import DecisionTreeClassifier
   
-  ML_ENABLED = True
+  import joblib
+
+  ML_AVAILABLE = True
 except ImportError:
-  print("Both numpy and Scikit Learn are needed to use local models.")
-  ML_ENABLED = False
+  print("Scikit Learn, numpy and joblib python libraries are required to use ML models.")
+  ML_AVAILABLE = False
 
 sys.path.append(".")
 sys.path.append("..")
@@ -115,7 +116,7 @@ def count_callers_callees(db_name : str, func_id : int):
   return callers, callees
 
 #-------------------------------------------------------------------------------
-def compare_rows(row1 : list, row2 : list) -> List[float]:
+def compare_rows(row1 : list, row2 : list, check_calls : bool = True) -> List[float]:
   """
   Compare two function rows and calculate a similarity ratio for it.
   """
@@ -154,11 +155,11 @@ def compare_rows(row1 : list, row2 : list) -> List[float]:
     else:
       scores.append(value1 == value2)
 
-
-  main_callers, main_callees = count_callers_callees("main", row1["id"])
-  diff_callers, diff_callees = count_callers_callees("diff", row2["id"])
-  scores.append(int_compare_ratio(main_callers, diff_callees))
-  scores.append(int_compare_ratio(diff_callers, diff_callers))
+  if check_calls:
+    main_callers, main_callees = count_callers_callees("main", row1["id"])
+    diff_callers, diff_callees = count_callers_callees("diff", row2["id"])
+    scores.append(int_compare_ratio(main_callers, diff_callees))
+    scores.append(int_compare_ratio(diff_callers, diff_callers))
 
   return scores
 
@@ -166,7 +167,7 @@ def compare_rows(row1 : list, row2 : list) -> List[float]:
 class CClassifier:
   def __init__(self, diaphora_obj : object):
     self.diaphora = diaphora_obj
-    self.clf = RidgeClassifier()
+    self.clf = DecisionTreeClassifier()
     self.matches = []
     self.fitted = False
 
@@ -271,8 +272,8 @@ class CClassifier:
   def predict(self, row : dict) -> float:
     ret = 0.0
     if self.fitted:
-      d = self.clf.decision_function(row)[0]
-      ret = np.exp(d) / (1 + np.exp(d))
+      d = self.clf.predict(row)
+      ret = d[0]
     return ret
 
 #-------------------------------------------------------------------------------
@@ -280,6 +281,11 @@ def train(diaphora_obj : object, matches : list):
   global ml_model
   ml_model = CClassifier(diaphora_obj)
   ml_model.train(matches)
+
+#-------------------------------------------------------------------------------
+def is_fitted() -> bool:
+  global ml_model
+  return ml_model.fitted
 
 #-------------------------------------------------------------------------------
 def predict(main_row : dict, diff_row : dict) -> float:
