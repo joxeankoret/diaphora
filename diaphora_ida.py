@@ -733,8 +733,7 @@ class CBinDiffExporterSetup(Form):
   <Use speed ups:{rExperimental}##Use tricks to speed ups some of the most common diffing tasks>
   <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
   <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
-  <#Enable this option to use the Machine Learning engine and generate a dataset with known good and bad results specific to the 2 binaries being compared.#Train a specialized local classifier (experimental ML support):{rMachineLearning}>
-  <#Enable this option to use the Machine Learning engine with an already trained model.#Use the model $DIAPHORA_DIR/ml/clf.pkl:{rUseTrainedModel}>{cGroup1}>
+  <#Enable this option to use the Machine Learning engine with an already trained model specified in diaphora_config.py!ML_TRAINED_MODEL.#Use an already trained model:{rUseTrainedModel}>{cGroup1}>
 
   Project specific rules:
   <#Select the project specific Python script rules#Python script:{iProjectSpecificRules}>
@@ -764,7 +763,6 @@ class CBinDiffExporterSetup(Form):
           "rExperimental",
           "rIgnoreSubNames",
           "rIgnoreAllNames",
-          "rMachineLearning",
           "rUseTrainedModel"
         )
       ),
@@ -790,7 +788,6 @@ class CBinDiffExporterSetup(Form):
     self.rExcludeLibraryThunk.checked = opts.exclude_library_thunk
     self.rUnreliable.checked = opts.unreliable
     self.rSlowHeuristics.checked = opts.slow
-    self.rMachineLearning.checked = opts.train_local_model
     self.rUseTrainedModel.checked = opts.use_trained_model
     self.rRelaxRatio.checked = opts.relax
     self.rExperimental.checked = opts.experimental
@@ -814,7 +811,6 @@ class CBinDiffExporterSetup(Form):
       exclude_library_thunk=self.rExcludeLibraryThunk.checked,
       unreliable=self.rUnreliable.checked,
       slow=self.rSlowHeuristics.checked,
-      train_local_model=self.rMachineLearning.checked,
       use_trained_model=self.rUseTrainedModel.checked,
       relax=self.rRelaxRatio.checked,
       experimental=self.rExperimental.checked,
@@ -3662,7 +3658,6 @@ def _diff_or_export(use_ui, **options):
     bd.exclude_library_thunk = opts.exclude_library_thunk
     bd.unreliable = opts.unreliable
     bd.slow_heuristics = opts.slow
-    bd.train_local_model = opts.train_local_model
     bd.use_trained_model = opts.use_trained_model
     bd.relaxed_ratio = opts.relax
     bd.experimental = opts.experimental
@@ -3753,9 +3748,6 @@ class BinDiffOptions:
     self.unreliable = kwargs.get("unreliable", config.DIFFING_ENABLE_UNRELIABLE)
     self.slow = kwargs.get(
       "slow", total_functions <= config.MIN_FUNCTIONS_TO_DISABLE_SLOW
-    )
-    self.train_local_model = kwargs.get(
-      "train_local_model", config.ML_TRAIN_LOCAL_MODEL
     )
     self.use_trained_model = kwargs.get(
       "use_trained_model", config.ML_USE_TRAINED_MODEL

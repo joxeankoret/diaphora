@@ -201,25 +201,12 @@ THREADS_WAIT_TIME = 1
 
 
 #-------------------------------------------------------------------------------
-# Diaphora can try to train using Ridge regression a classifier specific for the
-# current set of binaries using matches labelled as "Best" or "Partial" in order
-# to try to learn what is a good match specifically for the two binaries being
-# compared. This approach seems to work when there are a lot of initial matches,
-# and seems to cause a lot of false positives when there aren't enough good
-# initial matches. This configuration directive is used to enable/disable this
-# experimental feature.
-ML_TRAIN_LOCAL_MODEL = False
+# Diaphora can use a local mode, enable this configuration directive to use it.
 ML_USE_TRAINED_MODEL = True
-
-# What is the minimum ratio required for a match to be considered for usage to
-# train a local model?
-ML_MATCHES_MIN_RATIO = 0.7
-ML_MIN_PREDICTION_RATIO = 0.75
-
-# What value should be added to the final similarity ratio when the specialized
-# classifier (trained with known good and bad results found for the current two
-# binaries being compared) finds what it thinks is a good match.
-ML_DEEP_RATIO_ADDED_SCORE = 0.1
+# Model trained with a decision tree classifier: fast and accurate enough
+ML_TRAINED_MODEL = os.path.join(CONFIGURATION_DIRECTORY, "ml/diaphora-amalgamation-model.pkl")
+# The value added to the similarity ratio for a positive match using the model.
+ML_TRAINED_MODEL_MATCH_SCORE = 0.15
 
 # Show a chooser with all the matches that the classifier think are good ones?
 ML_DEBUG_SHOW_MATCHES = True

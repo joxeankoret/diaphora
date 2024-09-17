@@ -50,8 +50,8 @@ except ImportError:
 
 from difflib import unified_diff
 
-import ml.model
-from ml.model import ML_AVAILABLE, train, predict, get_model_name, int_compare_ratio, is_fitted
+import ml
+from ml.basic_engine import get_model_comparison_data, ML_AVAILABLE
 
 from diaphora_heuristics import (
   HEURISTICS,
@@ -87,7 +87,7 @@ try:
 except ImportError:
   IS_IDA = False
 
-importlib.reload(ml.model)
+importlib.reload(ml.basic_engine)
 importlib.reload(config)
 importlib.reload(schema)
 importlib.reload(jk_threads)
@@ -392,11 +392,9 @@ class CBinDiff:
     self.slow_heuristics = self.get_value_for(
       "slow_heuristics", config.DIFFING_ENABLE_SLOW_HEURISTICS
     )
-    self.train_local_model = self.get_value_for(
-      "train_local_model", config.ML_TRAIN_LOCAL_MODEL
+    self.use_trained_model = self.get_value_for(
+      "use_trained_model", config.ML_USE_TRAINED_MODEL
     )
-    if self.train_local_model:
-      log("Machine Learning module available")
     self.exclude_library_thunk = self.get_value_for(
       "exclude_library_thunk", config.EXPORTING_EXCLUDE_LIBRARY_THUNK
     )
@@ -426,6 +424,8 @@ class CBinDiff:
 
     # How much do call graphs from both binaries differ?
     self.percent = 0
+
+    self.classifier = None
 
     ####################################################################
     # LIMITS
@@ -1572,8 +1572,8 @@ class CBinDiff:
       self.total_functions1 = rows[0]["total"]
       self.total_functions2 = rows[1]["total"]
 
-      fields = "id, address, mangled_function, nodes, edges, size"
-      sql = f"""select address ea, mangled_function, nodes
+      fields = "id, address, mangled_function, nodes, edges, size, bytes_hash"
+      sql = f"""select address ea, mangled_function, nodes, bytes_hash
                  from (select {fields}
                          from functions
                     intersect
@@ -1906,6 +1906,7 @@ class CBinDiff:
         return 1.0
 
     values_set = set([v1, v2, v3, v4, v5])
+
     r = max(values_set)
     if r == 1.0 and md1 != md2:
       # We cannot assign a 1.0 ratio if both MD indices are different, that's an
@@ -2734,7 +2735,7 @@ class CBinDiff:
         )
         log_refresh(f"Finding via {repr(heur)}")
 
-        self.add_matches_from_query(sql, "best")
+        self.add_matches_from_query_ratio(sql, "best", "partial")
         ret = True
     finally:
       cur.close()
@@ -2903,48 +2904,6 @@ class CBinDiff:
 
     return ignore_list, dones
 
-  def get_ml_ratio(self, main_d, diff_d):
-    ea1 = int(main_d["ea"])
-    ea2 = int(diff_d["ea"])
-
-    ml_ratio = 0.0
-
-    cur = self.db_cursor()
-    sql = "select * from {db}.functions where address = ?"
-    try:
-      cur.execute(sql.format(db="main"), (str(ea1),))
-      main_row = cur.fetchone()
-
-      cur.execute(sql.format(db="diff"), (str(ea2),))
-      diff_row = cur.fetchone()
-
-      ml_add = False
-      ml_ratio = 0
-      if ML_AVAILABLE and self.train_local_model and is_fitted:
-        if min(main_row["nodes"], diff_row["nodes"]) > 3:
-          ml_ratio = int_compare_ratio(main_row["nodes"], diff_row["nodes"])
-          if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
-            ml_ratio = predict(main_row, diff_row)
-            if ml_ratio >= config.ML_MIN_PREDICTION_RATIO:
-              log(f"ML ratio {ml_ratio} for {main_d['name']} - {diff_d['name']}")
-              ml_add = True
-            else:
-              ml_ratio = 0.0
-
-      if ml_add:
-        vfname1 = main_d["name"]
-        vfname2 = diff_d["name"]
-        nodes1 = main_d["nodes"]
-        nodes2 = diff_d["nodes"]
-        desc = f"ML {get_model_name()}"
-
-        tmp_item = CChooser.Item(ea1, vfname1, ea2, vfname2, desc, ml_ratio, nodes1, nodes2)
-        self.ml_chooser.add_item(tmp_item)
-    finally:
-      cur.close()
-
-    return ml_ratio
-
   def deep_ratio(self, main_d, diff_d, ratio):
     """
     Try to get a score to add to the value returned by `check_ratio()` so less
@@ -3018,13 +2977,18 @@ class CBinDiff:
           else:
             tmp = config.INCREASE_RATIO_PER_CONSTANT_MATCH
           score += len(set_result) * tmp
-        
-        if score > 0.1:
-          log(f"CONSTANTS: 0x%08x 0x%08x {score} %d constants matched" % (ea1, ea2, len(set_result)))
 
-      if ML_AVAILABLE and self.train_local_model:
-        tmp = self.get_ml_ratio(main_d, diff_d)
-        score += 0.01
+      if self.classifier is not None:
+        if self.get_model_ratio(main_d, diff_d) == 1:
+          score += config.ML_TRAINED_MODEL_MATCH_SCORE
+          vfname1 = main_d["name"]
+          vfname2 = diff_d["name"]
+          nodes1 = main_d["nodes"]
+          nodes2 = diff_d["nodes"]
+          desc = f"ML {self.classifier}"
+
+          tmp_item = CChooser.Item(ea1, vfname1, ea2, vfname2, desc, ratio + score, nodes1, nodes2)
+          self.ml_chooser.add_item(tmp_item)
     finally:
       cur.close()
 
@@ -3687,10 +3651,66 @@ class CBinDiff:
         if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
           self.find_related_constants(main_row, diff_row)
 
-  def do_train_local_model(self):
-    if ML_AVAILABLE and self.train_local_model:
-      debug_refresh("[i] Machine learning module enabled.")
-      train(self, self.all_matches)
+  def get_model_ratio(self, main_d, diff_d):
+    SELECT_FIELDS = """f.name name1,
+       f.nodes nodes1,
+       f.edges edges1,
+       f.indegree indegree1,
+       f.outdegree outdegree1,
+       f.cyclomatic_complexity cc1,
+       f.primes_value primes_value1,
+       f.clean_pseudo clean_pseudo1,
+       f.pseudocode_primes pseudocode_primes1,
+       f.strongly_connected strongly_connected1,
+       f.strongly_connected_spp strongly_connected_spp1,
+       f.loops loops1,
+       f.constants constants1,
+       f.source_file source_file1,
+       df.name name2,
+       df.nodes nodes2,
+       df.edges edges2,
+       df.indegree indegree2,
+       df.outdegree outdegree2,
+       df.cyclomatic_complexity cc2,
+       df.primes_value primes_value2,
+       df.clean_pseudo clean_pseudo2,
+       df.pseudocode_primes pseudocode_primes2,
+       df.strongly_connected strongly_connected2,
+       df.strongly_connected_spp strongly_connected_spp2,
+       df.loops loops2,
+       df.constants constants2,
+       df.source_file source_file2,
+       f.id id1,
+       df.id id2,
+       f.address ea1,
+       df.address ea2 """
+    
+    sql = f"""select {SELECT_FIELDS}
+                from main.functions f,
+                     diff.functions df
+               where f.address = ?
+                 and df.address = ? """
+    cur = self.db_cursor()
+
+    ret = 0
+    try:
+      cur.execute(sql, (main_d["ea"], diff_d["ea"]))
+      row = cur.fetchone()
+      d = dict(row)
+      cmp_data = get_model_comparison_data(dict(row), self.is_same_processor)
+      ret = self.classifier.predict(cmp_data)[0]
+      if ret == 1:
+        debug_refresh(f"ML model predicted {ret} for {main_d['name']} {diff_d['name']}")
+    finally:
+      cur.close()
+
+    return ret
+
+  def apply_machine_learning(self):
+    if ML_AVAILABLE and self.use_trained_model:
+      import joblib
+      self.classifier = joblib.load(config.ML_TRAINED_MODEL)
+      log(f"Using ML classifier {self.classifier}")
 
   def get_callers_callees(self, db_name, func_id):
     cur = self.db_cursor()
@@ -3771,7 +3791,7 @@ class CBinDiff:
           log_refresh("Finding partial matches")
           self.find_partial_matches()
 
-          self.do_train_local_model()
+          self.apply_machine_learning()
 
           if self.unreliable:
             # Find using likely unreliable methods modified functions
