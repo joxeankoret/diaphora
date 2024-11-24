@@ -720,7 +720,7 @@ class CBinDiffExporterSetup(Form):
 
   Export options:
   <Use the decompiler if available:{rUseDecompiler}>
-  <#Enable this option to disable exporting microcode#Export microcode instructions and basic blocks:{rExportMicrocode}>
+  <#Use this option to enable or disable exporting microcode#Export microcode instructions and basic blocks:{rExportMicrocode}>
   <Do not export library and thunk functions:{rExcludeLibraryThunk}>
   <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
   <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
