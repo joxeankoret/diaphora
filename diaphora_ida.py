@@ -70,7 +70,10 @@ except ImportError:
   HAS_GET_SOURCE_STRINGS = False
 
 # pylint: disable-next=wrong-import-order
-from PyQt5 import QtWidgets
+if IDA_SDK_VERSION < 920:
+  from PyQt5 import QtWidgets
+else:
+  from PySide6 import QtWidgets
 
 #-------------------------------------------------------------------------------
 # Chooser items indices. They do differ from the CChooser.item items that are

@@ -23,7 +23,10 @@ from idaapi import *
 from idautils import *
 
 try:
-  from PyQt5 import QtWidgets
+  if IDA_SDK_VERSION < 920:
+    from PyQt5 import QtWidgets
+  else:
+    from PySide6 import QtWidgets
 except ImportError as e:
   print(f'{os.path.basename(__file__)} importerror {e}')
 

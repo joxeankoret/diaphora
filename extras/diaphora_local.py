@@ -28,7 +28,10 @@ import idc
 import idaapi
 import idautils
 
-from PyQt5 import QtWidgets
+if idaapi.IDA_SDK_VERSION < 920:
+  from PyQt5 import QtWidgets
+else:
+  from PySide6 import QtWidgets
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
