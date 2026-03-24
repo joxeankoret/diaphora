@@ -2,7 +2,7 @@
 
 """
 Diaphora, a binary diffing tool
-Copyright (c) 2015-2024, Joxean Koret
+Copyright (c) 2015-2026 Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -500,6 +500,14 @@ class CBinDiff:
     Fake member, it is only useful (and implemented) when running from within IDA.
     """
 
+  def imp_load_source(self, name, pathname):
+    """ Replacement for imp.load_source() """
+    spec = importlib.util.spec_from_file_location(modname, filename)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[modname] = module
+    spec.loader.exec_module(module)
+    return module
+
   def load_hooks(self):
     """
     Load the project specific python script, if any was set.
@@ -509,7 +517,7 @@ class CBinDiff:
 
     try:
       log(f"Loading project specific Python script {self.project_script}")
-      module = load_source("diaphora_hooks", self.project_script)
+      module = self.imp_load_source("diaphora_hooks", self.project_script)
     except:
       err = str(sys.exc_info()[1])
       print(f"Error loading project specific Python script: {err}")

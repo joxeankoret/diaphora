@@ -1,6 +1,6 @@
 """
 Diaphora, a diffing plugin for IDA
-Copyright (c) 2015-2024, Joxean Koret
+Copyright (c) 2015-2026 Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -69,8 +69,12 @@ except ImportError:
   print(f"Error loading IDAMagicStrings.py: {str(sys.exc_info()[1])}")
   HAS_GET_SOURCE_STRINGS = False
 
-# pylint: disable-next=wrong-import-order
-from PyQt5 import QtWidgets
+if not idaapi.cvar.batch:
+  try:
+    from PySide6 import QtWidgets
+  except ImportError:
+    # Support for old versions. Until when will I do this??
+    from PyQt5 import QtWidgets
 
 #-------------------------------------------------------------------------------
 # Chooser items indices. They do differ from the CChooser.item items that are
@@ -2507,6 +2511,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     return line
 
   def get_function_names(self, f):
+    """ Return the 3 different names that a function might have. Yeah, well...
+    """
     name = get_func_name(int(f))
     true_name = name
     demangle_named_name = demangle_name(name, INF_SHORT_DN)
@@ -2766,244 +2772,231 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       return instructions
     return []
 
-  def read_function(self, ea):
+  def process_instruction(self, current_head, func, image_base, block_ea, nodes,
+                           cpu_ins_list, assembly, ins):
     """
-    Extract anything and everything we (might) need from a function.
-
-    This is a horribly big (read: huge) function that, from time to time, I try
-    to make a bit smaller. Feel free to do the same...
+    Process a single instruction and extract its features.
     """
-    name, true_name, demangle_named_name = self.get_function_names(ea)
-    # Call hooks immediately after we have a proper function name
-    if self.hooks is not None:
-      if "before_export_function" in dir(self.hooks):
-        ret = self.hooks.before_export_function(ea, name)
-        if not ret:
-          return False
+    mnem, disasm = self.extract_line_mnem_disasm(current_head)
+    inst_size = get_item_size(current_head)
 
-    f = int(ea)
-    func = get_func(f)
-    if not func:
+    # Calculate mnemonics SPP
+    mnemonics_spp_mult = 1
+    if mnem in cpu_ins_list:
+      mnemonics_spp_mult = self.primes[cpu_ins_list.index(mnem)]
+
+    # Add to assembly
+    try:
+      assembly[block_ea].append([current_head - image_base, disasm])
+    except KeyError:
+      if nodes == 1:
+        assembly[block_ea] = [[current_head - image_base, disasm]]
+      else:
+        assembly[block_ea] = [
+          # pylint: disable-next=consider-using-f-string
+          [current_head - image_base, "loc_%x:" % current_head],
+          [current_head - image_base, disasm],
+        ]
+
+    # Get instruction bytes
+    decoded_size = ins[1] if isinstance(ins, tuple) else ins.size
+    curr_bytes = get_bytes(current_head, decoded_size, False)
+    if curr_bytes is None or len(curr_bytes) != decoded_size:
       # pylint: disable-next=consider-using-f-string
-      log("Cannot get a function object for 0x%x" % f)
-      return False
+      log("Failed to read %d bytes at [%08x]" % (decoded_size, current_head))
+      return None
 
-    export_time = time.monotonic()
-    flow = FlowChart(func)
-    size = 0
+    bytes_sum = sum(curr_bytes)
+    function_hash_bytes = get_bytes(current_head, inst_size, False)
+    outdegree_inc = len(list(CodeRefsFrom(current_head, 0)))
 
-    if not self.ida_subs:
-      # Unnamed function, ignore it...
-      if (
-        name.startswith("sub_")
-        or name.startswith("j_")
-        or name.startswith("unknown")
-        or name.startswith("nullsub_")
-      ):
-        debug_refresh(f"Skipping function {repr(name)}")
-        return False
+    # Extract operand value and name
+    op_value = get_operand_value(current_head, 1)
+    if op_value == -1:
+      op_value = get_operand_value(current_head, 0)
 
-      # Already recognized runtime's function?
-      flags = get_func_attr(f, FUNCATTR_FLAGS)
-      if flags & FUNC_LIB or flags == -1:
-        debug_refresh(f"Skipping library function {repr(name)}")
-        return False
+    tmp_name = None
+    if op_value != BADADDR and op_value in self.names:
+      tmp_name = self.names[op_value]
+      demangle_named_name = demangle_name(tmp_name, INF_SHORT_DN)
+      if demangle_named_name is not None:
+        tmp_name = demangle_named_name
+        pos = tmp_name.find("(")
+        if pos > -1:
+          tmp_name = tmp_name[:pos]
 
-    if self.exclude_library_thunk:
-      # Skip library and thunk functions
-      flags = get_func_attr(f, FUNCATTR_FLAGS)
-      if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
-        debug_refresh(f"Skipping thunk function {repr(name)}")
-        return False
+      if not tmp_name.startswith("sub_") and not tmp_name.startswith("nullsub_"):
+        name_to_add = tmp_name
+      else:
+        name_to_add = None
+    else:
+      name_to_add = None
 
-      if name.startswith("nullsub_"):
-        debug_refresh(f"Skipping nullsub function {repr(name)}")
-        return False
+    # Calculate callees
+    refs = list(CodeRefsFrom(current_head, 0))
+    callees_found = []
+    for callee in refs:
+      callee_func = get_func(callee)
+      if callee_func and callee_func.start_ea != func.start_ea:
+        callees_found.append(callee_func.start_ea)
 
-    image_base = self.get_base_address()
-    nodes = 0
-    edges = 0
-    instructions = 0
-    mnems = []
-    dones = {}
-    names = set()
-    bytes_hash = []
-    bytes_sum = 0
-    function_hash = []
-    outdegree = 0
-    indegree = len(list(CodeRefsTo(f, 1)))
-    assembly = {}
-    basic_blocks_data = {}
-    bb_relations = {}
-    bb_topo_num = {}
-    bb_topological = {}
-    switches = []
-    bb_degree = {}
-    bb_edges = []
-    constants = []
+    if len(refs) == 0:
+      refs = DataRefsFrom(current_head)
 
-    # The callees will be calculated later
-    callees = []
-    callers = self.extract_function_callers(f)
+    # Get type from references
+    tmp_type = None
+    for ref in refs:
+      if ref in self.names:
+        tmp_name = self.names[ref]
+        tmp_type = idc.get_type(ref)
 
-    mnemonics_spp = 1
-    cpu_ins_list = GetInstructionList()
-    cpu_ins_list.sort()
+    # Get instruction comments
+    ins_cmt1 = GetCommentEx(current_head, 0)
+    ins_cmt2 = GetCommentEx(current_head, 1)
+
+    # Extract forced operand names
+    operands_names = []
+    ins_obj = ins[0] if isinstance(ins, tuple) else ins
+    for index, _ in enumerate(ins_obj.ops):
+      if ida_bytes.is_forced_operand(ins_obj.ip, index):
+        operand_name = (
+          ida_bytes.get_forced_operand(ins_obj.ip, index)
+          if ida_bytes.is_forced_operand(ins_obj.ip, index)
+          else ""
+        )
+        operands_names.append([index, operand_name])
+
+    return {
+      'mnem': mnem,
+      'disasm': disasm,
+      'size': inst_size,
+      'mnemonics_spp_mult': mnemonics_spp_mult,
+      'curr_bytes': curr_bytes,
+      'bytes_sum': bytes_sum,
+      'function_hash_bytes': function_hash_bytes,
+      'outdegree_inc': outdegree_inc,
+      'name_to_add': name_to_add,
+      'callees_found': callees_found,
+      'tmp_name': tmp_name,
+      'tmp_type': tmp_type,
+      'ins_cmt1': ins_cmt1,
+      'ins_cmt2': ins_cmt2,
+      'operands_names': operands_names,
+      'current_head': current_head,
+      'image_base': image_base,
+    }
+
+  def process_basic_block(self, block, func, image_base, accum):
+    """ Process one basic block and its instructions
+    """
+    accum['nodes'] += 1
+    instructions_data = []
+
+    block_ea = block.start_ea - image_base
+    idx = len(accum['bb_topological'])
+    accum['bb_topological'][idx] = []
+    accum['bb_topo_num'][block_ea] = idx
 
     current_head = BADADDR
-    for block in flow:
-      if block.end_ea == 0 or block.end_ea == BADADDR:
-        # pylint: disable-next=consider-using-f-string
-        print("0x%08x: Skipping bad basic block" % f)
+    for current_head in list(Heads(block.start_ea, block.end_ea)):
+      ins, decoded_size = self.get_decoded_instruction(current_head)
+
+      # Extract constants from instruction
+      accum['constants'] = self.extract_function_constants(
+        ins, current_head, accum['constants']
+      )
+
+      # Process the instruction
+      inst_data = self.process_instruction(
+        current_head, func, image_base, block_ea, accum['nodes'],
+        accum['cpu_ins_list'], accum['assembly'], ins
+      )
+
+      if inst_data is None:
         continue
 
-      nodes += 1
-      instructions_data = []
+      # Update accumulators
+      accum['size'] += inst_data['size']
+      accum['instructions'] += 1
+      accum['mnemonics_spp'] *= inst_data['mnemonics_spp_mult']
+      accum['bytes_hash'].append(inst_data['curr_bytes'])
+      accum['bytes_sum'] += inst_data['bytes_sum']
+      accum['function_hash'].append(inst_data['function_hash_bytes'])
+      accum['outdegree'] += inst_data['outdegree_inc']
+      accum['mnems'].append(inst_data['mnem'])
 
-      block_ea = block.start_ea - image_base
-      idx = len(bb_topological)
-      bb_topological[idx] = []
-      bb_topo_num[block_ea] = idx
+      if inst_data['name_to_add']:
+        accum['names'].add(inst_data['name_to_add'])
 
-      for current_head in list(Heads(block.start_ea, block.end_ea)):
-        mnem, disasm = self.extract_line_mnem_disasm(current_head)
-        size += get_item_size(current_head)
-        instructions += 1
+      for callee_ea in inst_data['callees_found']:
+        if callee_ea not in accum['callees']:
+          accum['callees'].append(callee_ea)
 
-        if mnem in cpu_ins_list:
-          mnemonics_spp *= self.primes[cpu_ins_list.index(mnem)]
+      # Build instruction data entry
+      instructions_data.append([
+        current_head - image_base,
+        inst_data['mnem'],
+        inst_data['disasm'],
+        inst_data['ins_cmt1'],
+        inst_data['ins_cmt2'],
+        inst_data['operands_names'],
+        inst_data['tmp_name'],
+        inst_data['tmp_type'],
+      ])
 
-        try:
-          assembly[block_ea].append([current_head - image_base, disasm])
-        except KeyError:
-          if nodes == 1:
-            assembly[block_ea] = [[current_head - image_base, disasm]]
-          else:
-            assembly[block_ea] = [
-              # pylint: disable-next=consider-using-f-string
-              [current_head - image_base, "loc_%x:" % current_head],
-              [current_head - image_base, disasm],
-            ]
+      # Extract switches
+      accum['switches'] = self.extract_function_switches(
+        current_head, accum['switches']
+      )
 
-        ins, decoded_size = self.get_decoded_instruction(current_head)
-        constants = self.extract_function_constants(ins, current_head, constants)
+    # Store basic block data
+    accum['basic_blocks_data'][block_ea] = instructions_data
+    accum['bb_relations'][block_ea] = []
+    if block_ea not in accum['bb_degree']:
+      accum['bb_degree'][block_ea] = [0, 0]
 
-        curr_bytes = get_bytes(current_head, decoded_size, False)
-        if curr_bytes is None or len(curr_bytes) != decoded_size:
-          # pylint: disable-next=consider-using-f-string
-          log("Failed to read %d bytes at [%08x]" % (decoded_size, current_head))
-          continue
+    # Process successor blocks
+    for succ_block in block.succs():
+      if succ_block.end_ea == 0:
+        continue
 
-        bytes_hash.append(curr_bytes)
-        bytes_sum += sum(curr_bytes)
+      succ_base = succ_block.start_ea - image_base
+      accum['bb_relations'][block_ea].append(succ_base)
+      accum['bb_degree'][block_ea][1] += 1
+      accum['bb_edges'].append((block_ea, succ_base))
+      if succ_base not in accum['bb_degree']:
+        accum['bb_degree'][succ_base] = [0, 0]
+      accum['bb_degree'][succ_base][0] += 1
 
-        function_hash.append(get_bytes(current_head, get_item_size(current_head), False))
-        outdegree += len(list(CodeRefsFrom(current_head, 0)))
-        mnems.append(mnem)
-        op_value = get_operand_value(current_head, 1)
-        if op_value == -1:
-          op_value = get_operand_value(current_head, 0)
+      accum['edges'] += 1
+      accum['indegree'] += 1
+      if succ_block.id not in accum['dones']:
+        accum['dones'][succ_block] = 1
 
-        tmp_name = None
-        if op_value != BADADDR and op_value in self.names:
-          tmp_name = self.names[op_value]
-          demangle_named_name = demangle_name(tmp_name, INF_SHORT_DN)
-          if demangle_named_name is not None:
-            tmp_name = demangle_named_name
-            pos = tmp_name.find("(")
-            if pos > -1:
-              tmp_name = tmp_name[:pos]
+    # Process predecessor blocks
+    for pred_block in block.preds():
+      if pred_block.end_ea == 0:
+        continue
 
-          if not tmp_name.startswith("sub_") and not tmp_name.startswith("nullsub_"):
-            names.add(tmp_name)
-
-        # Calculate the callees
-        refs = list(CodeRefsFrom(current_head, 0))
-        for callee in refs:
-          callee_func = get_func(callee)
-          if callee_func and callee_func.start_ea != func.start_ea:
-            if callee_func.start_ea not in callees:
-              callees.append(callee_func.start_ea)
-
-        if len(refs) == 0:
-          refs = DataRefsFrom(current_head)
-
-        tmp_type = None
-        for ref in refs:
-          if ref in self.names:
-            tmp_name = self.names[ref]
-            tmp_type = idc.get_type(ref)
-
-        ins_cmt1 = GetCommentEx(current_head, 0)
-        ins_cmt2 = GetCommentEx(current_head, 1)
-
-        operands_names = []
-        # save operands_names
-        for index, _ in enumerate(ins.ops):
-          if ida_bytes.is_forced_operand(ins.ip, index):
-            operand_name = (
-              ida_bytes.get_forced_operand(ins.ip, index)
-              if ida_bytes.is_forced_operand(ins.ip, index)
-              else ""
-            )
-            operands_names.append([index, operand_name])
-
-        instructions_data.append(
-          [
-            current_head - image_base,
-            mnem,
-            disasm,
-            ins_cmt1,
-            ins_cmt2,
-            operands_names,
-            tmp_name,
-            tmp_type,
-          ]
+      try:
+        accum['bb_relations'][pred_block.start_ea - image_base].append(
+          block.start_ea - image_base
         )
+      except KeyError:
+        accum['bb_relations'][pred_block.start_ea - image_base] = [
+          block.start_ea - image_base
+        ]
 
-        switches = self.extract_function_switches(current_head, switches)
+      accum['edges'] += 1
+      accum['outdegree'] += 1
+      if pred_block.id not in accum['dones']:
+        accum['dones'][pred_block] = 1
 
-      basic_blocks_data[block_ea] = instructions_data
-      bb_relations[block_ea] = []
-      if block_ea not in bb_degree:
-        # bb in degree, out degree
-        bb_degree[block_ea] = [0, 0]
+    return current_head, accum
 
-      for succ_block in block.succs():
-        if succ_block.end_ea == 0:
-          continue
-
-        succ_base = succ_block.start_ea - image_base
-        bb_relations[block_ea].append(succ_base)
-        bb_degree[block_ea][1] += 1
-        bb_edges.append((block_ea, succ_base))
-        if succ_base not in bb_degree:
-          bb_degree[succ_base] = [0, 0]
-        bb_degree[succ_base][0] += 1
-
-        edges += 1
-        indegree += 1
-        if succ_block.id not in dones:
-          dones[succ_block] = 1
-
-      for pred_block in block.preds():
-        if pred_block.end_ea == 0:
-          continue
-
-        try:
-          bb_relations[pred_block.start_ea - image_base].append(
-            block.start_ea - image_base
-          )
-        except KeyError:
-          bb_relations[pred_block.start_ea - image_base] = [
-            block.start_ea - image_base
-          ]
-
-        edges += 1
-        outdegree += 1
-        if pred_block.id not in dones:
-          dones[pred_block] = 1
-
+  def build_topological_relations(self, flow, image_base, bb_topo_num, bb_topological):
+    """ Build topological relationships between basic blocks
+    """
     for block in flow:
       if block.end_ea == 0:
         continue
@@ -3016,8 +3009,14 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         succ_base = succ_block.start_ea - image_base
         bb_topological[bb_topo_num[block_ea]].append(bb_topo_num[succ_base])
 
+    return bb_topological
+
+  def extract_all_features(self, f, func, ea, current_head, data):
+    """ Extract all features from the function (topological, assembly, pseudocode, etc.)
+    """
+    # Extract topological information
     topological_data = self.extract_function_topological_information(
-      bb_relations, bb_topological
+      data['bb_relations'], data['bb_topological']
     )
     (
       bb_topological,
@@ -3027,8 +3026,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       strongly_connected_spp,
     ) = topological_data
 
+    # Extract assembly features
     asm, assembly_addrs = self.extract_function_assembly_features(
-      assembly, f, image_base
+      data['assembly'], f, data['image_base']
     )
     try:
       clean_assembly = self.get_cmp_asm_lines(asm)
@@ -3037,7 +3037,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       # pylint: disable-next=consider-using-f-string
       print("Error getting assembly for 0x%x" % f)
 
-    cc = edges - nodes + 2
+    # Calculate cyclomatic complexity and get function metadata
+    cc = data['edges'] - data['nodes'] + 2
     proto = self.guess_type(f)
     proto2 = idc.get_type(f)
     try:
@@ -3047,10 +3048,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       log("Cyclomatic complexity too big: 0x%x -> %d" % (f, cc))
       prime = 0
 
+    # Get function comment and compute hashes
     comment = idc.get_func_cmt(f, 1)
-    bytes_hash = md5(b"".join(bytes_hash)).hexdigest()
-    function_hash = md5(b"".join(function_hash)).hexdigest()
+    bytes_hash = md5(b"".join(data['bytes_hash'])).hexdigest()
+    function_hash = md5(b"".join(data['function_hash'])).hexdigest()
 
+    # Extract pseudocode features
     function_flags = get_func_attr(f, FUNCATTR_FLAGS)
     (
       pseudo,
@@ -3060,91 +3063,260 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       pseudo_hash2,
       pseudo_hash3,
     ) = self.extract_function_pseudocode_features(f)
+
+    # Extract microcode
     microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
     microcode_bblocks, microcode_bbrelations = self.get_microcode(func, ea)
 
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
+    # Extract MD index
     md_index = self.extract_function_mdindex(
-      bb_topological, bb_topological_sorted, bb_edges, bb_topo_num, bb_degree
+      bb_topological, bb_topological_sorted, data['bb_edges'],
+      data['bb_topo_num'], data['bb_degree']
     )
-    seg_rva = current_head - get_segm_start(current_head)
 
+    # Calculate segment RVA and other hashes
+    seg_rva = current_head - get_segm_start(current_head)
     kgh = CKoretKaramitasHash()
     kgh_hash = kgh.calculate(f)
-
     rva = f - self.get_base_address()
 
-    # It's better to have names sorted
-    names = list(names)
+    # Sort names for consistency
+    names = list(data['names'])
     names.sort()
 
-    export_time = time.monotonic() - export_time
+    # Calculate export time
+    export_time = time.monotonic() - data['export_time']
     export_time = str(export_time)
 
-    props_list = (
-      name,
-      nodes,
-      edges,
-      indegree,
-      outdegree,
-      size,
-      instructions,
-      mnems,
-      names,
-      proto,
-      cc,
-      prime,
-      f,
-      comment,
-      true_name,
-      bytes_hash,
-      pseudo,
-      pseudo_lines,
-      pseudo_hash1,
-      pseudocode_primes,
-      function_flags,
-      asm,
-      proto2,
-      pseudo_hash2,
-      pseudo_hash3,
-      len(strongly_connected),
-      loops,
-      rva,
-      bb_topological,
-      strongly_connected_spp,
-      clean_assembly,
-      clean_pseudo,
-      mnemonics_spp,
-      switches,
-      function_hash,
-      bytes_sum,
-      md_index,
-      constants,
-      len(constants),
-      seg_rva,
-      assembly_addrs,
-      kgh_hash,
-      None,
-      None,
-      microcode,
-      clean_microcode,
-      microcode_spp,
-      export_time,
-      microcode_bblocks,
-      microcode_bbrelations,
-      callers,
-      callees,
-      basic_blocks_data,
-      bb_relations,
-    )
+    return {
+      'bb_topological': bb_topological,
+      'bb_topological_sorted': bb_topological_sorted,
+      'strongly_connected': strongly_connected,
+      'loops': loops,
+      'strongly_connected_spp': strongly_connected_spp,
+      'asm': asm,
+      'assembly_addrs': assembly_addrs,
+      'clean_assembly': clean_assembly,
+      'cc': cc,
+      'proto': proto,
+      'proto2': proto2,
+      'prime': prime,
+      'comment': comment,
+      'bytes_hash': bytes_hash,
+      'function_hash': function_hash,
+      'function_flags': function_flags,
+      'pseudo': pseudo,
+      'pseudo_lines': pseudo_lines,
+      'pseudo_hash1': pseudo_hash1,
+      'pseudocode_primes': pseudocode_primes,
+      'pseudo_hash2': pseudo_hash2,
+      'pseudo_hash3': pseudo_hash3,
+      'microcode': microcode,
+      'clean_microcode': clean_microcode,
+      'microcode_spp': microcode_spp,
+      'microcode_bblocks': microcode_bblocks,
+      'microcode_bbrelations': microcode_bbrelations,
+      'clean_pseudo': clean_pseudo,
+      'md_index': md_index,
+      'seg_rva': seg_rva,
+      'kgh_hash': kgh_hash,
+      'rva': rva,
+      'names': names,
+      'export_time': export_time,
+    }
 
+  def initialize_function_data(self, f, func):
+    """ Initialize all data structures needed for function analysis
+    """
+    data = {
+      'export_time': time.monotonic(),
+      'flow': FlowChart(func),
+      'size': 0,
+      'image_base': self.get_base_address(),
+      'nodes': 0,
+      'edges': 0,
+      'instructions': 0,
+      'mnems': [],
+      'dones': {},
+      'names': set(),
+      'bytes_hash': [],
+      'bytes_sum': 0,
+      'function_hash': [],
+      'outdegree': 0,
+      'indegree': len(list(CodeRefsTo(f, 1))),
+      'assembly': {},
+      'basic_blocks_data': {},
+      'bb_relations': {},
+      'bb_topo_num': {},
+      'bb_topological': {},
+      'switches': [],
+      'bb_degree': {},
+      'bb_edges': [],
+      'constants': [],
+      'callees': [],
+      'callers': self.extract_function_callers(f),
+      'mnemonics_spp': 1,
+      'cpu_ins_list': sorted(GetInstructionList()),
+    }
+    return data
+
+  def run_pre_export_hook(self, ea, name):
+    """ Execute the before_export_function hook if available
+    """
+    if self.hooks is not None:
+      if "before_export_function" in dir(self.hooks):
+        ret = self.hooks.before_export_function(ea, name)
+        if not ret:
+          return False
+    return True
+
+  def run_post_export_hook(self, props_list):
+    """ Execute the after_export_function hook if available
+    """
     if self.hooks is not None:
       if "after_export_function" in dir(self.hooks):
         d = self.create_function_dictionary(props_list)
         d = self.hooks.after_export_function(d)
         props_list = self.get_function_from_dictionary(d)
+    return props_list
 
+  def should_skip_function(self, f, name):
+    """ Check if a function should be skipped based on validation criteria.
+    """
+    if not self.ida_subs:
+      # Unnamed function, ignore it...
+      if (
+        name.startswith("sub_")
+        or name.startswith("j_")
+        or name.startswith("unknown")
+        or name.startswith("nullsub_")
+      ):
+        return True, f"Skipping function {repr(name)}"
+
+      # Already recognized runtime's function?
+      flags = get_func_attr(f, FUNCATTR_FLAGS)
+      if flags & FUNC_LIB or flags == -1:
+        return True, f"Skipping library function {repr(name)}"
+
+    if self.exclude_library_thunk:
+      # Skip library and thunk functions
+      flags = get_func_attr(f, FUNCATTR_FLAGS)
+      if flags & FUNC_LIB or flags & FUNC_THUNK or flags == -1:
+        return True, f"Skipping thunk function {repr(name)}"
+
+      if name.startswith("nullsub_"):
+        return True, f"Skipping nullsub function {repr(name)}"
+
+    return False, None
+
+  def build_props_list(self, name, true_name, f, data, features):
+    """Build the final properties list
+    """
+    props_list = (
+      name,
+      data['nodes'],
+      data['edges'],
+      data['indegree'],
+      data['outdegree'],
+      data['size'],
+      data['instructions'],
+      data['mnems'],
+      features['names'],
+      features['proto'],
+      features['cc'],
+      features['prime'],
+      f,
+      features['comment'],
+      true_name,
+      features['bytes_hash'],
+      features['pseudo'],
+      features['pseudo_lines'],
+      features['pseudo_hash1'],
+      features['pseudocode_primes'],
+      features['function_flags'],
+      features['asm'],
+      features['proto2'],
+      features['pseudo_hash2'],
+      features['pseudo_hash3'],
+      len(features['strongly_connected']),
+      features['loops'],
+      features['rva'],
+      features['bb_topological'],
+      features['strongly_connected_spp'],
+      features['clean_assembly'],
+      features['clean_pseudo'],
+      data['mnemonics_spp'],
+      data['switches'],
+      features['function_hash'],
+      data['bytes_sum'],
+      features['md_index'],
+      data['constants'],
+      len(data['constants']),
+      features['seg_rva'],
+      features['assembly_addrs'],
+      features['kgh_hash'],
+      None,
+      None,
+      features['microcode'],
+      features['clean_microcode'],
+      features['microcode_spp'],
+      features['export_time'],
+      features['microcode_bblocks'],
+      features['microcode_bbrelations'],
+      data['callers'],
+      data['callees'],
+      data['basic_blocks_data'],
+      data['bb_relations'],
+    )
+    return props_list
+
+  def read_function(self, ea):
+    """Extract anything and everything we (might) need from a function."""
+    name, true_name, demangle_named_name = self.get_function_names(ea)
+
+    # Call hooks immediately after we have a proper function name
+    if not self.run_pre_export_hook(ea, name):
+      return False
+
+    f = int(ea)
+    func = get_func(f)
+    if not func:
+      # pylint: disable-next=consider-using-f-string
+      log("Cannot get a function object for 0x%x" % f)
+      return False
+
+    # Check if function should be skipped
+    should_skip, skip_reason = self.should_skip_function(f, name)
+    if should_skip:
+      debug_refresh(skip_reason)
+      return False
+
+    # Initialize and accumulate basic block data
+    data = self.initialize_function_data(f, func)
+
+    # Process all basic blocks
+    current_head = BADADDR
+    for block in data['flow']:
+      if block.end_ea == 0 or block.end_ea == BADADDR:
+        # pylint: disable-next=consider-using-f-string
+        print("0x%08x: Skipping bad basic block" % f)
+        continue
+
+      current_head, data = self.process_basic_block(block, func, data['image_base'], data)
+
+    # Build topological relationships
+    data['bb_topological'] = self.build_topological_relations(
+      data['flow'], data['image_base'], data['bb_topo_num'], data['bb_topological']
+    )
+
+    # Extract all features
+    features = self.extract_all_features(f, func, ea, current_head, data)
+
+    # Build and return the final properties list
+    props_list = self.build_props_list(name, true_name, f, data, features)
+    props_list = self.run_post_export_hook(props_list)
     return props_list
 
   def get_base_address(self):
@@ -3891,18 +4063,13 @@ class CHtmlDiff:
     else:
       return s
 
-
 #-------------------------------------------------------------------------------
 try:
-
   class CAstVisitorInherits(ctree_visitor_t):
     pass
-
 except:
-
   class CAstVisitorInherits:
     pass
-
 
 #-------------------------------------------------------------------------------
 # pylint: disable=super-init-not-called
