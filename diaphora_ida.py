@@ -2141,42 +2141,22 @@ class CIDABinDiff(diaphora.CBinDiff):
           chooser.items[i][2] = func_name
       chooser.Refresh()
 
-  def do_import_all(self, items):
-    # Import all the type libraries from the diff database
-    self.import_til()
-    # Import all the struct and enum definitions
-    self.import_definitions()
-    # Import all the items in the chooser
-    self.import_items(items)
-
-  def do_import_all_auto(self, items):
-    # Import all the type libraries from the diff database
-    self.import_til()
-    # Import all the struct and enum definitions
-    self.import_definitions()
-
-    # Import all the items in the chooser for sub_* functions
-    new_items = []
-    for item in items:
-      name1 = item[2]
-      if name1.startswith("sub_"):
-        new_items.append(item)
-
-    self.import_items(new_items)
+  def do_import_all(self, items, only_subs=False):
+    try:
+      self.import_til()
+      self.import_definitions()
+      if only_subs:
+        items = [item for item in items if item[2].startswith("sub_")]
+      self.import_items(items)
+    except:
+      log(f"import_all(): {str(sys.exc_info()[1])}")
+      traceback.print_exc()
 
   def import_all(self, items):
-    try:
-      self.do_import_all(items)
-    except:
-      log(f"import_all(): {str(sys.exc_info()[1])}")
-      traceback.print_exc()
+    self.do_import_all(items)
 
   def import_all_auto(self, items):
-    try:
-      self.do_import_all_auto(items)
-    except:
-      log(f"import_all(): {str(sys.exc_info()[1])}")
-      traceback.print_exc()
+    self.do_import_all(items, only_subs=True)
 
   def do_decompile(self, f):
     # pylint: disable-next=unexpected-keyword-arg
