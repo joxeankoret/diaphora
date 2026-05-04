@@ -1728,9 +1728,19 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     return self.run_external_diff_tool(buf1, buf2, item[1], item[3], "cpp", cmd_line)
 
-  def graph_diff(self, ea1, name1, ea2, name2):
-    g1 = self.get_graph(str(ea1), True)
-    g2 = self.get_graph(str(ea2))
+  def show_graph_pair(self, g1, g2, title1, title2):
+    """
+    Display two related graphs side-by-side and zoom-fit them.
+    """
+    g1.Show()
+    g2.Show()
+    set_dock_pos(title2, title1, DP_RIGHT)
+    uitimercallback_t(g1, 100)
+    uitimercallback_t(g2, 100)
+
+  def graph_diff_internal(self, ea1, name1, ea2, name2, asm_type, title_prefix):
+    g1 = self.get_graph(str(ea1), True, asm_type)
+    g2 = self.get_graph(str(ea2), False, asm_type)
 
     if g1 == ({}, {}) or g2 == ({}, {}):
       warning(
@@ -1740,39 +1750,19 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     colours = self.compare_graphs(g1, g2)
 
-    title1 = f"Graph for {name1} (primary)"
-    title2 = f"Graph for {name2} (secondary)"
+    title1 = f"{title_prefix} for {name1} (primary)"
+    title2 = f"{title_prefix} for {name2} (secondary)"
     graph1 = CDiffGraphViewer(title1, g1, colours[0])
     graph2 = CDiffGraphViewer(title2, g2, colours[1])
-    graph1.Show()
-    graph2.Show()
+    self.show_graph_pair(graph1, graph2, title1, title2)
 
-    set_dock_pos(title2, title1, DP_RIGHT)
-    uitimercallback_t(graph1, 100)
-    uitimercallback_t(graph2, 100)
+  def graph_diff(self, ea1, name1, ea2, name2):
+    return self.graph_diff_internal(ea1, name1, ea2, name2, "native", "Graph")
 
   def graph_diff_microcode(self, ea1, name1, ea2, name2):
-    g1 = self.get_graph(str(ea1), True, "microcode")
-    g2 = self.get_graph(str(ea2), False, "microcode")
-
-    if g1 == ({}, {}) or g2 == ({}, {}):
-      warning(
-        "Sorry, graph information is not available for one of the databases."
-      )
-      return False
-
-    colours = self.compare_graphs(g1, g2)
-
-    title1 = f"Microcode graph for {name1} (primary)"
-    title2 = f"Microcode graph for {name2} (secondary)"
-    graph1 = CDiffGraphViewer(title1, g1, colours[0])
-    graph2 = CDiffGraphViewer(title2, g2, colours[1])
-    graph1.Show()
-    graph2.Show()
-
-    set_dock_pos(title2, title1, DP_RIGHT)
-    uitimercallback_t(graph1, 100)
-    uitimercallback_t(graph2, 100)
+    return self.graph_diff_internal(
+      ea1, name1, ea2, name2, "microcode", "Microcode graph"
+    )
 
   def get_calls_graph(self, name, mtype, db):
     """
@@ -1818,12 +1808,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     title2 = base_title.format(name=name2)
     g1 = self.build_calls_graph(title1, main_callers, main_callees, name1)
     g2 = self.build_calls_graph(title2, diff_callers, diff_callees, name2)
-    g1.Show()
-    g2.Show()
-
-    set_dock_pos(title2, title1, DP_RIGHT)
-    uitimercallback_t(g1, 100)
-    uitimercallback_t(g2, 100)
+    self.show_graph_pair(g1, g2, title1, title2)
 
   def import_instruction(self, ins_data1, ins_data2):
     """
@@ -1911,8 +1896,6 @@ class CIDABinDiff(diaphora.CBinDiff):
     ea = str(ea2)
     if ea not in import_syms:
       return False
-
-    operand_names = import_syms[ea][3]
 
     # Has cmt1
     if import_syms[ea][1] is not None:
@@ -2443,12 +2426,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     return True
 
   def is_constant(self, oper, ea):
-    value = oper.value
-    # make sure, its not a reference but really constant
-    if value in DataRefsFrom(ea):
-      return False
-
-    return True
+    return oper.value not in DataRefsFrom(ea)
 
   def get_disasm(self, ea):
     mnem = print_insn_mnem(ea)
@@ -2462,16 +2440,9 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
   def get_function_names(self, f):
     """ Return the 3 different names that a function might have. Yeah, well...
     """
-    name = get_func_name(int(f))
-    true_name = name
-    demangle_named_name = demangle_name(name, INF_SHORT_DN)
-    if demangle_named_name == "":
-      demangle_named_name = None
-
-    if demangle_named_name is not None:
-      name = demangle_named_name
-
-    return name, true_name, demangle_named_name
+    true_name = get_func_name(int(f))
+    demangled = demangle_name(true_name, INF_SHORT_DN) or None
+    return demangled or true_name, true_name, demangled
 
   def extract_function_callers(self, f):
     # Calculate the callers *but* considering data references to functions from
@@ -4121,25 +4092,21 @@ def main():
     debug_refresh(f'DIAPHORA_EA2={os.getenv("DIAPHORA_EA2")}')
     debug_refresh(f'DIAPHORA_HTML_ASM={os.getenv("DIAPHORA_HTML_ASM")}')
     debug_refresh(f'DIAPHORA_HTML_PSEUDO={os.getenv("DIAPHORA_HTML_PSEUDO")}')
-    db1 = os.getenv("DIAPHORA_DB1")
-    if db1 is None:
-      raise Exception("No database file specified!")
-    diff_db = os.getenv("DIAPHORA_DIFF")
-    if diff_db is None:
-      raise Exception("No diff database file for diff specified!")
-    ea1 = os.getenv("DIAPHORA_EA1")
-    if ea1 is None:
-      raise Exception("No address 1 specified!")
-    ea2 = os.getenv("DIAPHORA_EA2")
-    if ea2 is None:
-      raise Exception("No address 2 specified!")
-    html_asm = os.getenv("DIAPHORA_HTML_ASM")
-    if html_asm is None:
-      raise Exception("No html output file for asm specified!")
-    html_pseudo = os.getenv("DIAPHORA_HTML_PSEUDO")
-    if html_pseudo is None:
-      raise Exception("No html output file for pseudo specified!")
-    _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo)
+    required = [
+      ("DIAPHORA_DB1", "No database file specified!"),
+      ("DIAPHORA_DIFF", "No diff database file for diff specified!"),
+      ("DIAPHORA_EA1", "No address 1 specified!"),
+      ("DIAPHORA_EA2", "No address 2 specified!"),
+      ("DIAPHORA_HTML_ASM", "No html output file for asm specified!"),
+      ("DIAPHORA_HTML_PSEUDO", "No html output file for pseudo specified!"),
+    ]
+    args = []
+    for var, error in required:
+      value = os.getenv(var)
+      if value is None:
+        raise Exception(error)
+      args.append(value)
+    _generate_html(*args)
     idaapi.qexit(0)
   else:
     _diff_or_export(True)
