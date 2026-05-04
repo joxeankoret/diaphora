@@ -1404,65 +1404,67 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.import_til()
     self.import_definitions()
 
-  def generate_asm_diff_internal(self, ea1, ea2, field, title_fmt, html=True, error_func=log):
+  def get_sources_diff_data(self, ea1, ea2, field, error_func=log, error_label=None):
     """
-    Internal use, generate a HTML table with the assembly differences.
+    Fetch the row containing `field` from both databases for the given pair of
+    addresses. Returns (row1, row2) or None if either side lacks the field.
     """
     cur = self.db_cursor()
     try:
       sql = f"""select *
-         from (
-         select prototype, {field}, name, 1
-         from functions
-        where address = ?
-          and {field} is not null
-     union select prototype, {field}, name, 2
-         from diff.functions
-        where address = ?
-          and {field} is not null)
-        order by 4 asc"""
-      ea1 = str(int(ea1, 16))
-      ea2 = str(int(ea2, 16))
-      cur.execute(sql, (ea1, ea2))
+                  from (select prototype, {field}, name, 1 as side
+                          from functions
+                         where address = ?
+                           and {field} is not null
+                         union
+                        select prototype, {field}, name, 2 as side
+                          from diff.functions
+                         where address = ?
+                           and {field} is not null)
+                 order by side asc"""
+      cur.execute(sql, (str(int(ea1, 16)), str(int(ea2, 16))))
       rows = cur.fetchall()
-      res = None
-      if len(rows) != 2:
-        message = f"Sorry, there is no {field} available for either the first or the second database."
-        error_func(message)
-      else:
-        row1 = rows[0]
-        row2 = rows[1]
-
-        html_diff = CHtmlDiff()
-        asm1 = self.prettify_asm(row1[field])
-        asm2 = self.prettify_asm(row2[field])
-        buf1 = f'{row1["name"]} proc near\n{asm1}\n{row1["name"]} endp'
-        buf2 = f'{row2["name"]} proc near\n{asm2}\n{row2["name"]} endp'
-
-        fmt = HtmlFormatter()
-        fmt.noclasses = True
-        fmt.linenos = False
-        fmt.nobackground = True
-        if not html:
-          uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
-          tmp = []
-          for line in uni_diff:
-            tmp.append(line.strip("\n"))
-          tmp = tmp[2:]
-          buf = "\n".join(tmp)
-
-          src = highlight(buf, DiffLexer(), fmt)
-        else:
-          src = html_diff.make_file(
-            buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer()
-          )
-
-        title = title_fmt % (row1["name"], row2["name"])
-        res = (src, title)
     finally:
       cur.close()
 
-    return res
+    if len(rows) != 2:
+      label = error_label or field
+      error_func(
+        f"Sorry, there is no {label} available for either the first or the second database."
+      )
+      return None
+    return rows[0], rows[1]
+
+  def generate_asm_diff_internal(self, ea1, ea2, field, title_fmt, html=True, error_func=log):
+    """
+    Internal use, generate a HTML table with the assembly differences.
+    """
+    pair = self.get_sources_diff_data(ea1, ea2, field, error_func=error_func)
+    if pair is None:
+      return None
+    row1, row2 = pair
+
+    asm1 = self.prettify_asm(row1[field])
+    asm2 = self.prettify_asm(row2[field])
+    buf1 = f'{row1["name"]} proc near\n{asm1}\n{row1["name"]} endp'
+    buf2 = f'{row2["name"]} proc near\n{asm2}\n{row2["name"]} endp'
+
+    fmt = HtmlFormatter()
+    fmt.noclasses = True
+    fmt.linenos = False
+    fmt.nobackground = True
+    if not html:
+      uni_diff = difflib.unified_diff(buf1.split("\n"), buf2.split("\n"))
+      tmp = [line.strip("\n") for line in uni_diff][2:]
+      buf = "\n".join(tmp)
+      src = highlight(buf, DiffLexer(), fmt)
+    else:
+      src = CHtmlDiff().make_file(
+        buf1.split("\n"), buf2.split("\n"), fmt, NasmLexer()
+      )
+
+    title = title_fmt % (row1["name"], row2["name"])
+    return src, title
 
   def generate_asm_diff(self, ea1, ea2, html=True, error_func=log):
     return self.generate_asm_diff_internal(
@@ -1687,97 +1689,44 @@ class CIDABinDiff(diaphora.CBinDiff):
       ret = self.diff_external_pseudo(item, cmd_line)
     print("External command returned", ret)
 
+  def run_external_diff_tool(self, buf1, buf2, ea1, ea2, ext, cmd_line):
+    """
+    Write `buf1`/`buf2` to temporary files and invoke the external diff tool.
+    """
+    filename1 = f"main_{ea1}.{ext}"
+    filename2 = f"diff_{ea2}.{ext}"
+    with open(filename1, "w", encoding="utf8") as f_source:
+      with open(filename2, "w", encoding="utf8") as f_dest:
+        f_source.writelines(buf1)
+        f_dest.writelines(buf2)
+    line = cmd_line.replace("$1", filename1).replace("$2", filename2)
+    return os.system(line)
+
   def diff_external_asm(self, item, cmd_line):
-    ret = None
-    try:
-      cur = self.db_cursor()
-      sql = """select *
-        from (
-        select prototype, assembly, name, 1
-          from functions
-         where address = ?
-           and assembly is not null
-    union
-        select prototype, assembly, name, 2
-          from diff.functions
-         where address = ?
-           and assembly is not null)
-         order by 4 asc"""
-      ea1 = str(int(item[1], 16))
-      ea2 = str(int(item[3], 16))
-      cur.execute(sql, (ea1, ea2))
-      rows = cur.fetchall()
-      if len(rows) != 2:
-        warning(
-          "Sorry, there is no assembly available for either the first or the second database."
-        )
-      else:
-        row1 = rows[0]
-        row2 = rows[1]
+    pair = self.get_sources_diff_data(item[1], item[3], "assembly", error_func=warning)
+    if pair is None:
+      return None
+    row1, row2 = pair
 
-        asm1 = self.prettify_asm(row1["assembly"])
-        asm2 = self.prettify_asm(row2["assembly"])
-        buf1 = f'{row1["name"]} proc near\n{asm1}\n{row1["name"]} endp'
-        buf2 = f'{row2["name"]} proc near\n{asm2}\n{row2["name"]} endp'
+    asm1 = self.prettify_asm(row1["assembly"])
+    asm2 = self.prettify_asm(row2["assembly"])
+    buf1 = f'{row1["name"]} proc near\n{asm1}\n{row1["name"]} endp'
+    buf2 = f'{row2["name"]} proc near\n{asm2}\n{row2["name"]} endp'
 
-        filename1 = f"main_{item[1]}.asm"
-        filename2 = f"diff_{item[3]}.asm"
-
-        with open(filename1, "w", encoding="utf8") as f_source:
-          with open(filename2, "w", encoding="utf8") as f_dest:
-            f_source.writelines(buf1)
-            f_dest.writelines(buf2)
-
-        line = cmd_line.replace("$1", filename1)
-        line = line.replace("$2", filename2)
-        ret = os.system(line)
-    finally:
-      cur.close()
-
-    return ret
+    return self.run_external_diff_tool(buf1, buf2, item[1], item[3], "asm", cmd_line)
 
   def diff_external_pseudo(self, item, cmd_line):
-    ret = None
-    cur = self.db_cursor()
-    try:
-      sql = """select *
-        from (
-        select prototype, pseudocode, address, 1
-         from functions
-        where address = ?
-          and pseudocode is not null
-    union
-       select prototype, pseudocode, address, 2
-         from diff.functions
-        where address = ?
-          and pseudocode is not null)
-        order by 4 asc"""
-      ea1 = str(int(item[1], 16))
-      ea2 = str(int(item[3], 16))
-      cur.execute(sql, (ea1, ea2))
-      rows = cur.fetchall()
-      if len(rows) != 2:
-        warning(
-          "Sorry, there is no pseudo-code available for either the first or the second database."
-        )
-      else:
-        row1 = rows[0]
-        row2 = rows[1]
+    pair = self.get_sources_diff_data(
+      item[1], item[3], "pseudocode", error_func=warning, error_label="pseudo-code"
+    )
+    if pair is None:
+      return None
+    row1, row2 = pair
 
-        filename1 = f"main_{item[1]}.cpp"
-        filename2 = f"diff_{item[3]}.cpp"
+    buf1 = f'{row1["prototype"]}\n{row1["pseudocode"]}'
+    buf2 = f'{row2["prototype"]}\n{row2["pseudocode"]}'
 
-        with open(filename1, "w", encoding="utf8") as f_source:
-          with open(filename2, "w", encoding="utf8") as f_dest:
-            f_source.writelines(f'{row1["prototype"]}\n{row1["pseudocode"]}')
-            f_dest.writelines(f'{row2["prototype"]}\n{row2["pseudocode"]}')
-
-        line = cmd_line.replace("$1", filename1)
-        line = line.replace("$2", filename2)
-        ret = os.system(line)
-    finally:
-      cur.close()
-    return ret
+    return self.run_external_diff_tool(buf1, buf2, item[1], item[3], "cpp", cmd_line)
 
   def graph_diff(self, ea1, name1, ea2, name2):
     g1 = self.get_graph(str(ea1), True)

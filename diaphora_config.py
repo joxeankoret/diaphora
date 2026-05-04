@@ -92,7 +92,7 @@ SQL_MAX_PROCESSED_ROWS = 1000000
 SQL_TIMEOUT_LIMIT = 60 * 5
 # Set this to DELETE, TRUNCATE, PERSIST, MEMORY, WAL, OFF, or None to use the
 # default value.
-SQLITE_JOURNAL_MODE = "MEMORY"
+SQLITE_JOURNAL_MODE = "WAL"
 # Set this to 0/OFF,  1/NORMAL,  2/FULL, 3/EXTRA, or None to use the default
 # value.
 SQLITE_PRAGMA_SYNCHRONOUS = "1"
