@@ -28,13 +28,9 @@ import traceback
 
 from hashlib import md5
 
-# pylint: disable=wildcard-import
-# pylint: disable=unused-wildcard-import
 from idc import *
 from idaapi import *
 from idautils import *
-# pylint: enable=unused-wildcard-import
-# pylint: enable=wildcard-import
 
 import idaapi
 
@@ -114,13 +110,6 @@ LITTLE_ORANGE = 0x026AFD
 
 
 #-------------------------------------------------------------------------------
-# Python linter specific things to disable (temporarily, I guess...)
-#
-# pylint: disable=missing-class-docstring
-# pylint: disable=missing-function-docstring
-# pylint: disable=protected-access
-
-#-------------------------------------------------------------------------------
 def log(message):
   """
   Print a message
@@ -159,7 +148,6 @@ diaphora.log = log
 diaphora.log_refresh = log_refresh
 
 #-------------------------------------------------------------------------------
-# pylint: disable=global-variable-not-assigned
 g_bindiff = None
 
 
@@ -180,9 +168,6 @@ def save_results():
     filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
     if filename is not None:
       g_bindiff.save_results(filename)
-
-
-# pylint: enable=global-variable-not-assigned
 
 
 #-------------------------------------------------------------------------------
@@ -244,10 +229,6 @@ def get_string_at(ea):
 
 
 #-------------------------------------------------------------------------------
-# pylint: disable=redefined-outer-name
-# pylint: disable=arguments-renamed
-# pylint: disable=attribute-defined-outside-init
-# pylint: disable=c-extension-no-member
 class CHtmlViewer(PluginForm):
   """
   Class used to graphically show the differences.
@@ -274,12 +255,6 @@ class CHtmlViewer(PluginForm):
   def Show(self, text, title):
     self.text = text
     return PluginForm.Show(self, title)
-
-
-# pylint: enable=c-extension-no-member
-# pylint: enable=attribute-defined-outside-init
-# pylint: enable=arguments-renamed
-# pylint: enable=redefined-outer-name
 
 
 #-------------------------------------------------------------------------------
@@ -326,8 +301,6 @@ class command_handler_t(ida_kernwin.action_handler_t):
 # Support for the removed AddCommand() API
 
 
-# pylint: disable=super-init-not-called
-# pylint: disable=arguments-differ
 class CDiaphoraChooser(diaphora.CChooser, Choose):
   def __init__(self, title, bindiff, show_commands=True):
     diaphora.CChooser.__init__(self, title, bindiff, show_commands)
@@ -354,17 +327,12 @@ class CDiaphoraChooser(diaphora.CChooser, Choose):
         ida_kernwin.attach_dynamic_action_to_popup(widget, popup_handle, desc)
 
 
-# pylint: enable=arguments-differ
-# pylint: enable=super-init-not-called
-
-
 #-------------------------------------------------------------------------------
 class CIDAChooser(CDiaphoraChooser):
   """
   Wrapper class for IDA choosers
   """
 
-  # pylint: disable=non-parent-init-called
   def __init__(self, title, bindiff, show_commands=True):
     CDiaphoraChooser.__init__(self, title, bindiff, show_commands)
     if title.startswith("Unmatched in"):
@@ -388,7 +356,6 @@ class CIDAChooser(CDiaphoraChooser):
       ]
       Choose.__init__(self, title, columns, Choose.CH_MULTI)
 
-  # pylint: enable=non-parent-init-called
 
   def OnSelectLine(self, sel):
     item = self.items[sel[0]]
@@ -443,7 +410,6 @@ class CIDAChooser(CDiaphoraChooser):
     if t < 0:
       return False
 
-    # pylint: disable=attribute-defined-outside-init
 
     if self.show_commands and (self.cmd_diff_asm is None or force):
       # create aditional actions handlers
@@ -476,7 +442,6 @@ class CIDAChooser(CDiaphoraChooser):
       self.cmd_show_asm = self.AddCommand("Show assembly")
       self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
 
-    # pylint: enable=attribute-defined-outside-init
 
     return True
 
@@ -543,14 +508,12 @@ class CIDAChooser(CDiaphoraChooser):
         for item in self.items:
           ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
           if not set_color(ea, CIC_FUNC, color):
-            # pylint: disable-next=consider-using-f-string
             print("Error setting color for %x" % ea)
         self.Refresh()
     elif cmd_id == self.cmd_unhighlight_functions:
       for item in self.items:
         ea = int(item[CHOOSER_ITEM_MAIN_EA], 16)
         if not set_color(ea, CIC_FUNC, 0xFFFFFF):
-          # pylint: disable-next=consider-using-f-string
           print("Error setting color for %x" % ea)
       self.Refresh()
     elif cmd_id == self.cmd_diff_graph:
@@ -559,7 +522,6 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
-      # pylint: disable-next=consider-using-f-string
       log("Diff graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_diff_graph_microcode:
@@ -568,7 +530,6 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
-      # pylint: disable-next=consider-using-f-string
       log("Diff microcode graph for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.graph_diff_microcode(ea1, name1, ea2, name2)
     elif cmd_id == self.cmd_view_callgraph_context:
@@ -577,7 +538,6 @@ class CIDAChooser(CDiaphoraChooser):
       name1 = item[CHOOSER_ITEM_MAIN_NAME]
       ea2 = int(item[CHOOSER_ITEM_DIFF_EA], 16)
       name2 = item[CHOOSER_ITEM_DIFF_NAME]
-      # pylint: disable-next=consider-using-f-string
       log("Showing call graph context for 0x%x - 0x%x" % (ea1, ea2))
       self.bindiff.show_callgraph_context(name1, name2)
     elif cmd_id == self.cmd_save_results:
@@ -664,7 +624,6 @@ class CIDAChooser(CDiaphoraChooser):
       if ret > -1:
         ea1 = f.start_ea
         ea2 = int(diff_funcs[ret][2])
-        # pylint: disable-next=consider-using-f-string
         log("Adding manual match between 0x%08x and 0x%08x" % (ea1, ea2))
         self.add_manual_match_internal(ea1, ea2)
 
@@ -700,14 +659,12 @@ class CIDAChooser(CDiaphoraChooser):
         red = abs(int(164 * (1 - ratio)))
         green = abs(int(128 * ratio))
         blue = abs(int(255 * (1 - ratio)))
-        # pylint: disable-next=consider-using-f-string
         color = int("0x%02x%02x%02x" % (blue, green, red), 16)
       return [color, 0]
     return [0xFFFFFF, 0]
 
 
 #-------------------------------------------------------------------------------
-# pylint: disable=no-member
 class CBinDiffExporterSetup(Form):
   """
   IDA class to build the export dialogue.
@@ -829,9 +786,6 @@ class CBinDiffExporterSetup(Form):
       export_microcode=self.rExportMicrocode.checked,
     )
     return BinDiffOptions(**opts)
-
-
-# pylint: enable=no-member
 
 
 #-------------------------------------------------------------------------------
@@ -1045,8 +999,6 @@ class CPrinter_t(hr.vd_printer_t):
   def get_mc(self):
     return self.mc
 
-  # pylint: disable-next=arguments-differ
-  # pylint: disable-next=unexpected-keyword-arg
   def _print(self, _, line):
     self.mc.append(line)
     return 1
@@ -1174,7 +1126,6 @@ class CIDABinDiff(diaphora.CBinDiff):
     """
     callgraph_primes = 1
     callgraph_all_primes = {}
-    # pylint: disable-next=consider-using-f-string
     log("Exporting range 0x%08x - 0x%08x" % (self.min_ea, self.max_ea))
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
@@ -2159,7 +2110,6 @@ class CIDABinDiff(diaphora.CBinDiff):
     self.do_import_all(items, only_subs=True)
 
   def do_decompile(self, f):
-    # pylint: disable-next=unexpected-keyword-arg
     return decompile(f, flags=DECOMP_NO_WAIT)
 
   def get_plain_microcode_line(self, color_line):
@@ -2333,7 +2283,6 @@ class CIDABinDiff(diaphora.CBinDiff):
         if ret:
           t = ret
       except:
-        # pylint: disable-next=consider-using-f-string
         log("Cannot decompile 0x%x: %s" % (ea, str(sys.exc_info()[1])))
     return t
 
@@ -2347,7 +2296,6 @@ class CIDABinDiff(diaphora.CBinDiff):
     )
 
   def register_menu(self):
-    # pylint: disable-next=global-statement
     global g_bindiff
     g_bindiff = self
 
@@ -2693,7 +2641,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         assembly[block_ea] = [[current_head - image_base, disasm]]
       else:
         assembly[block_ea] = [
-          # pylint: disable-next=consider-using-f-string
           [current_head - image_base, "loc_%x:" % current_head],
           [current_head - image_base, disasm],
         ]
@@ -2702,7 +2649,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     decoded_size = ins[1] if isinstance(ins, tuple) else ins.size
     curr_bytes = get_bytes(current_head, decoded_size, False)
     if curr_bytes is None or len(curr_bytes) != decoded_size:
-      # pylint: disable-next=consider-using-f-string
       log("Failed to read %d bytes at [%08x]" % (decoded_size, current_head))
       return None
 
@@ -2934,7 +2880,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       clean_assembly = self.get_cmp_asm_lines(asm)
     except:
       clean_assembly = ""
-      # pylint: disable-next=consider-using-f-string
       print("Error getting assembly for 0x%x" % f)
 
     # Calculate cyclomatic complexity and get function metadata
@@ -2944,7 +2889,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     try:
       prime = str(self.primes[cc])
     except:
-      # pylint: disable-next=consider-using-f-string
       log("Cyclomatic complexity too big: 0x%x -> %d" % (f, cc))
       prime = 0
 
@@ -3183,7 +3127,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     f = int(ea)
     func = get_func(f)
     if not func:
-      # pylint: disable-next=consider-using-f-string
       log("Cannot get a function object for 0x%x" % f)
       return False
 
@@ -3200,7 +3143,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     current_head = BADADDR
     for block in data['flow']:
       if block.end_ea == 0 or block.end_ea == BADADDR:
-        # pylint: disable-next=consider-using-f-string
         print("0x%08x: Skipping bad basic block" % f)
         continue
 
@@ -3411,7 +3353,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     # condition.
     local_types = self.GetOrdinalCount()
     if (local_types & 0x80000000) != 0:
-      # pylint: disable-next=consider-using-f-string
       message = "warning: get_ordinal_qty returned a negative number (0x%x)!" % local_types
       log(message)
       return
@@ -3607,7 +3548,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
 #-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
-  # pylint: disable-next=global-statement
   global g_bindiff
   total_functions = len(list(Functions()))
   if get_idb_path() == "" or total_functions == 0:
@@ -3706,7 +3646,6 @@ def _diff_or_export(use_ui, **options):
       exported = False
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling export ***")
-        # pylint: disable-next=import-outside-toplevel
         import cProfile
 
         profiler = cProfile.Profile()
@@ -3723,14 +3662,12 @@ def _diff_or_export(use_ui, **options):
 
       if exported:
         final_t = time.monotonic() - t0
-        # pylint: disable-next=consider-using-f-string
         log(f"Database exported, time taken: {datetime.timedelta(seconds=final_t)}.")
         hide_wait_box()
 
     if opts.file_in != "":
       if os.getenv("DIAPHORA_PROFILE") is not None:
         log("*** Profiling diff ***")
-        # pylint: disable-next=import-outside-toplevel
         import cProfile
 
         profiler = cProfile.Profile()
@@ -3929,9 +3866,6 @@ except:
     pass
 
 #-------------------------------------------------------------------------------
-# pylint: disable=super-init-not-called
-# pylint: disable=non-parent-init-called
-# pylint: disable=arguments-differ
 class CAstVisitor(CAstVisitorInherits):
   def __init__(self, cfunc):
     self.primes = primesbelow(4096)
@@ -3954,9 +3888,6 @@ class CAstVisitor(CAstVisitorInherits):
       traceback.print_exc()
     return 0
 
-# pylint: enable=arguments-differ
-# pylint: enable=non-parent-init-called
-# pylint: enable=super-init-not-called
 
 #-------------------------------------------------------------------------------
 def is_ida_file(filename):
@@ -4008,7 +3939,6 @@ def remove_file(filename):
 
 #-------------------------------------------------------------------------------
 def main():
-  # pylint: disable-next=global-statement
   global g_bindiff
 
   # EXPORT

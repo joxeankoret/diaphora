@@ -24,7 +24,7 @@ except ImportError:
     DataFrame = None
 
   if config.SHOW_IMPORT_WARNINGS:
-    print("WARNING: sklearn, numpy, joblib and pandas python libraries are required to use ML models.")
+    print("WARNING: scikit-learn, numpy, joblib and pandas python libraries are required to use ML models.")
     print("INFO: Alternatively, you can silence this warning by changing the value of SHOW_IMPORT_WARNINGS in diaphora_config.py.")
   ML_AVAILABLE = False
 

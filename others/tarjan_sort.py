@@ -1,51 +1,63 @@
 
 # Downloaded from http://www.logarithmic.net/pfh-files/blog/01208083168/sort.py
+#
+# strongly_connected_components() replaced with the corrected version from
+# http://www.logarithmic.net/pfh-files/blog/01208083168/tarjan.py (see issue #200).
 
 """
-   
+
    Tarjan's algorithm and topological sorting implementation in Python
-   
+
    by Paul Harrison
-   
+
    Public domain, do with it as you will
 
 """
 
 def strongly_connected_components(graph):
-    """ Find the strongly connected components in a graph using
-        Tarjan's algorithm.
-        
-        graph should be a dictionary mapping node names to
-        lists of successor nodes.
-        """
-    
-    result = [ ]
-    stack = [ ]
-    low = { }
-        
-    def visit(node):
-        if node in low: return
-        if node not in graph: graph[node] = []
+    """
+    Tarjan's Algorithm (named for its discoverer, Robert Tarjan) is a graph theory algorithm
+    for finding the strongly connected components of a graph.
 
-        num = len(low)
-        low[node] = num
-        stack_pos = len(stack)
+    Based on: http://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+    """
+
+    index_counter = [0]
+    stack = []
+    lowlinks = {}
+    index = {}
+    result = []
+
+    def strongconnect(node):
+        index[node] = index_counter[0]
+        lowlinks[node] = index_counter[0]
+        index_counter[0] += 1
         stack.append(node)
-        
-        for successor in graph[node]:
-            visit(successor)
-            low[node] = min(low[node], low[successor])
-        
-        if num == low[node]:
-            component = tuple(stack[stack_pos:])
-            del stack[stack_pos:]
-            result.append(component)
-            for item in component:
-                low[item] = len(graph)
-    
-    for node in dict(graph):
-        visit(node)
-    
+
+        try:
+            successors = graph[node]
+        except:
+            successors = []
+        for successor in successors:
+            if successor not in lowlinks:
+                strongconnect(successor)
+                lowlinks[node] = min(lowlinks[node], lowlinks[successor])
+            elif successor in stack:
+                lowlinks[node] = min(lowlinks[node], index[successor])
+
+        if lowlinks[node] == index[node]:
+            connected_component = []
+            while True:
+                successor = stack.pop()
+                connected_component.append(successor)
+                if successor == node:
+                    break
+            result.append(tuple(connected_component))
+
+    for node in graph:
+        if node not in lowlinks:
+            strongconnect(node)
+
     return result
 
 

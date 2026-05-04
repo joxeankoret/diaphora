@@ -81,8 +81,6 @@ select 4, "Multimatches", count(*) from results where type = 'multimatch'
 """
 
 #-------------------------------------------------------------------------------
-# pylint: disable=missing-class-docstring
-# pylint: disable=missing-function-docstring
 
 #-------------------------------------------------------------------------------
 def debug(msg):

@@ -80,7 +80,6 @@ from jkutils.factor import (
 )
 
 try:
-  # pylint: disable-next=unused-import
   import idaapi
 
   IS_IDA = True
@@ -182,12 +181,10 @@ def log(message):
   """
   Print a message
   """
-  # pylint: disable=protected-access
   if IS_IDA or os.getenv("DIAPHORA_LOG_PRINT") is not None:
     print(f"[Diaphora: {time.asctime()}] {message}")
   else:
     logging.info(message)
-  # pylint: enable=protected-access
 
 
 #-------------------------------------------------------------------------------
@@ -213,7 +210,6 @@ def debug_refresh(msg):
 
 
 #-------------------------------------------------------------------------------
-# pylint: disable=consider-using-f-string
 class CChooser:
   """
   Our own chooser for displaying diffing results.
@@ -302,9 +298,6 @@ class CChooser:
     """
 
 
-# pylint: enable=consider-using-f-string
-
-
 #-------------------------------------------------------------------------------
 class CBytesEncoder(json.JSONEncoder):
   """
@@ -318,8 +311,6 @@ class CBytesEncoder(json.JSONEncoder):
 
 
 #-------------------------------------------------------------------------------
-# pylint: disable=used-before-assignment
-# pylint: disable=global-variable-not-assigned
 
 if "_DATABASES" not in globals():
   _DATABASES = {}
@@ -342,10 +333,6 @@ def sqlite3_connect(db_name):
   db.row_factory = sqlite3.Row
   _DATABASES[db_name] = db
   return db
-
-
-# pylint: enable=global-variable-not-assigned
-# pylint: enable=used-before-assignment
 
 
 #-------------------------------------------------------------------------------
@@ -567,7 +554,6 @@ class CBinDiff:
       return value
     return default
 
-  # pylint: disable=protected-access
   def open_db(self):
     """
     Open the database @self.db_name.
@@ -580,7 +566,6 @@ class CBinDiff:
       self.db = db
       self.create_schema()
 
-  # pylint: enable=protected-access
 
   def get_db(self):
     """
@@ -601,7 +586,6 @@ class CBinDiff:
     db = self.get_db()
     return db.cursor()
 
-  # pylint: disable=protected-access
   def db_close(self):
     """
     Close the main database.
@@ -613,7 +597,6 @@ class CBinDiff:
     if isinstance(threading.current_thread(), threading._MainThread):
       self.db.close()
 
-  # pylint: enable=protected-access
 
   def create_schema(self):
     """
@@ -1634,7 +1617,6 @@ class CBinDiff:
     percent = (total * 100) / self.total_functions1
     log(f"Current results: Best {best}, Partial {partial}, Unreliable {unreliable}")
 
-    # pylint: disable-next=consider-using-f-string
     message = "Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1)
     log(message)
 
@@ -1677,7 +1659,6 @@ class CBinDiff:
     md2 = float(md2)
 
     fratio = quick_ratio
-    # pylint: disable-next=consider-using-f-string
     decimal_values = "{0:.%s}" % config.DECIMAL_VALUES
     if self.relaxed_ratio:
       fratio = real_quick_ratio
@@ -1861,7 +1842,6 @@ class CBinDiff:
         if ratio is None:
           r = self.check_ratio(main_d, diff_d)
           if debug:
-            # pylint: disable-next=consider-using-f-string
             msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
             logging.debug(msg)
         else:
@@ -1940,7 +1920,6 @@ class CBinDiff:
         done = False
 
       if done:
-        # pylint: disable-next=consider-using-f-string
         matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
         self.add_match(name1, name2, r, item, chooser)
       else:
@@ -1949,7 +1928,6 @@ class CBinDiff:
         if r < config.DEFAULT_PARTIAL_RATIO and r > val and unreliable is not None:
           chooser = "unreliable"
           item = [ea, name1, ea2, name2, desc, r, nodes1, nodes2]
-          # pylint: disable-next=consider-using-f-string
           matches.append([0, "0x%x" % int(ea), name1, ea2, name2])
 
         if chooser is not None:
@@ -3701,7 +3679,6 @@ class CBinDiff:
           f"Final results: Best {best}, Partial {partial}, Unreliable {unreliable}, Multimatches {multi}"
         )
 
-        # pylint: disable-next=consider-using-f-string
         message = "Matched %1.2f%% of main binary functions (%d out of %d)" % (percent, total, self.total_functions1)
         log(message)
 
@@ -3746,7 +3723,6 @@ if __name__ == "__main__":
     with open(script, "rb") as f:
       buf = f.read()
 
-    # pylint: disable-next=exec-used
     exec(compile(buf, script, "exec"))
     do_diff = False
   else:
