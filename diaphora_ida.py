@@ -3511,69 +3511,66 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       for til in til_names:
         self.add_program_data("til", til, None)
 
+  def populate_choosers(self, cur, min_ratio=None, multimatch=True):
+    cur.execute("select * from results")
+    for row in diaphora.result_iter(cur):
+      rtype = row["type"]
+      if rtype == "best":
+        choose = self.best_chooser
+      elif rtype == "partial":
+        choose = self.partial_chooser
+      elif rtype == "multimatch" and multimatch:
+        choose = self.multimatch_chooser
+      else:
+        choose = self.unreliable_chooser
+
+      ratio = float(row["ratio"])
+      if min_ratio is not None and ratio < min_ratio:
+        log(f"Match {row['name']}-{row['name2']} is excluded")
+        continue
+
+      choose.add_item(
+        diaphora.CChooser.Item(
+          int(row["address"], 16), row["name"],
+          int(row["address2"], 16), row["name2"],
+          row["description"], ratio,
+          int(row["nodes1"]), int(row["nodes2"]),
+        )
+      )
+
+    cur.execute("select * from unmatched")
+    for row in diaphora.result_iter(cur):
+      if row["type"] == "primary":
+        choose = self.unmatched_primary
+      else:
+        choose = self.unmatched_second
+      
+      item = diaphora.CChooser.Item(int(row["address"], 16), row["name"])
+      choose.add_item(item)
+
   def load_and_import_all_results(self, filename, main_db, diff_db):
     results_db = diaphora.sqlite3_connect(filename)
 
     cur = results_db.cursor()
     try:
-      sql = "select main_db, diff_db, version from config"
-      cur.execute(sql)
+      cur.execute("select main_db, diff_db, version from config")
       rows = cur.fetchall()
       if len(rows) != 1:
         Warning("Malformed results database!")
         return False
 
-      row = rows[0]
-      version = row["version"]
+      version = rows[0]["version"]
       if version != diaphora.VERSION_VALUE:
-        message = f"The version of the diff results is {version} and current version is {diaphora.VERSION_VALUE}, there can be some incompatibilities."
-        Warning(message)
+        Warning(
+          f"The version of the diff results is {version} and current version is {diaphora.VERSION_VALUE}, there can be some incompatibilities."
+        )
 
       self.reinit(main_db, diff_db)
 
       min_ratio = float(self.get_value_for("MINIMUM_IMPORT_RATIO", 0.5))
       log(f"Minimum import threshold {min_ratio}")
 
-      sql = "select * from results"
-      cur.execute(sql)
-      for row in diaphora.result_iter(cur):
-        if row["type"] == "best":
-          choose = self.best_chooser
-        elif row["type"] == "partial":
-          choose = self.partial_chooser
-        else:
-          choose = self.unreliable_chooser
-
-        ea1 = int(row["address"], 16)
-        name1 = row["name"]
-        ea2 = int(row["address2"], 16)
-        name2 = row["name2"]
-        desc = row["description"]
-        ratio = float(row["ratio"])
-
-        if ratio < min_ratio:
-          log(f"Match {name1}-{name2} is excluded")
-          continue
-
-        nodes1 = int(row["nodes1"])
-        nodes2 = int(row["nodes2"])
-
-        choose.add_item(
-          diaphora.CChooser.Item(
-            ea1, name1, ea2, name2, desc, ratio, nodes1, nodes2
-          )
-        )
-
-      sql = "select * from unmatched"
-      cur.execute(sql)
-      for row in diaphora.result_iter(cur):
-        if row["type"] == "primary":
-          choose = self.unmatched_primary
-        else:
-          choose = self.unmatched_second
-        choose.add_item(
-          diaphora.CChooser.Item(int(row["address"], 16), row["name"])
-        )
+      self.populate_choosers(cur, min_ratio=min_ratio, multimatch=False)
 
       self.import_all_auto(self.best_chooser.items)
       self.import_all_auto(self.partial_chooser.items)
@@ -3583,16 +3580,13 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       cur.close()
       results_db.close()
 
-    return False
-
   def load_results(self, filename):
     results_db = diaphora.sqlite3_connect(filename)
 
     ret = False
     cur = results_db.cursor()
     try:
-      sql = "select main_db, diff_db, version from config"
-      cur.execute(sql)
+      cur.execute("select main_db, diff_db, version from config")
       rows = cur.fetchall()
       if len(rows) != 1:
         warning("Malformed results database!")
@@ -3620,44 +3614,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
           return False
 
       self.reinit(main_db, diff_db)
-
-      sql = "select * from results"
-      cur.execute(sql)
-      for row in diaphora.result_iter(cur):
-        if row["type"] == "best":
-          choose = self.best_chooser
-        elif row["type"] == "partial":
-          choose = self.partial_chooser
-        elif row["type"] == "multimatch":
-          choose = self.multimatch_chooser
-        else:
-          choose = self.unreliable_chooser
-
-        ea1 = int(row["address"], 16)
-        name1 = row["name"]
-        ea2 = int(row["address2"], 16)
-        name2 = row["name2"]
-        desc = row["description"]
-        ratio = float(row["ratio"])
-        nodes1 = int(row["nodes1"])
-        nodes2 = int(row["nodes2"])
-
-        choose.add_item(
-          diaphora.CChooser.Item(
-            ea1, name1, ea2, name2, desc, ratio, nodes1, nodes2
-          )
-        )
-
-      sql = "select * from unmatched"
-      cur.execute(sql)
-      for row in diaphora.result_iter(cur):
-        if row["type"] == "primary":
-          choose = self.unmatched_primary
-        else:
-          choose = self.unmatched_second
-        choose.add_item(
-          diaphora.CChooser.Item(int(row["address"], 16), row["name"])
-        )
+      self.populate_choosers(cur)
 
       log("Showing diff results.")
       self.show_choosers()
