@@ -33,6 +33,7 @@ from idaapi import *
 from idautils import *
 
 import idaapi
+import ida_pro
 
 idaapi.require("diaphora")
 
@@ -66,10 +67,10 @@ except ImportError:
   HAS_GET_SOURCE_STRINGS = False
 
 if not idaapi.cvar.batch:
-  try:
+  if ida_pro.IDA_SDK_VERSION >= 920:
     from PySide6 import QtWidgets
-  except ImportError:
-    # Support for old versions. Until when will I do this??
+  else:
+    # Support for old versions. Until when will I keep doing so?
     from PyQt5 import QtWidgets
 
 #-------------------------------------------------------------------------------
