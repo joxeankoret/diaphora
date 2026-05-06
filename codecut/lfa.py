@@ -222,9 +222,10 @@ def get_last_three(index):
 		return 0,0,0
 
 def get_lfa_start():
-	c=0;
-	i=0;
-	while (c < 4):
+	c=0
+	i=0
+	size = len(g_function_list)
+	while (c < 4) and i < size:
 		#print "get_lfa_start: %d,%d" % (c,i)
 		if (g_function_list[i].lfa_skip==0):
 			c+=1
