@@ -66,7 +66,7 @@ def string_range_tokenize(start,end,sep):
 	#replace / and \\ with a space
 	tc = re.sub("[/\\\\]"," ",tc)
 	#remove anything except alphanumeric, spaces, . (for .c, .cpp, etc) and _
-	tc = re.sub("[^A-Za-z0-9_\.\s]"," ",tc)
+	tc = re.sub(r"[^A-Za-z0-9_\.\s]"," ",tc)
 	
 	#lowercase it - and store this as the original set of tokens to work with
 	tokens = [tk.lower() for tk in tc.split()]
@@ -138,7 +138,7 @@ def source_file_strings(start,end):
 	for tk in tokens:
 		tk = tk.strip()
 		#strip punctuation, need to leave in _ for filenames and / and \ for paths 
-		tk = re.sub("[\"\'\,]"," ",tk)
+		tk = re.sub(r"[\"\'\,]"," ",tk)
 		for tk2 in tk.split(" "):
 			tokens2.append(tk2)
 	

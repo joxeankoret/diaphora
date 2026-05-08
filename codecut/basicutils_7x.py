@@ -191,21 +191,21 @@ def snakeToCamelCase(s):
     return nf
     
 def isSnakeCase(s) :
-    p = re.compile("[a-zA-Z0-9]+(_[a-zA-Z0-9]+)+\Z")
+    p = re.compile(r"[a-zA-Z0-9]+(_[a-zA-Z0-9]+)+\Z")
     if p.match(s):
         return True
     return False
     
 #Todo - right now this is going to miss something like FooBARFunction
 def isCamelCase(s) :
-    p = re.compile("([A-Z][a-z0-9]+)([A-Z][a-z0-9]+)+\Z")
+    p = re.compile(r"([A-Z][a-z0-9]+)([A-Z][a-z0-9]+)+\Z")
     if p.match(s):
         return True
     return False
     
 #Todo - weed out if it's all uppercase or all uppercase and _, etc.
 def isUCSnakeCase(s):
-    p = re.compile("[A-Z0-9]+(_[A-Z0-9]+)+\Z")
+    p = re.compile(r"[A-Z0-9]+(_[A-Z0-9]+)+\Z")
     if p.match(s):
         return True
     return False
