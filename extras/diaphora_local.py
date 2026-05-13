@@ -2,7 +2,7 @@
 
 """
 Diaphora, a binary diffing tool
-Copyright (c) 2015-2024, Joxean Koret
+Copyright (c) 2015-2026, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -26,9 +26,14 @@ import difflib
 
 import idc
 import idaapi
+import ida_pro
 import idautils
 
-from PyQt5 import QtWidgets
+if ida_pro.IDA_SDK_VERSION >= 920:
+  from PySide6 import QtWidgets
+else:
+  from PyQt5 import QtWidgets
+
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import NasmLexer, CppLexer, DiffLexer
@@ -325,26 +330,6 @@ class CLocalDiffer:
   def diff(self, main_ea, diff_ea):
     self.diff_assembly(main_ea, diff_ea)
     self.diff_pseudo(main_ea, diff_ea)
-
-#-------------------------------------------------------------------------------
-class myplugin_t(idaapi.plugin_t):
-  flags = idaapi.PLUGIN_UNL
-  comment = "Locally diff functions"
-  help = "Tool to diff functions inside this database"
-  wanted_name = "Diaphora: Diff Local Function"
-  wanted_hotkey = "Ctrl+Shift+D"
-
-  def init(self):
-    return idaapi.PLUGIN_OK
-
-  def run(self, arg):
-    main()
-
-  def term(self):
-    pass
-
-def PLUGIN_ENTRY():
-  return myplugin_t()
 
 #-------------------------------------------------------------------------------
 def main():

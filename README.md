@@ -12,7 +12,7 @@ Install with the [Hex-Rays plugin manager](https://hcli.docs.hex-rays.com/user-g
 
 Manual install instructions are below.
 
-Diaphora (διαφορά, Greek for 'difference') version 3.1.2 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2024). It was released first during SyScan 2015 and has been actively maintained ever since: Diaphora has been ported to every single minor version of IDA since 6.8 to 8.4.
+Diaphora (διαφορά, Greek for 'difference') version 3.4 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2026). It was released first during SyScan 2015 and has been actively maintained ever since: Diaphora has been ported to every single minor version of IDA since 6.8 to 9.4.
 
 Diaphora supports versions of IDA >= 7.4 because the code only runs in Python 3.X (Python 3.11 was the last version being tested).
 
@@ -72,7 +72,9 @@ Commercial support and consultancy is offered for legal companies. If you need s
 
 ## Licensing problems
 
-If your company does not allow using the AGPL license, you can get commercial licenses of Diaphora to use it in your company, or to use it as a particular in any company you work (similar concept as IDA's named licenses). For more details, please contact me at admin@joxeankoret.com.
+If your company does not allow using the AGPL license you can get commercial licenses of Diaphora to use it in your company or to use it as a particular in any company you work (similar concept as IDA's named licenses). For more details, please contact me at admin@joxeankoret.com.
+
+Please remember that it isn't me preventing you from using Diaphora: it's your company. Thank you for your understanding.
 
 ## Wiki
 

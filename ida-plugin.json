@@ -1,0 +1,29 @@
+{
+  "IDAMetadataDescriptorVersion": 1,
+  "plugin": {
+    "name": "diaphora",
+    "version": "3.4",
+    "entryPoint": "diaphora_plugin.py",
+    "logoPath": "logo/diaphora-border.png",
+    "categories": [
+      "malware-analysis",
+      "vulnerability-research-and-exploit-development",
+      "other"
+    ],
+    "idaVersions": [
+      "7.4", "7.5", "7.6", "7.7",
+      "8.0", "8.1", "8.2", "8.3", "8.4",
+      "9.0", "9.1", "9.2", "9.3", "9.4"
+    ],
+    "description": "A free and open-source program diffing tool",
+    "keywords": ["diffing", "patch-analysis", "reverse-engineering", "bindiff"],
+    "license": "AGPL-3.0",
+    "urls": {
+      "repository": "https://github.com/joxeankoret/diaphora"
+    },
+    "authors": [{
+      "name": "Joxean Koret",
+      "email": "admin@joxeankoret.com"
+    }]
+  }
+}

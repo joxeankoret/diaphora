@@ -109,6 +109,8 @@ instructions' option."""
 
 LITTLE_ORANGE = 0x026AFD
 
+# Is Diaphora running as a proper IDA plugin?
+IS_DIAPHORA_PLUGIN = False
 
 #-------------------------------------------------------------------------------
 def log(message):
@@ -116,7 +118,6 @@ def log(message):
   Print a message
   """
   print(f"[Diaphora: {time.asctime()}] {message}")
-
 
 #-------------------------------------------------------------------------------
 def log_refresh(message, show=False, do_log=True):
@@ -134,7 +135,6 @@ def log_refresh(message, show=False, do_log=True):
   if do_log:
     log(message)
 
-
 #-------------------------------------------------------------------------------
 def debug_refresh(message):
   """
@@ -143,7 +143,6 @@ def debug_refresh(message):
   if os.getenv("DIAPHORA_DEBUG"):
     log(message)
 
-
 #-------------------------------------------------------------------------------
 diaphora.log = log
 diaphora.log_refresh = log_refresh
@@ -151,14 +150,15 @@ diaphora.log_refresh = log_refresh
 #-------------------------------------------------------------------------------
 g_bindiff = None
 
-
+#-------------------------------------------------------------------------------
 def show_choosers():
   """
   Show the non empty choosers.
   """
   if g_bindiff is not None:
     g_bindiff.show_choosers(False)
-
+  else:
+    warning("No active diffing results to show.")
 
 #-------------------------------------------------------------------------------
 def save_results():
@@ -169,7 +169,6 @@ def save_results():
     filename = ask_file(1, "*.diaphora", "Select the file to store diffing results")
     if filename is not None:
       g_bindiff.save_results(filename)
-
 
 #-------------------------------------------------------------------------------
 def load_and_import_all_results(filename, main_db, diff_db):
@@ -183,7 +182,6 @@ def load_and_import_all_results(filename, main_db, diff_db):
 
   idaapi.qexit(0)
 
-
 #-------------------------------------------------------------------------------
 def load_results():
   """
@@ -194,6 +192,30 @@ def load_results():
   if filename is not None:
     tmp_diff.load_results(filename)
 
+#-------------------------------------------------------------------------------
+def load_and_import_results():
+  """
+  Load a Diaphora's diffing results database and import all matches it contains
+  """
+  filename = ask_file(0, "*.diaphora", "Select the diffing results to load and import")
+  if filename is None:
+    return
+
+  results_db = diaphora.sqlite3_connect(filename)
+  cur = results_db.cursor()
+  try:
+    cur.execute("select main_db, diff_db from config")
+    row = cur.fetchone()
+  finally:
+    cur.close()
+    results_db.close()
+
+  if row is None:
+    warning("Malformed results database!")
+    return
+
+  tmp_diff = CIDABinDiff(":memory:")
+  tmp_diff.load_and_import_all_results(filename, row["main_db"], row["diff_db"])
 
 #-------------------------------------------------------------------------------
 def import_definitions():
@@ -208,7 +230,6 @@ def import_definitions():
     if ask_yn(1, message) == 1:
       tmp_diff.import_definitions_only(filename)
 
-
 #-------------------------------------------------------------------------------
 def diaphora_decode(ea):
   """
@@ -218,7 +239,6 @@ def diaphora_decode(ea):
   decoded_size = idaapi.decode_insn(ins, ea)
   return decoded_size, ins
 
-
 #-------------------------------------------------------------------------------
 def get_string_at(ea):
   """
@@ -227,7 +247,6 @@ def get_string_at(ea):
   if ida_bytes.is_mapped(ea):
     return get_strlit_contents(ea, -1, -1)
   return None
-
 
 #-------------------------------------------------------------------------------
 class CHtmlViewer(PluginForm):
@@ -257,7 +276,6 @@ class CHtmlViewer(PluginForm):
     self.text = text
     return PluginForm.Show(self, title)
 
-
 #-------------------------------------------------------------------------------
 class CBasicChooser(Choose):
   def __init__(self, title):
@@ -273,7 +291,6 @@ class CBasicChooser(Choose):
 
   def OnGetLine(self, n):
     return self.items[n]
-
 
 #-------------------------------------------------------------------------------
 # Hex-Rays finally removed AddCommand(). Now, instead of a 1 line call, we need
@@ -297,11 +314,8 @@ class command_handler_t(ida_kernwin.action_handler_t):
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
 
-
 #-------------------------------------------------------------------------------
 # Support for the removed AddCommand() API
-
-
 class CDiaphoraChooser(diaphora.CChooser, Choose):
   def __init__(self, title, bindiff, show_commands=True):
     diaphora.CChooser.__init__(self, title, bindiff, show_commands)
@@ -326,7 +340,6 @@ class CDiaphoraChooser(diaphora.CChooser, Choose):
           action_name, menu_name, handler, shortcut
         )
         ida_kernwin.attach_dynamic_action_to_popup(widget, popup_handle, desc)
-
 
 #-------------------------------------------------------------------------------
 class CIDAChooser(CDiaphoraChooser):
@@ -356,7 +369,6 @@ class CIDAChooser(CDiaphoraChooser):
         ["Description", 30],
       ]
       Choose.__init__(self, title, columns, Choose.CH_MULTI)
-
 
   def OnSelectLine(self, sel):
     item = self.items[sel[0]]
@@ -411,7 +423,6 @@ class CIDAChooser(CDiaphoraChooser):
     if t < 0:
       return False
 
-
     if self.show_commands and (self.cmd_diff_asm is None or force):
       # create aditional actions handlers
       self.cmd_rediff = self.AddCommand("Diff again")
@@ -442,7 +453,6 @@ class CIDAChooser(CDiaphoraChooser):
     elif not self.show_commands and (self.cmd_show_asm is None or force):
       self.cmd_show_asm = self.AddCommand("Show assembly")
       self.cmd_show_pseudo = self.AddCommand("Show pseudo-code")
-
 
     return True
 
@@ -664,7 +674,6 @@ class CIDAChooser(CDiaphoraChooser):
       return [color, 0]
     return [0xFFFFFF, 0]
 
-
 #-------------------------------------------------------------------------------
 class CBinDiffExporterSetup(Form):
   """
@@ -788,7 +797,6 @@ class CBinDiffExporterSetup(Form):
     )
     return BinDiffOptions(**opts)
 
-
 #-------------------------------------------------------------------------------
 class timeraction_t(object):
   def __init__(self, func, args, interval):
@@ -806,7 +814,6 @@ class timeraction_t(object):
       self.func()
     return -1
 
-
 #-------------------------------------------------------------------------------
 class uitimercallback_t(object):
   def __init__(self, g, interval):
@@ -821,7 +828,6 @@ class uitimercallback_t(object):
     activate_widget(f, 1)
     process_ui_action("GraphZoomFit", 0)
     return -1
-
 
 #-------------------------------------------------------------------------------
 class CDiffGraphViewer(GraphViewer):
@@ -881,7 +887,6 @@ class CDiffGraphViewer(GraphViewer):
   def Show(self):
     return GraphViewer.Show(self)
 
-
 #-------------------------------------------------------------------------------
 class CCallGraphViewer(GraphViewer):
   def __init__(self, title, callers, callees, target):
@@ -931,7 +936,6 @@ class CCallGraphViewer(GraphViewer):
   def Show(self):
     return GraphViewer.Show(self)
 
-
 #-------------------------------------------------------------------------------
 class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
   def __init__(self):
@@ -943,7 +947,6 @@ class CIdaMenuHandlerShowChoosers(idaapi.action_handler_t):
 
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
-
 
 #-------------------------------------------------------------------------------
 class CIdaMenuHandlerSaveResults(idaapi.action_handler_t):
@@ -957,7 +960,6 @@ class CIdaMenuHandlerSaveResults(idaapi.action_handler_t):
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
 
-
 #-------------------------------------------------------------------------------
 class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
   def __init__(self):
@@ -969,7 +971,6 @@ class CIdaMenuHandlerLoadResults(idaapi.action_handler_t):
 
   def update(self, ctx):
     return idaapi.AST_ENABLE_ALWAYS
-
 
 #-------------------------------------------------------------------------------
 class CExternalDiffingDialog(Form):
@@ -987,7 +988,6 @@ External Diffing Tool
         "iStrCommand": Form.StringInput(),
       },
     )
-
 
 #-------------------------------------------------------------------------------
 class CPrinter_t(hr.vd_printer_t):
@@ -2300,6 +2300,10 @@ class CIDABinDiff(diaphora.CBinDiff):
     global g_bindiff
     g_bindiff = self
 
+    # When loaded as a plugin Diaphora's top-level menu is already registered
+    if IS_DIAPHORA_PLUGIN:
+      return
+
     menu_items = [
       [
         "diaphora:show_results",
@@ -3546,7 +3550,6 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         self.do_continue = False
     return are_equal
 
-
 #-------------------------------------------------------------------------------
 def _diff_or_export(use_ui, **options):
   global g_bindiff
@@ -3684,7 +3687,6 @@ def _diff_or_export(use_ui, **options):
 
   return bd
 
-
 #-------------------------------------------------------------------------------
 def _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd = CIDABinDiff(db1)
@@ -3692,7 +3694,6 @@ def _generate_html(db1, diff_db, ea1, ea2, html_asm, html_pseudo):
   bd.load_results(diff_db)
   bd.save_pseudo_diff(ea1, ea2, html_pseudo)
   bd.save_asm_diff(ea1, ea2, html_asm)
-
 
 #-------------------------------------------------------------------------------
 class BinDiffOptions:
@@ -3748,7 +3749,6 @@ class BinDiffOptions:
     # with big to huge databases, disable it by default for 'big' databases
     medium_db = total_functions <= config.MIN_FUNCTIONS_TO_CONSIDER_MEDIUM
     self.export_microcode = kwargs.get("export_microcode", medium_db)
-
 
 #-------------------------------------------------------------------------------
 class CHtmlDiff:
@@ -3889,7 +3889,6 @@ class CAstVisitor(CAstVisitorInherits):
       traceback.print_exc()
     return 0
 
-
 #-------------------------------------------------------------------------------
 def is_ida_file(filename):
   filename = filename.lower()
@@ -3901,7 +3900,6 @@ def is_ida_file(filename):
     or filename.endswith(".id1")
     or filename.endswith(".nam")
   )
-
 
 #-------------------------------------------------------------------------------
 def remove_file(filename):
@@ -3936,7 +3934,6 @@ def remove_file(filename):
           db.execute(f"drop table if exists {func}")
       finally:
         cur.close()
-
 
 #-------------------------------------------------------------------------------
 def main():
@@ -4022,6 +4019,6 @@ def main():
   else:
     _diff_or_export(True)
 
-
 if __name__ == "__main__":
   main()
+
