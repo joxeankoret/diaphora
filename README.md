@@ -8,8 +8,8 @@
 
 Install with the [Hex-Rays plugin manager](https://hcli.docs.hex-rays.com/user-guide/plugin-manager/):
 
-    hcli plugin install diaphora@https://github.com/joxeankoret/diaphora
-
+    hcli plugin install https://github.com/joxeankoret/diaphora/archive/refs/tags/3.4.0.zip
+    
 Manual install instructions are below.
 
 Diaphora (διαφορά, Greek for 'difference') version 3.4 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2026). It was released first during SyScan 2015 and has been actively maintained ever since: Diaphora has been ported to every single minor version of IDA since 6.8 to 9.4.
