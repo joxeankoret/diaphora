@@ -202,7 +202,7 @@ THREADS_WAIT_TIME = 1
 
 #-------------------------------------------------------------------------------
 # Diaphora can use a local mode, enable this configuration directive to use it.
-ML_USE_TRAINED_MODEL = True
+ML_USE_TRAINED_MODEL = False
 # Model trained with a decision tree classifier: fast and accurate enough
 ML_TRAINED_MODEL = os.path.join(CONFIGURATION_DIRECTORY, "ml/diaphora-amalgamation-model.pkl")
 # The value added to the similarity ratio for a positive match using the model.

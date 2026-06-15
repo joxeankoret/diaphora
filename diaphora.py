@@ -2996,7 +2996,7 @@ class CBinDiff:
 
     return main_asm, diff_asm
 
-  def call_on_match_hook(self, r, main_row, diff_row):
+  def call_on_match_hook(self, heur, r, main_row, diff_row):
     """
     Call the "on_match" hook, if it exists.
     """
@@ -3105,7 +3105,7 @@ class CBinDiff:
               if r + config.MATCHES_BONUS_RATIO < 1.0:
                 r += config.MATCHES_BONUS_RATIO
 
-              should_add, r = self.call_on_match_hook(r, main_row, diff_row)
+              should_add, r = self.call_on_match_hook(heur, r, main_row, diff_row)
               if should_add:
                 heur_text = f"{heur} (iteration #{iteration})"
                 ea1 = main_row["address"]
@@ -3290,7 +3290,7 @@ class CBinDiff:
               if name2 in local_diff_matched and diff_score[name2] >= r:
                 continue
 
-              should_add, r = self.call_on_match_hook(r, main_row, diff_row)
+              should_add, r = self.call_on_match_hook(heur_text, r, main_row, diff_row)
               if should_add:
                 ea1 = main_row["address"]
                 ea2 = diff_row["address"]

@@ -124,6 +124,12 @@ def log_refresh(message, show=False, do_log=True):
   """
   Print a message and refresh the UI.
   """
+  # Do not call UI messages handling except from within IDA's main thread
+  if not ida_pro.is_main_thread():
+    if do_log:
+      log(message)
+    return
+
   if show:
     show_wait_box(message)
   else:
