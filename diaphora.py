@@ -141,11 +141,19 @@ def result_iter(cursor, arraysize=1000):
 
 
 #-------------------------------------------------------------------------------
+def check_bufs(buf1, buf2):
+  if buf1 is None or buf2 is None:
+    return False
+  if buf1 == "" or buf2 == "":
+    return False
+  return True
+
+#-------------------------------------------------------------------------------
 def quick_ratio(buf1, buf2):
   """
   Call SequenceMatcher.quick_ratio() to get a comparison ratio.
   """
-  if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
+  if not check_bufs(buf1, buf2):
     return 0
   seq = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
   return seq.quick_ratio()
@@ -156,7 +164,7 @@ def real_quick_ratio(buf1, buf2):
   """
   Call SequenceMatcher.real_quick_ratio() to get a comparison ratio.
   """
-  if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
+  if not check_bufs(buf1, buf2):
     return 0
   seq = SequenceMatcher(None, buf1.split("\n"), buf2.split("\n"))
   return seq.real_quick_ratio()
@@ -503,7 +511,7 @@ class CBinDiff:
     Fake member, it is only useful (and implemented) when running from within IDA.
     """
 
-  def imp_load_source(self, name, pathname):
+  def imp_load_source(self, modname, filename):
     """ Replacement for imp.load_source() """
     spec = importlib.util.spec_from_file_location(modname, filename)
     module = importlib.util.module_from_spec(spec)
