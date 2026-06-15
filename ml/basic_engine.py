@@ -77,7 +77,7 @@ def quick_ratio(buf1 : str, buf2 : str) -> float:
   """
   Call SequenceMatcher.quick_ratio() to get a comparison ratio.
   """
-  if buf1 is None or buf2 is None or buf1 == "" or buf1 == "":
+  if buf1 is None or buf2 is None or buf1 == "" or buf2 == "":
     return 0
 
   if buf1 == buf2:
