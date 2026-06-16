@@ -34,6 +34,7 @@ from idautils import *
 
 import idaapi
 import ida_pro
+import ida_idp
 import ida_graph
 import ida_kernwin
 
@@ -3464,6 +3465,12 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     idb_path = get_idb_path()
     filename, _ = os.path.splitext(idb_path)
     til_path = f"{filename}.til"
+
+    # When WORKDIR is set in ida.cfg the .til will be in that directory
+    workdir = ida_idp.get_config_value("WORKDIR")
+    if workdir:
+      base = os.path.basename(filename)
+      til_path = os.path.join(workdir, f"{base}.til")
 
     with open(til_path, "rb") as f:
       line = f.readline()
