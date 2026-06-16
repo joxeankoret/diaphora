@@ -2,7 +2,7 @@
   "IDAMetadataDescriptorVersion": 1,
   "plugin": {
     "name": "diaphora",
-    "version": "3.4",
+    "version": "3.4.1",
     "entryPoint": "diaphora_plugin.py",
     "logoPath": "logo/diaphora-border.png",
     "categories": [
