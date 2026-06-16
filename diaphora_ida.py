@@ -34,6 +34,8 @@ from idautils import *
 
 import idaapi
 import ida_pro
+import ida_graph
+import ida_kernwin
 
 idaapi.require("diaphora")
 
@@ -836,6 +838,58 @@ class uitimercallback_t(object):
     return -1
 
 #-------------------------------------------------------------------------------
+class CGraphSyncHook(ida_kernwin.View_Hooks):
+  """
+  Sync pan and zoom for two graph views
+  """
+  def __init__(self, viewers):
+    ida_kernwin.View_Hooks.__init__(self)
+    self.viewers = viewers
+    self.syncing = False
+
+  def install(self):
+    self.hook()
+
+  def remove(self):
+    self.unhook()
+
+  def source_viewer(self, view):
+    title = ida_kernwin.get_widget_title(view)
+    for v in self.viewers:
+      if v._title == title:
+        return v
+    return None
+
+  def view_loc_changed(self, view, now, was):
+    if self.syncing:
+      return
+
+    src = self.source_viewer(view)
+    if src is None:
+      return
+
+    ri = now.renderer_info()
+    if ri is None:
+      return
+
+    gli = ri.gli
+    self.syncing = True
+    try:
+      for v in self.viewers:
+        if v is src:
+          continue
+
+        widget = ida_kernwin.find_widget(v._title)
+        if widget is None:
+          continue
+        
+        gv = ida_graph.get_graph_viewer(widget)
+        if gv:
+          ida_graph.viewer_set_gli(gv, gli)
+    finally:
+      self.syncing = False
+
+#-------------------------------------------------------------------------------
 class CDiffGraphViewer(GraphViewer):
   """
   Class used to show graphs.
@@ -892,6 +946,12 @@ class CDiffGraphViewer(GraphViewer):
 
   def Show(self):
     return GraphViewer.Show(self)
+
+  def OnClose(self):
+    hook = getattr(self, "sync_hook", None)
+    if hook is not None:
+      hook.remove()
+      self.sync_hook = None
 
 #-------------------------------------------------------------------------------
 class CCallGraphViewer(GraphViewer):
@@ -1695,6 +1755,14 @@ class CIDABinDiff(diaphora.CBinDiff):
     set_dock_pos(title2, title1, DP_RIGHT)
     uitimercallback_t(g1, 100)
     uitimercallback_t(g2, 100)
+
+    try:
+      sync = CGraphSyncHook([g1, g2])
+      sync.install()
+      g1.sync_hook = sync
+      g2.sync_hook = sync
+    except Exception:
+      log("Graph synchronization failed: %s" % str(sys.exc_info()[1]))
 
   def graph_diff_internal(self, ea1, name1, ea2, name2, asm_type, title_prefix):
     g1 = self.get_graph(str(ea1), True, asm_type)
