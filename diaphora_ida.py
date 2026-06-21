@@ -1137,6 +1137,9 @@ class CIDABinDiff(diaphora.CBinDiff):
     func_list = list(Functions(self.min_ea, self.max_ea))
     total_funcs = len(func_list)
     t = time.monotonic()
+    last_progress_update = 0
+    progress_update_interval = 60
+    progress_step = int(total_funcs / 100) if total_funcs >= 100 else 1
 
     if crashed_before:
       start_func = self.get_last_crash_func()
@@ -1157,11 +1160,15 @@ class CIDABinDiff(diaphora.CBinDiff):
         raise Exception("Cancelled.")
 
       i += 1
-      if (total_funcs >= 100) and i % (int(total_funcs / 100)) == 0 or i == 1:
+      now = time.monotonic()
+      update_by_count = i % progress_step == 0
+      update_by_time = now - last_progress_update >= progress_update_interval
+      if i == 1 or update_by_count or update_by_time:
+        last_progress_update = now
         if config.COMMIT_AFTER_EACH_GUI_UPDATE:
           self.commit_and_start_transaction()
         line = "Exported %d function(s) out of %d total.\nElapsed %d:%02d:%02d second(s), remaining time ~%d:%02d:%02d"
-        elapsed = time.monotonic() - t
+        elapsed = now - t
         remaining = (elapsed / i) * (total_funcs - i)
 
         m, s = divmod(remaining, 60)
@@ -1218,6 +1225,22 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     log_refresh("Creating indices...")
     self.create_indices()
+    return True
+
+  def check_export_database_integrity(self):
+    """
+    Verify that a database from a crashed export can still be read by SQLite.
+    """
+    cur = self.db_cursor()
+    try:
+      cur.execute("pragma integrity_check")
+      row = cur.fetchone()
+      if row is None or row[0].lower() != "ok":
+        raise sqlite3.DatabaseError(
+          f"database integrity check failed: {row[0] if row else 'no result'}"
+        )
+    finally:
+      cur.close()
 
   def export(self):
     """
@@ -1237,10 +1260,13 @@ class CIDABinDiff(diaphora.CBinDiff):
     with open(crash_file, "wb") as f:
       f.close()
 
+    exported = False
     try:
       show_wait_box("Exporting database")
       try:
-        self.do_export(crashed_before)
+        if crashed_before:
+          self.check_export_database_integrity()
+        exported = self.do_export(crashed_before)
       except:
         log(f"Error: {str(sys.exc_info()[1])}")
         traceback.print_exc()
@@ -1251,6 +1277,10 @@ class CIDABinDiff(diaphora.CBinDiff):
               raise
     finally:
       hide_wait_box()
+
+    if not exported:
+      self.db_close()
+      return False
 
     self.db.commit()
     log(f"Removing crash file {self.db_name}-crash...")
@@ -1263,6 +1293,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       cur.close()
 
     self.db_close()
+    return True
 
   def import_til(self):
     """
@@ -2276,8 +2307,6 @@ class CIDABinDiff(diaphora.CBinDiff):
       else:
         self.pseudo[ea].append(line)
 
-    self.microcode[ea] = []
-    self.get_microcode(f, ea)
     return first_line
 
   def guess_type(self, ea):
@@ -2920,8 +2949,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
     ) = self.extract_function_pseudocode_features(f)
 
     # Extract microcode
-    microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
     microcode_bblocks, microcode_bbrelations = self.get_microcode(func, ea)
+    microcode, clean_microcode, microcode_spp = self.extract_microcode(f)
 
     clean_pseudo = self.get_cmp_pseudo_lines(pseudo)
 
@@ -3957,12 +3986,15 @@ def main():
 
     auto_wait()
 
-    if os.path.exists(file_out):
+    crash_file = f"{file_out}-crash"
+    if os.path.exists(file_out) and not os.path.exists(crash_file):
       if g_bindiff is not None:
         g_bindiff = None
 
       remove_file(file_out)
       log(f"Database {repr(file_out)} removed")
+    elif os.path.exists(file_out):
+      log(f"Keeping database {repr(file_out)} to resume interrupted export")
 
     bd = CIDABinDiff(file_out)
     project_script = os.getenv("DIAPHORA_PROJECT_SCRIPT")
@@ -3980,7 +4012,7 @@ def main():
     )
     bd.min_ea = int(bd.get_value_for("from_address", "0"), 16)
     bd.export_microcode = bd.get_value_for(
-      "self.export_microcode", bd.export_microcode
+      "export_microcode", bd.export_microcode
     )
 
     _to_ea = bd.get_value_for("to_address", None)
