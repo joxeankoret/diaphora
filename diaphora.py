@@ -557,7 +557,9 @@ class CBinDiff:
     """
     value = os.getenv(f"DIAPHORA_{value_name.upper()}")
     if value is not None:
-      if isinstance(value, type(default)):
+      if isinstance(default, bool):
+        value = value.lower() in ("1", "true", "yes", "on")
+      elif default is not None and not isinstance(default, str):
         value = type(default)(value)
       return value
     return default
@@ -692,24 +694,6 @@ class CBinDiff:
     finally:
       cur.close()
 
-  def get_bb_id(self, addr):
-    """
-    Get the id of the given basic block at address @addr
-    """
-    cur = self.db_cursor()
-    rowid = None
-    try:
-      sql = "select id from basic_blocks where address = ?"
-      cur.execute(sql, (str(addr),))
-      row = cur.fetchone()
-      rowid = None
-      if row is not None:
-        rowid = row["id"]
-    finally:
-      cur.close()
-
-    return rowid
-
   def get_valid_prop(self, prop):
     """
     Get a valid property to insert into the SQLite database.
@@ -778,15 +762,12 @@ class CBinDiff:
     sql1 = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'native')"
     sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
 
-    self_get_bb_id = self.get_bb_id
     for key in bb_data:
       # Insert each basic block
       num += 1
       ins_ea = str(key)
-      last_bb_id = self_get_bb_id(ins_ea)
-      if last_bb_id is None:
-        cur_execute(sql1, (num, str(ins_ea)))
-        last_bb_id = cur.lastrowid
+      cur_execute(sql1, (num, str(ins_ea)))
+      last_bb_id = cur.lastrowid
       bb_ids[ins_ea] = last_bb_id
 
       # Insert relations between basic blocks and instructions
