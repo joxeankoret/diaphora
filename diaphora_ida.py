@@ -26,6 +26,7 @@ import sqlite3
 import datetime
 import traceback
 
+from bisect import bisect_left, bisect_right
 from hashlib import md5
 
 from idc import *
@@ -3204,9 +3205,59 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
   def get_base_address(self):
     return idaapi.get_imagebase()
 
+  def get_sorted_cached_functions(self):
+    funcs = []
+    for func, item in self._funcs_cache.items():
+      funcs.append((int(func), item))
+    funcs.sort(key=lambda item: item[0])
+    return funcs
+
+  def iter_cached_functions_in_range(self, funcs, keys, start, end):
+    first = bisect_left(keys, start)
+    last = bisect_right(keys, end)
+    for _, item in funcs[first:last]:
+      yield item
+
+  def get_lfa_module_ranges(self, lfa_modules):
+    module_ranges = []
+    for index, module in enumerate(lfa_modules):
+      module_ranges.append((module.start, module.end, index, module))
+    module_ranges.sort(key=lambda item: item[0])
+
+    keys = [start for start, _, _, _ in module_ranges]
+    max_ends = []
+    max_end = 0
+    for _, end, _, _ in module_ranges:
+      max_end = max(max_end, end)
+      max_ends.append(max_end)
+    return module_ranges, keys, max_ends
+
+  def find_lfa_module_for_ea(self, module_ranges, keys, max_ends, ea):
+    pos = bisect_right(keys, ea) - 1
+    best_index = None
+    best_module = None
+    while pos >= 0:
+      if max_ends[pos] < ea:
+        break
+
+      start, end, index, module = module_ranges[pos]
+      if start <= ea <= end:
+        if best_index is None or index < best_index:
+          best_index = index
+          best_module = module
+      pos -= 1
+    return best_module
+
   def get_modules_using_lfa(self):
     # First, try to guess modules areas
     _, lfa_modules = lfa.analyze()
+    module_ranges, module_keys, module_max_ends = self.get_lfa_module_ranges(
+      lfa_modules
+    )
+    new_modules = [
+      {"name": module.name, "start": module.start, "end": module.end}
+      for module in lfa_modules
+    ]
 
     # Next, using IDAMagicStrings, try to guess file names using some heuristics
     func_modules = {}
@@ -3221,11 +3272,11 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
           if func_ea not in func_modules:
             # print("0x%08x:%s -> %s" % (func_ea, func_name, mod_name))
             func_modules[func_ea] = mod_name
-            for module in lfa_modules:
-              if func_ea >= module.start and func_ea <= module.end:
-                if module.name == "":
-                  module.name = mod_name
-                  break
+            module = self.find_lfa_module_for_ea(
+              module_ranges, module_keys, module_max_ends, func_ea
+            )
+            if module is not None and module.name == "":
+              module.name = mod_name
 
       #
       # Next sub-step: find the limits of modules with the same name that appear
@@ -3274,20 +3325,25 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       module["primes"] = 1
       module["pseudo_primes"] = 1
 
-    iterations = 1
-    for func, item in self._funcs_cache.items():
-      if iterations % 1000 == 0:
+    funcs = self.get_sorted_cached_functions()
+    func_keys = [func for func, _ in funcs]
+    assigned_funcs = set()
+    for i, module in enumerate(new_modules):
+      if i > 0 and i % 1000 == 0:
         log_refresh("Calculating modules weights...")
 
-      for module in new_modules:
-        if module["start"] <= func <= module["end"]:
-          _, primes_value, pseudocode_primes = item
-          module["total"] += 1
-          if primes_value is not None:
-            module["primes"] *= int(primes_value)
-          if pseudocode_primes is not None:
-            module["pseudo_primes"] *= int(pseudocode_primes)
-          break
+      for item in self.iter_cached_functions_in_range(
+        funcs, func_keys, module["start"], module["end"]
+      ):
+        func_id, primes_value, pseudocode_primes = item
+        if func_id in assigned_funcs:
+          continue
+        assigned_funcs.add(func_id)
+        module["total"] += 1
+        if primes_value is not None:
+          module["primes"] *= int(primes_value)
+        if pseudocode_primes is not None:
+          module["pseudo_primes"] *= int(pseudocode_primes)
 
     for module in new_modules:
       module["total"] = str(module["total"])
@@ -3319,6 +3375,8 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
       dones = set()
       total = len(lfa_modules)
       checkpoint = int(total / 100)
+      funcs = self.get_sorted_cached_functions()
+      func_keys = [func for func, _ in funcs]
       for i, module in enumerate(lfa_modules):
         if i > 0 and checkpoint > 0 and i % checkpoint == 0:
           log_refresh(f"Processing compilation unit {i} out of {total}...")
@@ -3331,15 +3389,18 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         cur.execute(sql1, vals)
         cu_id = cur.lastrowid
 
-        for func in self._funcs_cache:
-          item = self._funcs_cache[func]
-          func = int(func)
-          if func >= module["start"] and func <= module["end"]:
-            func_id = item[0]
-            if func_id not in dones:
-              dones.add(func_id)
-              cur.execute(sql2, (cu_id, func_id))
-              cur.execute(sql4, (module_name, func_id))
+        cu_func_args = []
+        source_file_args = []
+        for item in self.iter_cached_functions_in_range(
+          funcs, func_keys, module["start"], module["end"]
+        ):
+          func_id = item[0]
+          if func_id not in dones:
+            dones.add(func_id)
+            cu_func_args.append((cu_id, func_id))
+            source_file_args.append((module_name, func_id))
+        cur.executemany(sql2, cu_func_args)
+        cur.executemany(sql4, source_file_args)
 
         cur.execute(
           sql3,
