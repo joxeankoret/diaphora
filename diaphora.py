@@ -3428,9 +3428,9 @@ class CBinDiff:
           continue
 
         main_start_ea = float(main_row["start_ea"])
-        main_end_ea   = float(main_row["start_ea"])
+        main_end_ea   = float(main_row["end_ea"])
         diff_start_ea = float(diff_row["start_ea"])
-        diff_end_ea   = float(diff_row["start_ea"])
+        diff_end_ea   = float(diff_row["end_ea"])
         cur.execute(sql, (main_start_ea, main_end_ea, diff_start_ea, diff_end_ea))
         self.add_matches_internal(cur, "best", "partial")
     finally:
