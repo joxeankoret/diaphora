@@ -116,7 +116,13 @@ CPP_NAMES_RE = "([a-zA-Z_][a-zA-Z0-9_]{3,}((::){0,1}[a-zA-Z0-9_]+)*)"
 
 #-------------------------------------------------------------------------------
 fmt = "[Diaphora: %(asctime)s] %(levelname)s: %(message)s"
-logging.basicConfig(format=fmt, level=logging.INFO)
+LOGGER = logging.getLogger("diaphora")
+LOGGER.setLevel(logging.INFO)
+LOGGER.propagate = False
+if not LOGGER.handlers:
+  handler = logging.StreamHandler()
+  handler.setFormatter(logging.Formatter(fmt))
+  LOGGER.addHandler(handler)
 
 #-------------------------------------------------------------------------------
 def load_source(modname, filename):
@@ -192,7 +198,7 @@ def log(message):
   if IS_IDA or os.getenv("DIAPHORA_LOG_PRINT") is not None:
     print(f"[Diaphora: {time.asctime()}] {message}")
   else:
-    logging.info(message)
+    LOGGER.info(message)
 
 
 #-------------------------------------------------------------------------------
@@ -954,7 +960,7 @@ class CBinDiff:
       try:
         cur.execute(sql, new_props)
       except:
-        logging.error(
+        LOGGER.error(
           "Error handling props in save_function(): %s", str(new_props)
         )
         traceback.print_exc()
@@ -1851,7 +1857,7 @@ class CBinDiff:
           r = self.check_ratio(main_d, diff_d)
           if debug:
             msg = "0x%x 0x%x %d" % (int(ea), int(ea2), r)
-            logging.debug(msg)
+            LOGGER.debug(msg)
         else:
           r = ratio
 
