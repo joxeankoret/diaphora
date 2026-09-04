@@ -10,7 +10,7 @@ Install with the [Hex-Rays plugin manager](https://hcli.docs.hex-rays.com/user-g
 
     hcli plugin install https://github.com/joxeankoret/diaphora/archive/refs/tags/3.4.2.zip
     
-Manual install instructions are below.
+Manual install: download the code and place it into your `plugins/` directory.
 
 Diaphora (διαφορά, Greek for 'difference') version 3.4 is the most advanced program diffing tool (working as an IDA plugin) available as of today (2026). It was released first during SyScan 2015 and has been actively maintained ever since: Diaphora has been ported for 11 years already to every single minor version of IDA since 6.8 to 9.4.
 
@@ -41,13 +41,6 @@ However, Diaphora has also many features that are unique, not available in any o
  * Diffing pseudo-codes (with syntax highlighting!).
  * Scripting support (for both the exporting and diffing processes).
  * ...
-
-## Installation
-
-Diaphora requires no installation: just download the code and run the script `diaphora.py` from within IDA or on the command line (only for diffing already exported databases). However, it can be integrated as a [plugin](https://github.com/joxeankoret/diaphora/tree/master/plugin) into IDA by doing the following:
-
- * Copy `plugins/diaphora_plugin.py` and `plugins/diaphora_plugin.cfg` to the IDA's plugins directory.
- * Edit `diaphora_plugin.cfg` and set the path value to the Diaphora's directory.
 
 ## Donations
 
