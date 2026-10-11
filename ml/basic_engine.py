@@ -97,7 +97,7 @@ def compare_list(value1 : str, value2 : str) -> float:
     val = INVALID_SCORE
   else:
     inter = len(s1.intersection(s2))
-    maxs  = len(max(s1, s2))
+    maxs  = max(len(s1), len(s2))
     val = (inter * 100) / maxs
     val /= 100
   return val
