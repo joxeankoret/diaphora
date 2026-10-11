@@ -71,10 +71,10 @@ except ImportError:
 
 if not idaapi.cvar.batch:
   if ida_pro.IDA_SDK_VERSION >= 920:
-    from PySide6 import QtWidgets
+    from PySide6 import QtWidgets, QtGui
   else:
     # Support for old versions. Until when will I keep doing so?
-    from PyQt5 import QtWidgets
+    from PyQt5 import QtWidgets, QtGui
 
 #-------------------------------------------------------------------------------
 # Chooser items indices. They do differ from the CChooser.item items that are
@@ -110,10 +110,27 @@ This is automatically done for exporting huge databases with more than 100,000
 functions. You can disable it by un-checking the 'Do not export basic blocks or
 instructions' option."""
 
-LITTLE_ORANGE = 0x026AFD
-
 # Is Diaphora running as a proper IDA plugin?
 IS_DIAPHORA_PLUGIN = False
+
+LITTLE_ORANGE = 0x026AFD
+
+#-------------------------------------------------------------------------------
+def is_dark_mode():
+  if hasattr(ida_kernwin, "is_dark_mode"):
+    return ida_kernwin.is_dark_mode()
+  if not idaapi.cvar.batch:
+    app = QtWidgets.QApplication.instance()
+    if app:
+      bg = app.palette().color(QtGui.QPalette.Window)
+      return bg.value() < 128
+  return False
+
+#-------------------------------------------------------------------------------
+def get_style():
+  if is_dark_mode():
+    return "native"
+  return "default"
 
 #-------------------------------------------------------------------------------
 def log(message):
@@ -1468,7 +1485,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     buf1 = f'{row1["name"]} proc near\n{asm1}\n{row1["name"]} endp'
     buf2 = f'{row2["name"]} proc near\n{asm2}\n{row2["name"]} endp'
 
-    fmt = HtmlFormatter()
+    fmt = HtmlFormatter(style=get_style())
     fmt.noclasses = True
     fmt.linenos = False
     fmt.nobackground = True
@@ -1559,7 +1576,7 @@ class CIDABinDiff(diaphora.CBinDiff):
           "Sorry, there is no assembly available for the selected function."
         )
       else:
-        fmt = HtmlFormatter()
+        fmt = HtmlFormatter(style=get_style())
         fmt.noclasses = True
         fmt.linenos = True
         asm = self.prettify_asm(row["assembly"])
@@ -1590,7 +1607,7 @@ class CIDABinDiff(diaphora.CBinDiff):
           "Sorry, there is no pseudo-code available for the selected function."
         )
       else:
-        fmt = HtmlFormatter()
+        fmt = HtmlFormatter(style=get_style())
         fmt.noclasses = True
         fmt.linenos = True
         func = f'{row["prototype"]}\n{row["pseudocode"]}'
@@ -1643,7 +1660,7 @@ class CIDABinDiff(diaphora.CBinDiff):
         if buf1 == buf2:
           error_func("Both pseudo-codes are equal.")
 
-        fmt = HtmlFormatter()
+        fmt = HtmlFormatter(style=get_style())
         fmt.noclasses = True
         fmt.linenos = False
         fmt.nobackground = True
@@ -3852,8 +3869,14 @@ class CHtmlDiff:
   </html>
   """
 
-  _style = (
-    """
+  @property
+  def _style(self):
+    if is_dark_mode():
+      lineno_bg = "#333333"
+    else:
+      lineno_bg = config.DIFF_COLOR_LINE_NO
+    return (
+      """
   table.diff_tab {
   font-family: Courier, monospace;
   table-layout: fixed;
@@ -3862,31 +3885,31 @@ class CHtmlDiff:
 
   .diff_add {
   background-color: """
-    + config.DIFF_COLOR_ADDED
-    + """;
+      + config.DIFF_COLOR_ADDED
+      + """;
   color: #000000;
   }
   .diff_chg {
   background-color: """
-    + config.DIFF_COLOR_CHANGED
-    + """;
+      + config.DIFF_COLOR_CHANGED
+      + """;
   color: #000000;
   }
   .diff_sub {
   background-color: """
-    + config.DIFF_COLOR_SUBTRACTED
-    + """;
+      + config.DIFF_COLOR_SUBTRACTED
+      + """;
   color: #000000;
   }
   .diff_lineno {
   text-align: right;
   background-color: """
-    + config.DIFF_COLOR_LINE_NO
-    + """;
+      + lineno_bg
+      + """;
   color: #888888;
   }
   """
-  )
+    )
 
   _row_template = """
   <tr>
