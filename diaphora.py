@@ -2276,7 +2276,7 @@ class CBinDiff:
       cur.execute(sql)
       log_refresh("Finding via brute-forcing (MD-Index and KOKA hash)...")
       self.add_matches_from_cursor_ratio_max(
-        cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO
+        cur, best="unreliable", partial="unreliable", val=config.DEFAULT_PARTIAL_RATIO
       )
 
     heur = "Brute forcing (Compilation Unit)"
@@ -2297,7 +2297,7 @@ class CBinDiff:
     cur.execute(sql)
     log_refresh("Finding via brute-forcing (Compilation Unit)...")
     self.add_matches_from_cursor_ratio_max(
-      cur, best="unreliable", partial=None, val=config.DEFAULT_PARTIAL_RATIO
+      cur, best="unreliable", partial="unreliable", val=config.DEFAULT_PARTIAL_RATIO
     )
 
     if cur.connection.in_transaction:
@@ -3010,7 +3010,7 @@ class CBinDiff:
       ea = main_row["address"]
       ea2 = diff_row["address"]
       name1 = main_row["name"]
-      name2 = main_row["name"]
+      name2 = diff_row["name"]
       pseudo1 = main_row["pseudocode"]
       pseudo2 = diff_row["pseudocode"]
       asm1 = main_row["assembly"]
