@@ -193,6 +193,10 @@ DEFAULT_SCRIPT_PATCH_DIFF = os.path.join(CONFIGURATION_DIRECTORY, "scripts/patch
 # consider a functions pair match good.
 RELATED_MATCHES_MIN_RATIO = 0.8
 
+# When finding new matches in compilation units, how far from 1 function should
+# Diaphora check around (up and down).
+RELATED_CU_AROUND_FUNCTIONS = 10
+
 # Multiple heuristics are launched in parallel in different threads. Threads are
 # joined for a fraction of seconds to wait for them to finish after each 
 # iteration in a thread. This value indicates the number of seconds to join. It

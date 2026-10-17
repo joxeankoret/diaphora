@@ -23,6 +23,7 @@ import re
 import sys
 import time
 import json
+import bisect
 import decimal
 import sqlite3
 import logging
@@ -3410,54 +3411,208 @@ class CBinDiff:
     if not enabled:
       return
 
-    self.cleanup_matches()
     log_refresh(f"Finding with heuristic '{heur}'")
 
-    l = self.get_sorted_results("best")
-    l.extend(self.get_sorted_results("partial"))
-
-    sql = """SELECT distinct cus.id cu_id, cus.name cu_name, cus.start_ea start_ea, cus.end_ea end_ea
-               FROM {db}.compilation_unit_functions cuf,
-                    {db}.compilation_units cus,
-                    {db}.functions f
-              WHERE f.id = cuf.func_id
-                AND cus.id = cuf.cu_id
-                AND f.name = ?"""
-    sql_main = sql.replace("{db}", "main")
-    sql_diff = sql.replace("{db}", "diff")
-
-    sql = f"""select """ + get_query_fields(heur) + """
-               from functions f,
-                    diff.functions df
-              where cast(f.address as real)  between ? and ?
-                and cast(df.address as real) between ? and ? """
+    matches = self.get_good_matches()
+    good_matches = self.get_sorted_matches_eas(matches)
 
     cur = self.db_cursor()
     try:
-      for match in l:
+      main_functions = self.get_functions_sorted_by_ea(cur, "main")
+      diff_functions = self.get_functions_sorted_by_ea(cur, "diff")
+
+      pairs = []
+      for main_cu, diff_cu in self.get_compilation_units_matches(cur, matches):
+        cu_matches = self.get_good_matches_in_cus(good_matches, main_cu, diff_cu)
+
+        for main_area, diff_area in self.get_areas_between_matches(main_cu, diff_cu, cu_matches):
+          main_ids = self.get_functions_in_area(main_functions, main_area)
+          diff_ids = self.get_functions_in_area(diff_functions, diff_area)
+          pairs.extend(self.get_cu_functions_to_compare(main_ids, diff_ids))
+
+      log_refresh(f"Heuristic '{heur}': {len(pairs)} candidate pairs")
+      self.compare_related_cu_matches(cur, heur, pairs)
+    finally:
+      cur.close()
+
+  def get_sorted_matches_eas(self, matches):
+    addresses = []
+    for match in matches:
+      ea1 = float(match[0])
+      ea2 = float(match[2])
+      addresses.append((ea1, ea2))
+
+    addresses.sort()
+    return addresses
+
+  def get_functions_sorted_by_ea(self, cur, db_name):
+    """ Return a sorted list of eas, ids
+    """
+    sql = f"select cast(address as real) ea, id from {db_name}.functions order by ea"
+    cur.execute(sql)
+
+    addresses = []
+    ids = []
+    for row in cur.fetchall():
+      addresses.append(row["ea"])
+      ids.append(row["id"])
+
+    return addresses, ids
+
+  def get_compilation_units_matches(self, cur, matches):
+    """ Return the list of matched CUs
+    """
+    sql = """select distinct cus.id cu_id, cus.start_ea start_ea, cus.end_ea end_ea
+               from {db}.compilation_unit_functions cuf,
+                    {db}.compilation_units cus,
+                    {db}.functions f
+              where f.id = cuf.func_id
+                and cus.id = cuf.cu_id
+                and f.name = ?"""
+    sql_main = sql.replace("{db}", "main")
+    sql_diff = sql.replace("{db}", "diff")
+
+    cu_matches = []
+    dones = set()
+    for match in matches:
+      name1 = match[1]
+      cur.execute(sql_main, (name1,))
+      main_row = cur.fetchone()
+
+      name2 = match[3]
+      cur.execute(sql_diff, (name2,))
+      diff_row = cur.fetchone()
+
+      if main_row is None or diff_row is None:
+        continue
+
+      key = (main_row["cu_id"], diff_row["cu_id"])
+      if key in dones:
+        continue
+      dones.add(key)
+
+      main_cu = [float(main_row["start_ea"]), float(main_row["end_ea"])]
+      diff_cu = [float(diff_row["start_ea"]), float(diff_row["end_ea"])]
+      cu_matches.append((main_cu, diff_cu))
+
+    return cu_matches
+
+  def get_good_matches_in_cus(self, good_matches, main_cu, diff_cu):
+    """ Return good matches considering only good ones those with the same order
+    """
+    main_start_ea, main_end_ea = main_cu
+    diff_start_ea, diff_end_ea = diff_cu
+
+    cu_matches = []
+    for ea1, ea2 in good_matches:
+      if ea1 < main_start_ea or ea1 > main_end_ea:
+        continue
+
+      if ea2 < diff_start_ea or ea2 > diff_end_ea:
+        continue
+
+      if len(cu_matches) > 0:
+        previous_ea2 = cu_matches[-1][1]
+        if ea2 <= previous_ea2:
+          continue
+
+      cu_matches.append((ea1, ea2))
+
+    return cu_matches
+
+  def get_areas_between_matches(self, main_cu, diff_cu, cu_matches):
+    """ Find address ranges in CU matches in both databases
+    """
+    main_start_ea, main_end_ea = main_cu
+    diff_start_ea, diff_end_ea = diff_cu
+
+    ranges = [(main_start_ea, diff_start_ea)]
+    ranges.extend(cu_matches)
+    ranges.append((main_end_ea, diff_end_ea))
+
+    areas = []
+    for i in range(len(ranges) - 1):
+      main_start, diff_start = ranges[i]
+      main_end, diff_end = ranges[i + 1]
+
+      main_area = (main_start, main_end)
+      diff_area = (diff_start, diff_end)
+      areas.append((main_area, diff_area))
+
+    return areas
+
+  def get_cu_functions_to_compare(self, main_ids, diff_ids):
+    """
+    Return candidate functions to compare in areas with matches as, due to how
+    compilers and linkers usually work, they will be in similar positions.
+    """
+    candidates = []
+    if len(main_ids) == 0 or len(diff_ids) == 0:
+      return candidates
+
+    around = config.RELATED_CU_AROUND_FUNCTIONS
+    for i, main_id in enumerate(main_ids):
+      # where this function "should be" in the other binary
+      pos = int(i * len(diff_ids) / len(main_ids))
+
+      first = max(0, pos - around)
+      last = pos + around + 1
+      for diff_id in diff_ids[first:last]:
+        candidates.append((main_id, diff_id))
+
+    return candidates
+
+  def compare_related_cu_matches(self, cur, heur, pairs):
+    """ Compare all the function candidates and add only good matches
+    """
+    cur.execute("create temporary table if not exists related_pairs (id1 integer, id2 integer)")
+    cur.execute("delete from related_pairs")
+    cur.executemany("insert into related_pairs values (?, ?)", pairs)
+
+    sql = f"""select """ + get_query_fields(heur) + """
+               from related_pairs p,
+                    functions f,
+                    diff.functions df
+              where f.id = p.id1
+                and df.id = p.id2
+                and f.nodes between df.nodes / 2.0 and df.nodes * 2.0 """
+    cur.execute(sql)
+    self.add_matches_internal(cur, "best", "partial")
+
+  def get_functions_in_area(self, funcs, area):
+    """ Return the functions' ids in the given area
+    """
+    eas, ids = funcs
+    start_ea, end_ea = area
+
+    first = bisect.bisect_left(eas, start_ea)
+    last = bisect.bisect_right(eas, end_ea)
+
+    return ids[first:last]
+
+  def get_good_matches(self):
+    """
+    Return the best and partial matches with a ratio good enough to be used to
+    find new related matches.
+    """
+    self.cleanup_matches()
+
+    good_matches = []
+    dones = set()
+    for category in ["best", "partial"]:
+      for match in self.get_sorted_results(category):
         ratio = match[5]
         if ratio < config.RELATED_MATCHES_MIN_RATIO:
           break
 
-        name1 = match[1]
-        name2 = match[3]
-        cur.execute(sql_main, (name1,))
-        main_row = cur.fetchone()
-
-        cur.execute(sql_diff, (name2,))
-        diff_row = cur.fetchone()
-
-        if main_row is None or diff_row is None:
+        key = (match[1], match[3])
+        if key in dones:
           continue
+        dones.add(key)
 
-        main_start_ea = float(main_row["start_ea"])
-        main_end_ea   = float(main_row["end_ea"])
-        diff_start_ea = float(diff_row["start_ea"])
-        diff_end_ea   = float(diff_row["end_ea"])
-        cur.execute(sql, (main_start_ea, main_end_ea, diff_start_ea, diff_end_ea))
-        self.add_matches_internal(cur, "best", "partial")
-    finally:
-      cur.close()
+        good_matches.append(match)
+
+    return good_matches
 
   def find_related_matches(self, iteration):
     """
@@ -3468,30 +3623,16 @@ class CBinDiff:
     if not enabled:
       return
 
-    self.cleanup_matches()
-
     log_refresh(f"Finding with heuristic '{heur}'")
-    dones = set()
 
-    for key in ["best", "partial"]:
-      l = self.get_sorted_results(key)
-      for match in l:
-        match_key = f"{match[1]}-{match[3]}"
-        if match_key in dones:
-          continue
-        dones.add(match_key)
+    for match in self.get_good_matches():
+      item = self.itemize_for_chooser(match)
+      main_row, diff_row = self.get_row_for_items(item)
+      if main_row is None or diff_row is None:
+        continue
 
-        ratio = match[5]
-        if ratio < config.RELATED_MATCHES_MIN_RATIO:
-          break
-
-        item = self.itemize_for_chooser(match)
-        main_row, diff_row = self.get_row_for_items(item)
-        if main_row is None or diff_row is None:
-          continue
-
-        if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
-          self.find_related_constants(main_row, diff_row)
+      if main_row["constants_count"] > 0 and diff_row["constants_count"] > 0:
+        self.find_related_constants(main_row, diff_row)
 
   def get_model_ratio(self, main_d, diff_d):
     SELECT_FIELDS = """f.name name1,
@@ -3650,8 +3791,7 @@ class CBinDiff:
             log_refresh("Finding experimental matches")
             self.find_experimental_matches()
 
-          iteration = 0
-          while 1:
+          for iteration in range(2):
             self.cleanup_matches()
             old_total = self.get_total_matched_functions()
 
@@ -3672,7 +3812,6 @@ class CBinDiff:
             new_total = self.get_total_matched_functions()
             if new_total <= old_total:
               break
-            iteration += 1
 
         self.final_pass()
 
