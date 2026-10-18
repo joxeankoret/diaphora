@@ -548,17 +548,25 @@ HEURISTICS.append({
   "name":NAME,
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select distinct """ + get_query_fields(NAME) + """
-       from main.constants mc,
-            diff.constants dc,
-            main.functions  f,
-            diff.functions df
-      where mc.constant = dc.constant
-        and  f.id = mc.func_id
-        and df.id = dc.func_id
-        and df.address = f.address
-        %POSTFIX%
-      order by f.source_file = df.source_file""",
+  "sql":"""with same_constants as (
+             select distinct mc.func_id main_id, dc.func_id diff_id
+               from main.constants mc,
+                    diff.constants dc,
+                    main.functions f,
+                    diff.functions df
+              where mc.constant = dc.constant
+                and f.id = mc.func_id
+                and df.id = dc.func_id
+                and df.address = f.address
+           )
+           select """ + get_query_fields(NAME) + """
+             from same_constants sc,
+                  main.functions f,
+                  diff.functions df
+            where f.id = sc.main_id
+              and df.id = sc.diff_id
+              %POSTFIX%
+            order by f.source_file = df.source_file""",
   "min":0.5,
   "flags":[]
 })
@@ -569,17 +577,21 @@ HEURISTICS.append({
   "name":NAME,
   "category":"Partial",
   "ratio":HEUR_TYPE_RATIO_MAX,
-  "sql":"""select """ + get_query_fields(NAME) + """
-       from main.constants mc,
-            diff.constants dc,
-            main.functions  f,
-            diff.functions df
-      where mc.constant = dc.constant
-        and  f.id = mc.func_id
-        and df.id = dc.func_id
-        and f.nodes >= 3 and df.nodes >= 3
-        and f.constants_count > 0
-        %POSTFIX% """,
+  "sql":"""with same_constants as (
+             select distinct mc.func_id main_id, dc.func_id diff_id
+               from main.constants mc,
+                    diff.constants dc
+              where mc.constant = dc.constant
+           )
+           select """ + get_query_fields(NAME) + """
+             from same_constants sc,
+                  main.functions f,
+                  diff.functions df
+            where f.id = sc.main_id
+              and df.id = sc.diff_id
+              and f.nodes >= 3 and df.nodes >= 3
+              and f.constants_count > 0
+              %POSTFIX% """,
   "min":0.2,
   "flags":[HEUR_FLAG_SLOW]
 })
