@@ -13,7 +13,8 @@
     "idaVersions": [
       "7.4", "7.5", "7.6", "7.7",
       "8.0", "8.1", "8.2", "8.3", "8.4",
-      "9.0", "9.1", "9.2", "9.3", "9.4"
+      "9.0", "9.1", "9.2", "9.3", "9.4",
+      "9.5"
     ],
     "description": "A free and open-source program diffing tool",
     "keywords": ["diffing", "patch-analysis", "reverse-engineering", "bindiff"],
