@@ -8,7 +8,7 @@
 
 Install with the [Hex-Rays plugin manager](https://hcli.docs.hex-rays.com/user-guide/plugin-manager/):
 
-    hcli plugin install https://github.com/joxeankoret/diaphora/archive/refs/tags/3.4.2.zip
+    hcli plugin install https://github.com/joxeankoret/diaphora/archive/refs/tags/3.4.4.zip
     
 Manual install: download the code and place it into your `plugins/` directory.
 
