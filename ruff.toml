@@ -1,0 +1,1 @@
+lint.extend-ignore = ["I001", "RUF010", "TRY002", "UP031", "E722", "SIM102", "PLW0133", "EXE001", "N999"]
