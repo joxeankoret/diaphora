@@ -2,7 +2,7 @@
 
 """
 The Diaphora testing suite
-Copyright (c) 2015-2022, Joxean Koret
+Copyright (c) 2015-2026 Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -17,8 +17,6 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-
-from __future__ import print_function
 
 import os
 import sys
@@ -81,6 +79,8 @@ select 4, "Multimatches", count(*) from results where type = 'multimatch'
 """
 
 #-------------------------------------------------------------------------------
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
 
 #-------------------------------------------------------------------------------
 def debug(msg):
@@ -204,7 +204,9 @@ class CDiaphoraTester:
     db_file = sample_cfg["Testcase"]["export"]
     db_file = os.path.join(testcase_dir, db_file)
     db_file = os.path.abspath(db_file)
-    ida_binary = sample_cfg["Testcase"]["ida-binary"]
+    ida_binary = sample_cfg["Testcase"].get("ida-binary")
+    if ida_binary is None:
+      ida_binary = "idat"
 
     if os.path.exists(db_file):
       debug(f"Removing previous SQLite file {db_file}...")
@@ -215,19 +217,20 @@ class CDiaphoraTester:
       debug(f"Removing previous log file {log_file}...")
       os.remove(log_file)
 
-    os.putenv("DIAPHORA_CPU_COUNT", "1")
-    os.putenv("DIAPHORA_AUTO", "1")
-    os.putenv("DIAPHORA_LOG_PRINT", "1")
-    os.putenv("DIAPHORA_EXPORT_FILE", db_file)
+    env = dict(os.environ)
+    env["DIAPHORA_CPU_COUNT"] = "1"
+    env["DIAPHORA_AUTO"] = "1"
+    env["DIAPHORA_LOG_PRINT"] = "1"
+    env["DIAPHORA_EXPORT_FILE"] = db_file
     if sample_cfg["Testcase"]["decompiler"] == "1":
-      os.putenv("DIAPHORA_USE_DECOMPILER", "1")
+      env["DIAPHORA_USE_DECOMPILER"] = "1"
 
-    os.putenv("PYTHONWARNINGS", "ignore")
+    env["PYTHONWARNINGS"] = "ignore"
     cmd = "%s/%s -A -B -S%s -L%s %s"
     cmd = cmd % (self.ida_path, ida_binary, \
                  self.diaphora_script, log_file, testcase)
     debug(f"Launching '{cmd}'\n")
-    ret = subprocess.call(cmd, shell=True)
+    ret = subprocess.call(cmd, shell=True, env=env)
     if ret != 0:
       log(f"Error exporting test-case {testcase}, return code {ret}!")
       return False
@@ -250,20 +253,21 @@ class CDiaphoraTester:
       if sample_cfg["Testcase"]["slow"] == "0":
         slow = False
 
+    env = dict(os.environ)
     if slow:
-      os.putenv("DIAPHORA_SLOW_HEURISTICS", "1")
+      env["DIAPHORA_SLOW_HEURISTICS"] = "1"
 
-    os.putenv("DIAPHORA_LOG_PRINT", "1")
-    os.putenv("PYTHONWARNINGS", "ignore")
+    env["DIAPHORA_LOG_PRINT"] = "1"
+    env["PYTHONWARNINGS"] = "ignore"
 
     cmd = "%s %s %s %s -o %s >> %s"
     cmd %= (self.python, self.diaphora_script, db1, db2, output, log_file)
     debug(f"Launching command {cmd}")
-    ret = subprocess.call(cmd, shell=True)
+    ret = subprocess.call(cmd, shell=True, env=env)
     if ret != 0:
       log(f"First run failed with exit code {ret}, launching testcase again...")
       # For a reason beyond me, the very first test case might fail :shrug:
-      ret = subprocess.call(cmd, shell=True)
+      ret = subprocess.call(cmd, shell=True, env=env)
       if ret != 0:
         log(f"Error: Diffing returned exit code {ret} for {filename}!")
         return False

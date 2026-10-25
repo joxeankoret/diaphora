@@ -1,5 +1,23 @@
 #!/usr/bin/python3
 
+"""
+Diaphora testing suite
+Copyright (c) 2015-2026, Joxean Koret
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import sqlite3
 import argparse
 
@@ -64,9 +82,9 @@ class CFPSChecker:
         print("-"*78)
         total = 0
         for row in rows:
-          print("{:<65} {:>12}".format(row[0], row[1]))
+          print(f"{row[0]:<65} {row[1]:>12}")
           total += row[1]
-        print("")
+        print()
         
         total_matches = self.get_total_matches()
         print("Total of %d (%f%%) false positive(s)" % (total, (total*100.)/total_matches))
