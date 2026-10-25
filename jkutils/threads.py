@@ -2,7 +2,7 @@
 
 """
 Threads support
-Copyright (c) 2023, Joxean Koret
+Copyright (c) 2023-2026, Joxean Koret
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -45,7 +45,7 @@ def threads_apply(threads, targets, wait_time, log_refresh, timeout):
       t.time = time.monotonic()
       t.timeout = False
       
-      for key in item.keys():
+      for key in item:
         if key not in ["target", "args"]:
           setattr(t, key, item[key])
 

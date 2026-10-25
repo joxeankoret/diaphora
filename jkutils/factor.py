@@ -6,7 +6,7 @@ Primes and factorization utilities
 Part of the Malware Families Clusterization Project, adapted to be used
 in the Joxean Koret's Diffing Plugin for IDA.
 
-Copyright (c) 2012-2019 Joxean Koret
+Copyright (c) 2012-2026 Joxean Koret
 """
 
 import random
@@ -118,7 +118,7 @@ def primefactors(n, sort=False):
   """
   factors = []
 
-  limit = int(n ** decimal.Decimal(.5)) + 1
+  limit = int(n ** decimal.Decimal("0.5")) + 1
   for checker in smallprimes:
     if checker > limit:
       break
@@ -126,7 +126,7 @@ def primefactors(n, sort=False):
     while n % checker == 0:
       factors.append(checker)
       n //= checker
-      limit = int(n ** decimal.Decimal(.5)) + 1
+      limit = int(n ** decimal.Decimal("0.5")) + 1
       if checker > limit:
         break
 

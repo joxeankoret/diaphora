@@ -2,7 +2,7 @@
 
 """
 Fuzzy hashing algorithms
-Copyright (C) 2009-2023, Joxean Koret
+Copyright (C) 2009-2026, Joxean Koret
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -81,7 +81,7 @@ class CKoretFuzzyHashing:
     m = max(len(sign1), len(sign2))
     distance = 0
     
-    for c in range(0, m):
+    for c in range(m):
       if sign1[c:c+1] != sign2[c:c+1]:
         distance += 1
     
@@ -98,7 +98,7 @@ class CKoretFuzzyHashing:
     buf = []
     reduce_errors = self.reduce_errors
     # Adjust the output to the desired output size
-    for c in range(0, output_size):
+    for c in range(output_size):
       tmp = strbytes[c*size:(c*size+1)+bsize]
       ret = sum(map(ord, tmp)) % 255
       if reduce_errors:
@@ -146,7 +146,7 @@ class CKoretFuzzyHashing:
     buf = []
 
     # Adjust the output to the desired output size
-    for c in range(0, output_size):
+    for c in range(output_size):
       if aggresive:
         buf.append(ret[c:c+size+1][ignore_range:ignore_range+1])
       else:
@@ -228,7 +228,7 @@ class CKoretFuzzyHashing:
     ret = "".join(ret)
     buf = ""
     size = len(ret)/output_size
-    for n in range(0, output_size):
+    for n in range(output_size):
       buf += ret[n*size:(n*size)+1]
     
     return base64.b64encode(buf).strip("=")[:output_size]

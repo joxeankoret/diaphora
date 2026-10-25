@@ -9,8 +9,6 @@
 #
 #-------------------------------------------------------------------------------
 
-from __future__ import print_function
-
 import os
 import re
 import sys
@@ -19,6 +17,7 @@ from collections import Counter
 
 import idc
 import idaapi
+import ida_pro
 import idautils
 import ida_bytes
 import ida_funcs
@@ -30,16 +29,15 @@ import ida_kernwin
 import ida_lines
 import ida_name
 
-try:
-    from PySide6 import QtCore, QtGui, QtWidgets
-    has_pyside6 = True
-except ImportError:
-    has_pyside6 = False
+if not idaapi.cvar.batch:
+  if ida_pro.IDA_SDK_VERSION >= 920:
+    from PySide6 import QtWidgets
+  else:
+    # Support for old versions. Until when will I keep doing so?
+    from PyQt5 import QtWidgets
 
 try:
     import nltk
-    from nltk.tokenize import word_tokenize
-    from nltk.tag import pos_tag
 
     has_nltk = True
 except ImportError:
@@ -104,10 +102,10 @@ def nltk_preprocess(strings):
         try:
             FOUND_TOKENS[word.lower()].add(tag)
         except:
-            FOUND_TOKENS[word.lower()] = set([tag])
+            FOUND_TOKENS[word.lower()] = {tag}
 
 #-------------------------------------------------------------------------------
-def get_strings(strtypes = [0, 1]):
+def get_strings(strtypes = [0, 1]): # noqa: B006
     strings = idautils.Strings()
     strings.setup(strtypes = strtypes)
     return strings
@@ -116,8 +114,8 @@ def get_strings(strtypes = [0, 1]):
 def get_lang(full_path):
     _, file_ext    = os.path.splitext(full_path.lower())
     file_ext = file_ext.strip(".")
-    for key in LANGS:
-        if file_ext in LANGS[key]:
+    for key, values in LANGS.items():
+        if file_ext in values:
             return key
     return None
 
@@ -166,7 +164,7 @@ def find_source_files_in_debug_info(d, src_langs):
     return total_files
 
 #-------------------------------------------------------------------------------
-def get_source_strings(min_len = 4, strtypes = [0, 1]):
+def get_source_strings(min_len = 4, strtypes = [0, 1]): # noqa: B006
     strings = get_strings(strtypes)
 
     src_langs = Counter()
@@ -384,14 +382,12 @@ class CCandidateFunctionNames(CIDAMagicStringsChooser):
         self.items = []
         self.selected_items = []
 
-        i = 0
-        for item in l:
+        for i, item in enumerate(l):
             bin_func    = item[1]
             candidate = item[2]
             seems_false = str(int(self.looks_false(bin_func, candidate)))
             line = ["%03d" % i, "0x%08x" % item[0], item[1], item[2], seems_false, ", ".join(item[3]) ]
             self.items.append(line)
-            i += 1
 
         self.items = sorted(self.items, key=lambda x: x[4])
 
@@ -583,7 +579,7 @@ class CClassesGraph(ida_graph.GraphViewer):
             if len(refs_funcs) != 1:
                 continue
 
-            func_ea = list(refs_funcs)[0]
+            func_ea = next(iter(refs_funcs))
             if func_ea in dones:
                 continue
             dones.add(func_ea)
@@ -626,7 +622,7 @@ class CClassesGraph(ida_graph.GraphViewer):
     def OnDblClick(self, node_id):
         eas = self.nodes_ea[node_id]
         if len(eas) == 1:
-            ida_kernwin.jumpto(list(eas)[0])
+            ida_kernwin.jumpto(next(iter(eas)))
         else:
             items = []
             for ea in eas:
@@ -720,9 +716,7 @@ class CClassesGraph(ida_graph.GraphViewer):
         return True
 
     def Show(self):
-        if not ida_graph.GraphViewer.Show(self):
-            return False
-        return True
+        return ida_graph.GraphViewer.Show(self)
 
 #-------------------------------------------------------------------------------
 def show_tree(d = None):
@@ -844,7 +838,7 @@ def show_function_names(strings_list):
             tmp = idc.demangle_name(func_name, ida_ida.inf_get_short_demnames())
             if tmp is not None:
                 func_name = tmp
-            final_list.append([key, func_name, list(candidates)[0], raw_strings])
+            final_list.append([key, func_name, next(iter(candidates)), raw_strings])
 
     if len(classes) > 0:
         class_graph = CClassesGraph(PROGRAM_NAME + ": Classes Hierarchy", classes, final_list)

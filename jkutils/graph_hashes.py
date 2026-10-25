@@ -7,7 +7,7 @@ An implementation of the Koret-Karamitas (KOKA) CFGs hashing algorithm.
 Based on the paper Efficient Features for Function Matching between Binary
 Executables by Huku (Chariton Karamitas, CENSUS S.A., huku@census-labs.com).
 
-Copyright (c) 2018-2019, Joxean Koret
+Copyright (c) 2018-2026, Joxean Koret
 """
 
 
@@ -197,9 +197,9 @@ def main():
   import pprint
   pprint.pprint(d)
   uniques = 0
-  for key in d:
-    if len(d[key]) > 1:
-      print(key, d[key])
+  for key, value in d.items():
+    if len(value) > 1:
+      print(key, value)
     else:
       uniques += 1
   

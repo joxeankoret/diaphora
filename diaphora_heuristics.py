@@ -1279,7 +1279,7 @@ def check_mandatory_fields():
   Internal test, verify that the mandatory fields are specified in any and all
   the heuristics.
   """
-  mandatory = set(["name", "ratio", "category", "sql", "flags"])
+  mandatory = {"name", "ratio", "category", "sql", "flags"}
   for heur in HEURISTICS:
     for field in mandatory:
       if field not in list(heur.keys()):
@@ -1293,7 +1293,7 @@ def check_field_names():
   Internal test, verify that there isn't any unknown field set for any and all
   the heuristics.
   """
-  expected = set(["name", "ratio", "category", "min", "sql", "flags"])
+  expected = {"name", "ratio", "category", "min", "sql", "flags"}
   fields = set()
   for heur in HEURISTICS:
     for field in list(heur.keys()):
@@ -1319,15 +1319,15 @@ def run_tests():
   """
   print("Running tests...\n")
   check_categories()
-  print("")
+  print()
   check_dupes()
-  print("")
+  print()
   check_heuristic_in_sql()
-  print("")
+  print()
   check_heuristics_ratio()
-  print("")
+  print()
   check_field_names()
-  print("")
+  print()
   check_mandatory_fields()
   print("\nAll tests run OK!")
 

@@ -82,7 +82,7 @@ from jkutils.factor import (
 )
 
 try:
-  import idaapi
+  import idaapi # noqa: F401
 
   IS_IDA = True
 except ImportError:
@@ -144,17 +144,13 @@ def result_iter(cursor, arraysize=1000):
     results = cursor.fetchmany(arraysize)
     if not results:
       break
-    for result in results:
-      yield result
-
+    yield from results
 
 #-------------------------------------------------------------------------------
 def check_bufs(buf1, buf2):
   if buf1 is None or buf2 is None:
     return False
-  if buf1 == "" or buf2 == "":
-    return False
-  return True
+  return not(buf1 == "" or buf2 == "")
 
 #-------------------------------------------------------------------------------
 def quick_ratio(buf1, buf2):
@@ -343,7 +339,6 @@ def sqlite3_connect(db_name):
   """
   Return a SQL connection object.
   """
-  global _DATABASES
   db = sqlite3.connect(db_name, check_same_thread=False)
   db.text_factory = str
   db.row_factory = sqlite3.Row
@@ -374,7 +369,7 @@ class CBinDiff:
   )
 
   def __init__(self, db_name, chooser=CChooser):
-    self.names = dict()
+    self.names = {}
     self.primes = primes(2048 * 2048)
     self.db_name = db_name
     self.dbs_dict = {}
@@ -484,8 +479,7 @@ class CBinDiff:
 
     # Number of CPU threads/cores to use?
     cpus = cpu_count() - 1
-    if cpus < 1:
-      cpus = 1
+    cpus = max(cpus, 1)
     self.cpu_count = self.get_value_for("CPU_COUNT", cpus)
 
     # XXX: FIXME: Parallel diffing is broken outside of IDA due to parallelism problems
@@ -503,7 +497,7 @@ class CBinDiff:
             db = self.dbs_dict[tid]
             with db.cursor() as cur:
               cur.execute(f'detach "{self.last_diff_db}"')
-      except:
+      except: # noqa: S110
         pass
 
       self.db_close()
@@ -768,14 +762,12 @@ class CBinDiff:
     Insert basic blocks information as well as the relationship between assembly
     instructions and basic blocks.
     """
-    num = 0
     bb_ids = {}
     sql1 = "insert into main.basic_blocks (num, address, asm_type) values (?, ?, 'native')"
     sql2 = "insert into main.bb_instructions (basic_block_id, instruction_id) values (?, ?)"
 
-    for key in bb_data:
+    for num, key in enumerate(bb_data, 1):
       # Insert each basic block
-      num += 1
       ins_ea = str(key)
       cur_execute(sql1, (num, str(ins_ea)))
       last_bb_id = cur.lastrowid
@@ -820,8 +812,7 @@ class CBinDiff:
       "insert into main.bb_relations (parent_id, child_id) values (?, ?)"
     )
     sql_func_blocks = "insert into main.function_bblocks (function_id, basic_block_id, asm_type) values (?, ?, 'microcode')"
-    num = 0
-    for key in microcode_bblocks:
+    for num, key in enumerate(microcode_bblocks):
       # Create a new microcode basic block
       start_ea = self.get_valid_prop(microcode_bblocks[key]["start"])
       cur_execute(sql_bblock, [num, start_ea])
@@ -857,9 +848,6 @@ class CBinDiff:
           # Add the microcode instrution to the current basic block
           insert_args.append([bblock_id, inst_id])
       cur.executemany(sql_bbinst, insert_args)
-
-      # Incrase the current basic block number
-      num += 1
 
     # And, finally, insert the relationships between basic blocks
     insert_args = []
@@ -1246,7 +1234,7 @@ class CBinDiff:
         try:
           bb_relations[bb_ea1].add(bb_ea2)
         except KeyError:
-          bb_relations[bb_ea1] = set([bb_ea2])
+          bb_relations[bb_ea1] = {bb_ea2}
     finally:
       cur.close()
 
@@ -1365,9 +1353,7 @@ class CBinDiff:
     """
     if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] == 1.0:
       return True
-    if name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] == 1.0:
-      return True
-    return False
+    return name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] == 1.0
 
   def has_better_match(self, name1, name2, ratio):
     """
@@ -1382,10 +1368,7 @@ class CBinDiff:
     ratio = float(ratio)
     if name1 in self.matched_primary and self.matched_primary[name1]["ratio"] > ratio:
       return True
-    if name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio:
-      return True
-
-    return False
+    return name2 in self.matched_secondary and self.matched_secondary[name2]["ratio"] > ratio
 
   def find_equal_matches(self):
     """
@@ -1738,7 +1721,7 @@ class CBinDiff:
         self.ratios_cache[key] = 1.0
         return 1.0
 
-    values_set = set([v1, v2, v3, v4, v5])
+    values_set = {v1, v2, v3, v4, v5}
 
     r = max(values_set)
     if r == 1.0 and md1 != md2:
@@ -1861,9 +1844,7 @@ class CBinDiff:
     """
     Determine if more rows should be read at the given stage
     """
-    if self.sql_max_processed_rows != 0 and i < self.sql_max_processed_rows:
-      return True
-    return False
+    return self.sql_max_processed_rows != 0 and i < self.sql_max_processed_rows
 
   def add_matches_internal(
     self, cur, best, partial, val=None, unreliable=None, debug=False
@@ -2425,7 +2406,7 @@ class CBinDiff:
     """
     try:
       cur.execute(f'attach "{db}" as diff')
-    except:
+    except: # noqa: S110
       pass
 
   def get_function_row(self, name, db_name="main"):
@@ -2466,14 +2447,6 @@ class CBinDiff:
     """
     Compare the functions of one SQL match.
     """
-    fields = [
-      ["ea", "address"],   ["name", "name"], ["pseudo", "pseudocode"],
-      ["asm", "assembly"], ["pseudocode_primes", "pseudocode_primes"], ["nodes", "nodes"],
-      ["md_index", "md_index"],  ["clean_assembly", "clean_assembly"],
-      ["clean_pseudo", "clean_pseudo"], ["clean_micro", "clean_microcode"],
-      ["bytes_hash", "bytes_hash"], ["edges", "edges"]
-    ]
-
     main_d = {}
     main_d["ea"] = main_row["address"]
     main_d["name"] = main_row["name"]
@@ -2618,16 +2591,14 @@ class CBinDiff:
     """
     if self.search_just_stripped_binaries():
       return True
-    if self.search_patchdiff_with_symbols():
-      return True
-    return False
+    return self.search_patchdiff_with_symbols()
 
   def get_unmatched_functions(self):
     """
     Get the list of unmatched functions in both databases.
     """
-    main = list()
-    diff = list()
+    main = []
+    diff = []
     cur = self.db_cursor()
     try:
       sql = """select 'main' db_name, name, address from main.functions
@@ -3554,7 +3525,7 @@ class CBinDiff:
     cur.execute("delete from related_pairs")
     cur.executemany("insert into related_pairs values (?, ?)", pairs)
 
-    sql = f"""select """ + get_query_fields(heur) + """
+    sql = """select """ + get_query_fields(heur) + """
                from related_pairs p,
                     functions f,
                     diff.functions df
@@ -3665,7 +3636,7 @@ class CBinDiff:
       cur.execute(sql, (main_d["ea"], diff_d["ea"]))
       row = cur.fetchone()
       d = dict(row)
-      cmp_data = get_model_comparison_data(dict(row), self.is_same_processor)
+      cmp_data = get_model_comparison_data(d, self.is_same_processor)
       ret = self.classifier.predict(cmp_data)[0]
       if ret == 1:
         debug_refresh(f"ML model predicted {ret} for {main_d['name']} {diff_d['name']}")
@@ -3859,7 +3830,7 @@ if __name__ == "__main__":
     with open(script, "rb") as f:
       buf = f.read()
 
-    exec(compile(buf, script, "exec"))
+    exec(compile(buf, script, "exec")) # noqa: S102
     do_diff = False
   else:
     import argparse

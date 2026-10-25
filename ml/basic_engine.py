@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-__all__ = ["get_model_comparison_data", "ML_AVAILABLE"]
+__all__ = ["ML_AVAILABLE", "get_model_comparison_data"]
 
 import json
 
