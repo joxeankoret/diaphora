@@ -35,6 +35,7 @@ from idautils import *
 import idaapi
 import ida_pro
 import ida_idp
+import ida_bytes
 import ida_graph
 import ida_kernwin
 
@@ -76,6 +77,8 @@ if not idaapi.cvar.batch:
     # Support for old versions. Until when will I keep doing so?
     from PyQt5 import QtWidgets, QtGui
 
+  from diaphora_ida_ui import CDiaphoraSetupDialog
+
 #-------------------------------------------------------------------------------
 # Chooser items indices. They do differ from the CChooser.item items that are
 # handled in diaphora.py.
@@ -89,26 +92,6 @@ CHOOSER_ITEM_RATIO = diaphora.ITEM_RATIO
 
 # Constants unexported in IDA Python
 PRTYPE_SEMI = 0x0008
-
-# Messages
-MSG_RELAXED_RATIO_ENABLED = """AUTOHIDE DATABASE\n
-Relaxed ratio calculations can be enabled. It will ignore many small
-modifications to functions and will match more functions with higher ratios.
-Enable this option if you're only interested in the new functionality. Disable
-it for patch diffing if you're interested in small modifications (like buffer
-sizes).
-
-You can disable it by un-checking the 'Relaxed calculations of differences
-ratios' option."""
-
-MSG_FUNCTION_SUMMARIES_ONLY = """AUTOHIDE DATABASE\n
-Do not export basic blocks or instructions will be enabled. It will not export
-the information relative to basic blocks or instructions and 'Diff assembly in a
-graph' will not be available.
-
-This is automatically done for exporting huge databases with more than 100,000
-functions. You can disable it by un-checking the 'Do not export basic blocks or
-instructions' option."""
 
 # Is Diaphora running as a proper IDA plugin?
 IS_DIAPHORA_PLUGIN = False
@@ -681,7 +664,7 @@ class CIDAChooser(CDiaphoraChooser):
 
     if not name1.startswith("sub_") and not name2.startswith("sub_"):
       if name1 != name2:
-        if name2.find(name1) == -1 and not name1.find(name2) == -1:
+        if name2.find(name1) == -1 and name1.find(name2) != -1:
           return True
 
     return False
@@ -701,130 +684,7 @@ class CIDAChooser(CDiaphoraChooser):
     return [0xFFFFFF, 0]
 
 #-------------------------------------------------------------------------------
-class CBinDiffExporterSetup(Form):
-  """
-  IDA class to build the export dialogue.
-  """
-
-  def __init__(self):
-    s = r"""Diaphora
-  Please select the path to the SQLite database to save the current IDA database and the path of the SQLite database to diff against.
-  If no SQLite diff database is selected, it will just export the current IDA database to SQLite format. Leave the 2nd field empty if you are exporting the first database.
-
-  SQLite databases:                                                                                                                                     Export filter limits:
-  <#Select a file to export the current IDA database to SQLite format#Export IDA database to SQLite  :{iFileSave}> <#Minimum address to find functions to export#From address:{iMinEA}>
-  <#Select the SQLite database to diff against                       #SQLite database to diff against:{iFileOpen}> <#Maximum address to find functions to export#To address  :{iMaxEA}>
-
-  Export options:
-  <Use the decompiler if available:{rUseDecompiler}>
-  <#Use this option to enable or disable exporting microcode#Export microcode instructions and basic blocks:{rExportMicrocode}>
-  <Do not export library and thunk functions:{rExcludeLibraryThunk}>
-  <#Enable if you want neither sub_* functions nor library functions to be exported#Export only non-IDA generated functions:{rNonIdaSubs}>
-  <#Export only function summaries, not all instructions. Showing differences in a graph between functions will not be available.#Do not export instructions and basic blocks:{rFuncSummariesOnly}>
-  <#Enable this option to ignore thunk functions, nullsubs, etc....#Ignore small functions:{rIgnoreSmallFunctions}>{cGroupExport}>|
-
-  Diffing options:
-  <Use probably unreliable methods:{rUnreliable}>
-  <Recommended to disable with databases with more than 5.000 functions#Use slow heuristics:{rSlowHeuristics}>
-  <#Enable this option if you aren't interested in small changes#Relaxed calculations of differences ratios:{rRelaxRatio}>
-  <Use speed ups:{rExperimental}##Use tricks to speed ups some of the most common diffing tasks>
-  <#Enable this option to ignore sub_* names for the 'Same name' heuristic.#Ignore automatically generated names:{rIgnoreSubNames}>
-  <#Enable this option to ignore all function names for the 'Same name' heuristic.#Ignore all function names:{rIgnoreAllNames}>
-  <#Enable this option to use the Machine Learning engine with an already trained model specified in diaphora_config.py!ML_TRAINED_MODEL.#Use an already trained model:{rUseTrainedModel}>{cGroup1}>
-
-  Project specific rules:
-  <#Select the project specific Python script rules#Python script:{iProjectSpecificRules}>
-
-  NOTE: Don't select IDA database files (.IDB, .I64) as only SQLite databases are considered.
-"""
-    args = {
-      "iFileSave": Form.FileInput(save=True, swidth=40, hlp="SQLite database (*.sqlite)"),
-      "iFileOpen": Form.FileInput(open=True, swidth=40, hlp="SQLite database (*.sqlite)"),
-      "iMinEA": Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-      "iMaxEA": Form.NumericInput(tp=Form.FT_HEX, swidth=22),
-      "cGroupExport": Form.ChkGroupControl(
-        (
-          "rUseDecompiler",
-          "rExcludeLibraryThunk",
-          "rIgnoreSmallFunctions",
-          "rExportMicrocode",
-          "rNonIdaSubs",
-          "rFuncSummariesOnly",
-        )
-      ),
-      "cGroup1": Form.ChkGroupControl(
-        (
-          "rUnreliable",
-          "rSlowHeuristics",
-          "rRelaxRatio",
-          "rExperimental",
-          "rIgnoreSubNames",
-          "rIgnoreAllNames",
-          "rUseTrainedModel"
-        )
-      ),
-      "iProjectSpecificRules": Form.FileInput(
-        open=True, hlp="Python scripts (*.py)"
-      ),
-    }
-
-    Form.__init__(self, s, args)
-
-  def set_options(self, opts):
-    """
-    Set the configuration options from opts.
-    """
-    if opts.file_out is not None:
-      self.iFileSave.value = opts.file_out
-    if opts.file_in is not None:
-      self.iFileOpen.value = opts.file_in
-    if opts.project_script is not None:
-      self.iProjectSpecificRules.value = opts.project_script
-
-    self.rUseDecompiler.checked = opts.use_decompiler
-    self.rExcludeLibraryThunk.checked = opts.exclude_library_thunk
-    self.rUnreliable.checked = opts.unreliable
-    self.rSlowHeuristics.checked = opts.slow
-    self.rUseTrainedModel.checked = opts.use_trained_model
-    self.rRelaxRatio.checked = opts.relax
-    self.rExperimental.checked = opts.experimental
-    self.iMinEA.value = opts.min_ea
-    self.iMaxEA.value = opts.max_ea
-    self.rNonIdaSubs.checked = not opts.ida_subs
-    self.rIgnoreSubNames.checked = opts.ignore_sub_names
-    self.rIgnoreAllNames.checked = opts.ignore_all_names
-    self.rIgnoreSmallFunctions.checked = opts.ignore_small_functions
-    self.rFuncSummariesOnly.checked = opts.func_summaries_only
-    self.rExportMicrocode.checked = opts.export_microcode
-
-  def get_options(self):
-    """
-    Get a dictionary with the configuration options.
-    """
-    opts = dict(
-      file_out=self.iFileSave.value,
-      file_in=self.iFileOpen.value,
-      use_decompiler=self.rUseDecompiler.checked,
-      exclude_library_thunk=self.rExcludeLibraryThunk.checked,
-      unreliable=self.rUnreliable.checked,
-      slow=self.rSlowHeuristics.checked,
-      use_trained_model=self.rUseTrainedModel.checked,
-      relax=self.rRelaxRatio.checked,
-      experimental=self.rExperimental.checked,
-      min_ea=self.iMinEA.value,
-      max_ea=self.iMaxEA.value,
-      ida_subs=self.rNonIdaSubs.checked is False,
-      ignore_sub_names=self.rIgnoreSubNames.checked,
-      ignore_all_names=self.rIgnoreAllNames.checked,
-      ignore_small_functions=self.rIgnoreSmallFunctions.checked,
-      func_summaries_only=self.rFuncSummariesOnly.checked,
-      project_script=self.iProjectSpecificRules.value,
-      export_microcode=self.rExportMicrocode.checked,
-    )
-    return BinDiffOptions(**opts)
-
-#-------------------------------------------------------------------------------
-class timeraction_t(object):
+class timeraction_t:
   def __init__(self, func, args, interval):
     self.func = func
     self.args = args
@@ -841,7 +701,7 @@ class timeraction_t(object):
     return -1
 
 #-------------------------------------------------------------------------------
-class uitimercallback_t(object):
+class uitimercallback_t:
   def __init__(self, g, interval):
     self.interval = interval
     self.obj = idaapi.register_timer(self.interval, self)
@@ -1195,7 +1055,7 @@ class CIDABinDiff(diaphora.CBinDiff):
   def commit_and_start_transaction(self):
     try:
       self.db.execute("commit")
-    except sqlite3.OperationalError as e:
+    except sqlite3.OperationalError:
       # Ignore the "cannot commit - no transaction active" error
       pass
 
@@ -1767,7 +1627,7 @@ class CIDABinDiff(diaphora.CBinDiff):
     """
     filename1 = f"main_{ea1}.{ext}"
     filename2 = f"diff_{ea2}.{ext}"
-    with open(filename1, "w", encoding="utf8") as f_source:
+    with open(filename1, "w", encoding="utf8") as f_source: # noqa: SIM117
       with open(filename2, "w", encoding="utf8") as f_dest:
         f_source.writelines(buf1)
         f_dest.writelines(buf2)
@@ -1815,7 +1675,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       sync.install()
       g1.sync_hook = sync
       g2.sync_hook = sync
-    except Exception:
+    except:
       log("Graph synchronization failed: %s" % str(sys.exc_info()[1]))
 
   def graph_diff_internal(self, ea1, name1, ea2, name2, asm_type, title_prefix):
@@ -1997,10 +1857,7 @@ class CIDABinDiff(diaphora.CBinDiff):
       return True
 
     # Has pseudocode comment
-    if import_syms[ea][6] is not None:
-      return True
-
-    return False
+    return import_syms[ea][6] is not None
 
   def do_import_instruction_level_item(self, diff_rows, import_syms, matched_syms):
     """
@@ -2190,13 +2047,11 @@ class CIDABinDiff(diaphora.CBinDiff):
 
     try:
       show_wait_box("Updating primary database...")
-      total = 0
       for ea in to_import:
         ea = str(ea)
         new_func = self.read_function(ea)
         self.delete_function(ea)
         self.save_function(new_func)
-        total += 1
 
       self.db.execute("analyze")
       self.db.commit()
@@ -2506,7 +2361,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
   def extract_function_callers(self, f):
     # Calculate the callers *but* considering data references to functions from
     # functions as code references.
-    callers = list()
+    callers = []
     refs = list(CodeRefsTo(f, 0))
     refs.extend(DataRefsTo(f))
     for caller in refs:
@@ -2584,7 +2439,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         sum((z0, z1 * rt2, z2 * rt3, z3 * rt5, z4 * rt7))
         for z0, z1, z2, z3, z4 in tuples
       )
-      md_index = sum((1 / emb_t.sqrt() for emb_t in emb_tuples))
+      md_index = sum(1 / emb_t.sqrt() for emb_t in emb_tuples)
       md_index = str(md_index)
     return md_index
 
@@ -2876,7 +2731,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
     current_head = BADADDR
     for current_head in list(Heads(block.start_ea, block.end_ea)):
-      ins, decoded_size = self.get_decoded_instruction(current_head)
+      ins, _ = self.get_decoded_instruction(current_head)
 
       # Extract constants from instruction
       accum['constants'] = self.extract_function_constants(
@@ -3157,17 +3012,20 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
         props_list = self.get_function_from_dictionary(d)
     return props_list
 
+  def is_unnamed_function(self, ea):
+    """ Has the function an automatic name given by IDA?
+    """
+    flags = ida_bytes.get_flags32(ea)
+    if ida_bytes.has_dummy_name(flags):
+      return True
+    return ida_bytes.has_auto_name(flags)
+
   def should_skip_function(self, f, name):
     """ Check if a function should be skipped based on validation criteria.
     """
     if not self.ida_subs:
       # Unnamed function, ignore it...
-      if (
-        name.startswith("sub_")
-        or name.startswith("j_")
-        or name.startswith("unknown")
-        or name.startswith("nullsub_")
-      ):
+      if self.is_unnamed_function(f):
         return True, f"Skipping function {repr(name)}"
 
       # Already recognized runtime's function?
@@ -3249,7 +3107,7 @@ or selecting Edit -> Plugins -> Diaphora - Show results"""
 
   def read_function(self, ea):
     """Extract anything and everything we (might) need from a function."""
-    name, true_name, demangle_named_name = self.get_function_names(ea)
+    name, true_name, _ = self.get_function_names(ea)
 
     # Call hooks immediately after we have a proper function name
     if not self.run_pre_export_hook(ea, name):
@@ -3695,28 +3553,13 @@ def _diff_or_export(use_ui, **options):
   opts = BinDiffOptions(**options)
 
   if use_ui:
-    x = CBinDiffExporterSetup()
-    x.Compile()
-    x.set_options(opts)
+    x = CDiaphoraSetupDialog(total_functions, HAS_HEXRAYS, BinDiffOptions)
+    x.set_options(opts, options.keys())
 
     if not x.Execute():
       return None
 
     opts = x.get_options()
-
-  if opts.file_out == opts.file_in:
-    warning("Both databases are the same file!")
-    return None
-  elif opts.file_out == "" or len(opts.file_out) < 5:
-    warning(
-      "No output database selected or invalid filename. Please select a database file."
-    )
-    return None
-  elif is_ida_file(opts.file_in) or is_ida_file(opts.file_out):
-    warning(
-      "One of the selected databases is an IDA file. Please select only database files."
-    )
-    return None
 
   export = True
   if os.path.exists(opts.file_out):
@@ -3812,7 +3655,7 @@ def _diff_or_export(use_ui, **options):
       else:
         bd.diff(opts.file_in)
   except:
-    print((f"Error: {sys.exc_info()[1]}"))
+    print(f"Error: {sys.exc_info()[1]}")
     traceback.print_exc()
   finally:
     hide_wait_box()
@@ -3842,8 +3685,6 @@ class BinDiffOptions:
     )
 
     self.relax = kwargs.get("relax")
-    if self.relax:
-      warning(MSG_RELAXED_RATIO_ENABLED)
 
     self.unreliable = kwargs.get("unreliable", config.DIFFING_ENABLE_UNRELIABLE)
     self.slow = kwargs.get(
@@ -3871,8 +3712,6 @@ class BinDiffOptions:
     # Enable, by default, exporting only function summaries for huge dbs.
     too_big_db = total_functions > config.MIN_FUNCTIONS_TO_CONSIDER_HUGE
     self.func_summaries_only = kwargs.get("func_summaries_only", too_big_db)
-    if too_big_db:
-      warning(MSG_FUNCTION_SUMMARIES_ONLY)
 
     # Python script to run for both the export and diffing process
     self.project_script = kwargs.get("project_script")
@@ -4015,7 +3854,6 @@ class CAstVisitor(CAstVisitorInherits):
     ctree_visitor_t.__init__(self, CV_FAST)
     self.cfunc = cfunc
     self.primes_hash = 1
-    return
 
   def visit_expr(self, expr):
     try:
@@ -4030,18 +3868,6 @@ class CAstVisitor(CAstVisitorInherits):
     except:
       traceback.print_exc()
     return 0
-
-#-------------------------------------------------------------------------------
-def is_ida_file(filename):
-  filename = filename.lower()
-  return (
-    filename.endswith(".idb")
-    or filename.endswith(".i64")
-    or filename.endswith(".til")
-    or filename.endswith(".id0")
-    or filename.endswith(".id1")
-    or filename.endswith(".nam")
-  )
 
 #-------------------------------------------------------------------------------
 def remove_file(filename):
