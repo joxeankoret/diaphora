@@ -2305,7 +2305,7 @@ class CBinDiff:
           if name not in self.matched_primary:
             ea = row[1]
             choose.add_item(CChooser.Item(ea, name))
-        self.unmatched_second = choose
+        self.unmatched_primary = choose
 
       sql = "select name, address from diff.functions"
       cur.execute(sql)
@@ -2318,7 +2318,7 @@ class CBinDiff:
           if name not in self.matched_secondary:
             ea = row["address"]
             choose.add_item(CChooser.Item(ea, name))
-        self.unmatched_primary = choose
+        self.unmatched_second = choose
     finally:
       cur.close()
 
